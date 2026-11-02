@@ -86,7 +86,7 @@ const Actions = (() => {
         v.sansPlein ? null : action('⛽', 'Signaler un plein', info.dernierPlein ? `Dernier : ${date(info.dernierPlein.date)}` : 'Carburant, AdBlue, ticket', () => plein(v, info, etatV)),
         v.sansExterieur ? null : action('🚐', 'Vérification extérieure', info.defauts.length ? `${info.defauts.length} défaut(s) connu(s)` : 'Carrosserie : rayures, impacts', () => exterieur(v, info, etatV)),
         v.sansGarage ? null : action('🔧', 'Passage au garage', info.dernierGarage ? `Dernier : ${date(info.dernierGarage.date)}` : 'Entretien, réparation, contrôle', () => garage(v, info, etatV)),
-        action('🧽', 'Nettoyage', resumeNettoyage(info), () => nettoyage(v, info, etatV)),
+        v.sansNettoyage ? null : action('🧽', 'Nettoyage', resumeNettoyage(info), () => nettoyage(v, info, etatV)),
         action('🕘', 'Historique du véhicule', 'Check-lists, pleins, garage, carrosserie', () => historique(v, info, etatV))));
   }
 
@@ -211,15 +211,25 @@ const Actions = (() => {
 
   // ---------- Garage ----------
   function garage(v, info, etatV) {
-    const saisie = { motif: 'Entretien', commentaire: '' };
+    // Plusieurs motifs possibles (ex. carrosserie et pneus) : enregistrés « Carrosserie, Pneus ».
+    const motifs = new Set();
+    const saisie = { motif: '', motifs: [], commentaire: '' };
     const idCom = id();
-    fenetre(`${v.nom || v.id} · passage au garage`,
+    const panneauGarage = fenetre(`${v.nom || v.id} · passage au garage`,
       info.dernierGarage ? el('p', { classe: 'aide-question', texte: `Dernier passage : ${date(info.dernierGarage.date)}${info.dernierGarage.motif ? ` (${info.dernierGarage.motif})` : ''}` }) : null,
-      el('fieldset', { classe: 'question' }, el('legend', { texte: 'Motif' }),
-        puces(id(), ['Entretien', 'Réparation', 'Contrôle technique', 'Pneus', 'Carrosserie', 'Autre'], 'Entretien', (o) => { saisie.motif = o; })),
+      el('fieldset', { classe: 'question' }, el('legend', { texte: 'Motifs (plusieurs possibles)' }),
+        el('div', { classe: 'puces motifs' }, ...['Entretien', 'Réparation', 'Contrôle technique', 'Pneus', 'Carrosserie', 'Autre'].flatMap((o) => {
+          const i = id();
+          return [el('input', { type: 'checkbox', id: i, value: o, surchange: (e) => { if (e.target.checked) motifs.add(o); else motifs.delete(o); } }),
+            el('label', { for: i, texte: o })];
+        }))),
       el('div', { classe: 'champ' }, el('label', { for: idCom, texte: 'Commentaire' }),
         el('textarea', { id: idCom, rows: 3, surinput: (e) => { saisie.commentaire = e.target.value; } })),
       el('button', { type: 'button', classe: 'principal', texte: 'Enregistrer le passage au garage', surclick: () => {
+        const ordre = ['Entretien', 'Réparation', 'Contrôle technique', 'Pneus', 'Carrosserie', 'Autre'];
+        saisie.motifs = ordre.filter((o) => motifs.has(o));
+        if (!saisie.motifs.length) { message(panneauGarage, 'Choisissez au moins un motif.', 'erreur'); return; }
+        saisie.motif = saisie.motifs.join(', ');
         if (App.envoyerEvenement('garage', v.id, saisie)) fermer();
       } }),
       boutonRetour(v, info, etatV));

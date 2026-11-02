@@ -283,8 +283,8 @@ const Parc = (() => {
     suivi('Dernier kilométrage', (x) => (x.info.releve ? { texte: Number(x.info.releve.km).toLocaleString('fr-FR'), titre: `Relevé du ${date(x.info.releve.date)}` } : { texte: '—', classe: 'na' }));
     suivi('Dernier plein', (x) => (x.v.sansPlein ? { texte: '—', classe: 'na' } : { texte: x.info.dernierPlein ? jour(x.info.dernierPlein.date) : 'jamais', titre: x.info.dernierPlein ? `${date(x.info.dernierPlein.date)} · ${x.info.dernierPlein.agent}` : '' }));
     suivi('Dernier garage', (x) => (x.v.sansGarage ? { texte: '—', classe: 'na' } : { texte: x.info.dernierGarage ? jour(x.info.dernierGarage.date) : 'jamais', titre: x.info.dernierGarage ? `${date(x.info.dernierGarage.date)} · ${x.info.dernierGarage.motif || ''}` : '' }));
-    suivi('Nettoyage intérieur', (x) => ({ texte: x.info.dernierNettoyageInterieur ? jour(x.info.dernierNettoyageInterieur.date) : 'jamais' }));
-    suivi('Nettoyage extérieur', (x) => ({ texte: x.info.dernierNettoyageExterieur ? jour(x.info.dernierNettoyageExterieur.date) : 'jamais' }));
+    suivi('Nettoyage intérieur', (x) => (x.v.sansNettoyage ? { texte: '—', classe: 'na' } : { texte: x.info.dernierNettoyageInterieur ? jour(x.info.dernierNettoyageInterieur.date) : 'jamais' }));
+    suivi('Nettoyage extérieur', (x) => (x.v.sansNettoyage ? { texte: '—', classe: 'na' } : { texte: x.info.dernierNettoyageExterieur ? jour(x.info.dernierNettoyageExterieur.date) : 'jamais' }));
     suivi('Défauts de carrosserie connus', (x) => (x.v.sansExterieur ? { texte: '—', classe: 'na' } : { texte: String(x.info.defauts.length), classe: x.info.defauts.length ? 'attention' : '' }));
 
     // Colonnes de même largeur : tableau à disposition fixe, colonne des libellés plus large.
@@ -394,7 +394,7 @@ const Parc = (() => {
     // Nettoyages
     const ligneNettoyage = (libelle, n) => el('span', { classe: 'tuile-ligne' }, el('strong', { texte: libelle }),
       el('span', { classe: n ? '' : 'attenue', texte: n ? `${ilYa(n.date)} (${jour(n.date)})` : 'jamais' }));
-    const tNettoyage = tuile('nettoyage', '🧽', 'Nettoyages',
+    const tNettoyage = v.sansNettoyage ? null : tuile('nettoyage', '🧽', 'Nettoyages',
       ligneNettoyage('Intérieur', info.dernierNettoyageInterieur),
       ligneNettoyage('Extérieur', info.dernierNettoyageExterieur));
 

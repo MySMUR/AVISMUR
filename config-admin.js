@@ -74,7 +74,7 @@ const ConfigAdmin = (() => {
           el('input', { type: 'checkbox', id: idActif, checked: !v.inactif,
             surchange: (e) => { if (e.target.checked) delete v.inactif; else v.inactif = true; rendre(); } }),
           el('span', { texte: 'Actif' })),
-        ...[['sansGarage', 'Garage', 'passage au garage'], ['sansPlein', 'Plein', 'plein de carburant'], ['sansExterieur', 'Extérieur', 'vérification extérieure']]
+        ...[['sansGarage', 'Garage', 'passage au garage'], ['sansPlein', 'Plein', 'plein de carburant'], ['sansExterieur', 'Extérieur', 'vérification extérieure'], ['sansNettoyage', 'Nettoyage', 'nettoyage']]
           .map(([cle, texte, aide]) => el('label', { classe: 'cfg-actif', title: `Décocher si ce véhicule n'a pas de ${aide} (ex. couveuse)` },
             el('input', { type: 'checkbox', checked: !v[cle], surchange: (e) => { if (e.target.checked) delete v[cle]; else v[cle] = true; } }),
             el('span', { texte }))),

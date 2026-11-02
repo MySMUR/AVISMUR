@@ -323,6 +323,15 @@ const Ambulancier = (() => {
     }
   }
 
+  /** Nourrisson emmailloté (couveuse) : tête et lange, vus de face. */
+  const nourrisson = () => el('svg:svg', { viewBox: '0 0 32 32', classe: 'picto-nourrisson', 'aria-hidden': 'true' },
+    el('svg:path', { d: 'M5 20 C5 13 27 13 27 20 C27 27 20 30 16 30 C12 30 5 27 5 20 Z', classe: 'lange' }),
+    el('svg:path', { d: 'M8 21 C12 24 20 24 24 21', classe: 'pli' }),
+    el('svg:circle', { cx: 16, cy: 11, r: 8, classe: 'tete' }),
+    el('svg:path', { d: 'M8.6 8.5 C10 3 22 3 23.4 8.5 C20 6.5 12 6.5 8.6 8.5 Z', classe: 'bonnet' }),
+    el('svg:circle', { cx: 13, cy: 11.5, r: 1.1, classe: 'oeil' }), el('svg:circle', { cx: 19, cy: 11.5, r: 1.1, classe: 'oeil' }),
+    el('svg:path', { d: 'M13.8 14.8 Q16 16.6 18.2 14.8', classe: 'bouche' }));
+
   /** Triangle d'avertissement (anomalies). */
   const triangle = () => el('svg:svg', { viewBox: '0 0 24 24', classe: 'picto-avertissement', 'aria-hidden': 'true' },
     el('svg:path', { d: 'M12 2.5 L23 21.5 H1 Z', classe: 'fond' }),
@@ -442,7 +451,7 @@ const Ambulancier = (() => {
     bouton.append(el('span', { classe: 'carte-entete' },
       el('span', { classe: 'ligne-titre' }, el('strong', { texte: v.nom || v.id }),
         el('small', { texte: v.type !== undefined ? v.type : (v.modele === 'F00' ? 'UMH' : v.modele) }),
-        v.icone ? el('span', { classe: 'icone-vehicule', 'aria-hidden': 'true', texte: v.icone }) : null),
+        v.picto === 'nourrisson' ? el('span', { classe: 'icone-vehicule', title: 'Couveuse' }, nourrisson()) : (v.icone ? el('span', { classe: 'icone-vehicule', 'aria-hidden': 'true', texte: v.icone }) : null)),
       position));
 
     // Check-list du jour (rien à faire pour un véhicule indisponible)
@@ -462,7 +471,7 @@ const Ambulancier = (() => {
     }
 
     // Nettoyages du jour : spray (intérieur) et tuyau d'arrosage (extérieur), verts si faits, gris sinon
-    if (etatV.classe !== 'indispo') {
+    if (etatV.classe !== 'indispo' && !v.sansNettoyage) {
       const aujourdhuiFait = (n) => Boolean(n) && new Date(n.date).toLocaleDateString('fr-CA') === aujourdhui();
       const interieur = aujourdhuiFait(info.dernierNettoyageInterieur)
         || Boolean(etatV.statut && etatV.statut.reponses && etatV.statut.reponses['Entretien quotidien'] === 'Fait');
