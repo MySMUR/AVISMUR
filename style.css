@@ -46,25 +46,36 @@ body {
 .app-nom { margin: 0; font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
 .app-lieu { margin: 0.15rem 0 0; font-size: 0.95rem; opacity: 0.85; }
 
-/* Le tracé ECG du logo, dessiné une fois au chargement. */
+/* Le tracé ECG du logo, prolongé par la silhouette d'Avignon (pont, rocher des Doms, Palais des Papes).
+   Seules les lignes plates s'étirent ; le complexe QRS et la silhouette gardent leurs proportions.
+   Balayage de gauche à droite au chargement, comme sur un scope. */
 .ecg {
   position: absolute;
   left: 0;
   bottom: 1.6rem;
+  display: flex;
   width: 100%;
   height: 40px;
+  opacity: 0.9;
+  pointer-events: none;
+  animation: trace 2.6s ease-in-out 0.2s backwards;
+}
+.ecg svg {
+  display: block;
+  height: 100%;
+  overflow: visible;
   fill: none;
   stroke: #8FD8CF;
   stroke-width: 2.5;
   stroke-linejoin: round;
   stroke-linecap: round;
-  vector-effect: non-scaling-stroke;
-  stroke-dasharray: 1400;
-  stroke-dashoffset: 0;
-  opacity: 0.9;
-  animation: trace 1.8s ease-out 0.2s backwards;
 }
-@keyframes trace { from { stroke-dashoffset: 1400; } }
+.ecg path { vector-effect: non-scaling-stroke; }
+.ecg-ligne { flex: 1; min-width: 0.5rem; }
+.ecg-complexe { flex: none; width: auto; aspect-ratio: 96 / 60; }
+.ecg-avignon { flex: none; width: auto; aspect-ratio: 260 / 60; }
+.ecg-avignon .ecg-details { stroke-width: 1.8; }
+@keyframes trace { from { clip-path: inset(-8px 100% -8px 0); } to { clip-path: inset(-8px 0 -8px 0); } }
 
 /* Indicateur hors ligne : visible quand le réseau (Wi-Fi ou GSM) n'est pas disponible. */
 .hors-ligne {

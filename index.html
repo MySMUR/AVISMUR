@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=36">
+  <link rel="stylesheet" href="style.css?v=37">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -39,9 +39,19 @@
       </button>
     </div>
 
-    <svg class="ecg" viewBox="0 0 600 60" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <path d="M0 38 H250 l8 -6 l8 6 h10 l6 6 l10 -40 l10 52 l8 -18 h16 q10 -14 20 0 H600" />
-    </svg>
+    <!-- Tracé ECG prolongé par la silhouette du pont Saint-Bénézet, du rocher des Doms
+         (cathédrale et sa Vierge dorée) et du Palais des Papes. -->
+    <div class="ecg" aria-hidden="true">
+      <svg class="ecg-ligne" viewBox="0 0 10 60" preserveAspectRatio="none" focusable="false"><path d="M0 38 H10" /></svg>
+      <svg class="ecg-complexe" viewBox="0 0 96 60" focusable="false">
+        <path d="M0 38 l8 -6 l8 6 h10 l6 6 l10 -40 l10 52 l8 -18 h16 q10 -14 20 0" />
+      </svg>
+      <svg class="ecg-ligne" viewBox="0 0 10 60" preserveAspectRatio="none" focusable="false"><path d="M0 38 H10" /></svg>
+      <svg class="ecg-avignon" viewBox="0 0 260 60" focusable="false">
+        <path d="M0 38 H12 V31 l2 -3 H40 V23 h3 V19 h3 V23 l5 -3 l5 3 V28 H94 V20 h3 v-2.5 h3 v2.5 h3 v-2.5 h3 v2.5 V26 H110 L120 21 H124 V11 H126 V7 H128 V5 l0.5 -1.5 a1 1 0 1 1 1 0 l0.5 1.5 V7 H132 V11 H134 V21 H140 V6 h3 v-2.5 h3 v2.5 h3 v-2.5 h3 v2.5 V13 h2 v-2 h3 v2 h4 v-2 h3 v2 h2 V10 l2 -5 l2 5 H178 l2 -5 l2 5 V13 H188 V3 h3 v-2.5 h3 v2.5 h3 v-2.5 h3 v2.5 h3 v-2.5 h3 v2.5 V15 h2 v-2 h3 v2 h4 v-2 h3 v2 h2 V8 h3 v-2.5 h3 v2.5 h3 v-2.5 h3 v2.5 V20 L242 28 V38 H260" />
+        <path class="ecg-details" d="M12 38 H16 Q25 29 34 38 H38 Q47 29 56 38 H59 Q67 29 76 38 H79 Q87 29 95 38 M156 21 V17 Q160 11 164 17 V21 M191 21 V12 Q197 4 203 12 V21 M209 21 V18 Q213 12 217 18 V21 M223 21 V15 Q226 10 229 15 V21" />
+      </svg>
+    </div>
 
     <!-- Agent connecté : nom prénom et fonction -->
     <div id="utilisateur" class="utilisateur" hidden>
