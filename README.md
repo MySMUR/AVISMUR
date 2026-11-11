@@ -117,4 +117,8 @@ Un contenant **primaire** (pièce, cellule sanitaire…) peut avoir plusieurs ph
 
 En check-list, ouvrir un contenant **mobile** depuis son contenant (gommette ou liste) affiche d'abord « **Quel … se trouve ici ?** » : l'agent identifie celui qui est réellement là (QR code, puce NFC ou liste ; ceux du même type sont proposés d'emblée). Puis l'inventaire continue sur ce contenant, avec ses propres articles et péremptions.
 
-Si ce n'est pas celui prévu, les deux **échangent leur place** (parent, rang, gommettes) : l'ampoulier n°5 identifié dans le sac n°3 y prend la place du n°3, qui part dans le sac n°5. L'échange est appliqué tout de suite sur l'appareil, envoyé par la file d'attente (fonctionne hors ligne) et noté dans l'onglet `Mouvements` du Sheet. En gestion des inventaires, pas d'identification : on modifie la structure.
+- **Ce n'est pas celui prévu** : le contenant identifié prend la place (gommette comprise) et quitte son ancien contenant, où sa gommette reste comme **place libre**. Celui qui était prévu est **désaffecté** : il n'est plus rangé nulle part.
+- **À retrouver** : tant qu'un contenant est désaffecté (perte possible), un encadré rouge « contenant mobile à retrouver » s'affiche en tête de la page des inventaires, avec où il était, depuis quand et qui l'a constaté.
+- **Le retrouver** : dans la check-list du contenant où il se trouve, « **＋ Un contenant mobile se trouve ici** », puis l'identifier (les désaffectés sont proposés d'emblée). Il y est rangé et reprend la place libre (gommette).
+
+Fonctionne hors ligne (file d'attente) ; chaque mouvement est noté dans l'onglet `Mouvements`. En gestion des inventaires, pas d'identification : on modifie la structure.

@@ -1592,3 +1592,12 @@ textarea:focus { border-color: var(--bleu); }
 .inv-nom-vue label { font-weight: 700; }
 .inv-nom-vue input { flex: 1 1 12rem; }
 .inv-libelle-identif { margin-top: 0.8rem; }
+
+/* Contenants mobiles désaffectés : à retrouver */
+.inv-a-retrouver { margin: 0.4rem 0 1rem; padding: 0.8rem 1rem; background: #FDF0EF; border: 2px solid var(--erreur); border-radius: 14px; }
+.inv-a-retrouver h2 { margin: 0 0 0.2rem; font-size: 1.1rem; color: var(--erreur); }
+.inv-a-retrouver ul { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.inv-a-retrouver li { padding: 0.4rem 0; border-top: 1px solid #F3C9C5; }
+.inv-a-retrouver a { color: var(--erreur); }
+.inv-desaffecte { color: var(--erreur) !important; font-weight: 700; }
+.inv-mobile-ici { display: inline-block; margin: 0.2rem 0 0.6rem; }

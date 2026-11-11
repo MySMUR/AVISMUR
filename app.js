@@ -283,7 +283,7 @@ async function envoyerFileAttente() {
           infosEnvoyees = true;
         } else if (suivante.action === 'deplacerContenant') {
           rep = await appeler('deplacerContenant', {
-            contenant: suivante.contenant, place: suivante.place, idSaisie: suivante.id, dateSaisie: suivante.date,
+            contenant: suivante.contenant, place: suivante.place, dans: suivante.dans, idSaisie: suivante.id, dateSaisie: suivante.date,
           });
         } else if (suivante.action === 'verifierInventaire') {
           rep = await appeler('verifierInventaire', {

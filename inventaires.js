@@ -145,7 +145,8 @@ const Inventaires = (() => {
       nomVue: c.nomVue || '',
       scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
       categorie: CATEGORIES_CONTENANT[c.categorie] ? c.categorie : '', // primaire, immobile ou mobile
-      ...(c.modele ? { modele: true } : {}), // inventaire type : sert de structure à ses exemplaires
+      ...(c.modele ? { modele: true } : {}),
+      ...(c.desaffecte ? { desaffecte: c.desaffecte } : {}), // mobile dont la place a été prise : à retrouver // inventaire type : sert de structure à ses exemplaires
       ...(c.source ? { source: c.source } : {}), // exemplaire : contenant du modèle dont il est la copie
       ...(c.base ? { base: c.base } : {}), // exemplaire : état du modèle lors de la dernière répercussion
       ...(c.supprime ? { supprime: true } : {}),
@@ -795,6 +796,7 @@ const Inventaires = (() => {
     if (nbFiches || estAdmin()) {
       noeuds.push(el('a', { classe: 'lien inv-lien-base', href: lien(BASE), texte: `Base des articles (${nbFiches})` }));
     }
+    noeuds.push(encadreARetrouver());
     noeuds.push(encadreRecherche(tous));
     if (!tous.length) {
       noeuds.push(el('p', { classe: 'consigne', texte: estAdmin()
@@ -1241,84 +1243,118 @@ const Inventaires = (() => {
     return encadre;
   }
 
-  // ---------- Contenants mobiles : identification et échange ----------
+  // ---------- Contenants mobiles : identification et désaffectation ----------
   /**
-   * Échange local (le serveur fait le même, action « deplacerContenant ») : `x` (identifié) prend la place
-   * de `y` (prévu) — parent, rang, gommettes — et `y` part là où était `x`.
+   * Même règle que le serveur (action « deplacerContenant ») : `x` (identifié) prend la place de `y` (prévu) —
+   * parent, rang, gommettes — et quitte son ancien contenant ; `y` est désaffecté jusqu'à ce qu'on
+   * l'identifie ailleurs (perte de matériel possible : signalé sur la page des inventaires).
    */
-  function echangerLocal(x, y) {
-    const deX = x.parent;
-    const versY = y.parent;
-    const ordreX = x.ordre;
-    x.parent = versY; x.ordre = y.ordre;
-    y.parent = deX; y.ordre = ordreX;
-    const traduire = (idParent) => {
-      const p = contenant(idParent);
-      if (p) traduireCibles(p, (cible) => (cible === y.id ? x.id : (cible === x.id ? y.id : cible)));
-    };
-    if (versY) traduire(versY);
-    if (deX && deX !== versY) traduire(deX);
+  function affecterLocal(x, y, date = new Date().toISOString(), dans = '') {
+    const versY = y ? y.parent : dans;
+    const p = contenant(versY);
+    if (!versY || !p) return;
+    // L'ancien contenant de x garde sa gommette : place libre pour le prochain mobile rangé là.
+    if (y) {
+      traduireCibles(p, (cible) => (cible === y.id ? x.id : cible));
+      x.ordre = y.ordre;
+      y.parent = '';
+      y.desaffecte = { depuis: date, de: versY, deNom: chemin(versY).map((c) => c.nom).join(' › '), par: App.agent() };
+    } else {
+      // Reprend une gommette libre de ce contenant, de préférence celle d'un contenant du même type.
+      const libres = [p.points, ...p.vues.map((v) => v.points)].flat().map((pt) => pt.cible)
+        .filter((id) => id !== x.id && (!structure.contenants[id] || structure.contenants[id].parent !== versY));
+      const reprise = libres.find((id) => structure.contenants[id] && x.source && structure.contenants[id].source === x.source) || libres[0];
+      if (reprise) traduireCibles(p, (cible) => (cible === reprise ? x.id : cible));
+      x.ordre = Math.max(-1, ...enfants(versY).map((c) => c.ordre)) + 1;
+    }
+    x.parent = versY;
+    delete x.desaffecte;
     sauverStructure();
   }
-  /** Après un rechargement : les échanges encore en file d'attente restent appliqués sur l'appareil. */
+  /** Après un rechargement : les affectations encore en file d'attente restent appliquées sur l'appareil. */
   function reappliquerDeplacements() {
     App.fileAttente().filter((e) => e.action === 'deplacerContenant').forEach((e) => {
-      const x = contenant(e.contenant); const y = contenant(e.place);
-      if (x && y && x.parent !== e.vers) echangerLocal(x, y);
+      const x = contenant(e.contenant);
+      if (!x || x.parent === e.vers) return;
+      if (e.dans) affecterLocal(x, null, e.date, e.dans);
+      else { const y = structure.contenants[e.place]; if (y && y.parent === e.vers) affecterLocal(x, y, e.date); }
     });
   }
+  /** Contenants mobiles désaffectés (à retrouver), du plus ancien au plus récent. */
+  const aRetrouver = () => Object.values(structure.contenants)
+    .filter((c) => !c.supprime && c.desaffecte && !c.parent && !dansUnModele(c.id))
+    .sort((a, b) => String(a.desaffecte.depuis).localeCompare(String(b.desaffecte.depuis)));
+  function encadreARetrouver() {
+    const liste = aRetrouver();
+    if (!liste.length) return null;
+    return el('section', { classe: 'inv-a-retrouver', role: 'alert' },
+      el('h2', { texte: `${pluriel(liste.length, 'contenant')} mobile${liste.length > 1 ? 's' : ''} à retrouver` }),
+      el('p', { classe: 'aide-question', texte: 'Un autre a été trouvé à leur place lors d\'une vérification. Perte possible : à localiser avant la fin de la vérification du jour. Il suffit de l\'identifier dans le contenant où il se trouve.' }),
+      el('ul', {}, ...liste.map((c) => {
+        const d = c.desaffecte;
+        const quand = d.depuis ? new Date(d.depuis) : null;
+        return el('li', {}, el('a', { href: lien(c.id) }, el('strong', { texte: c.nom })),
+          el('span', { texte: ` — était dans ${d.deNom || '?'}${quand ? `, désaffecté le ${quand.toLocaleDateString('fr-FR')} à ${heure(d.depuis)}` : ''}${d.par ? ` (${d.par})` : ''}` }));
+      })));
+  }
   /** Le contenant `x`, identifié par l'agent, est celui qui se trouve à la place de `y`. */
-  function confirmerIdentification(y, idX) {
+  function confirmerIdentification(y, idX, dans = '') {
     const x = contenant(idX);
     if (!x) { messageVue('Inventaire inconnu : vérifiez l\'étiquette ou la saisie.', 'erreur'); return; }
-    if (x.id === y.id) { identification = ''; aller(y.id); return; }
+    if (y && x.id === y.id) { identification = ''; aller(y.id); return; }
+    if (!y && x.parent === dans) { identification = ''; aller(x.id); return; }
     if (x.categorie !== 'mobile' || dansUnModele(x.id)) { messageVue(`« ${x.nom} » n'est pas un contenant mobile : choisissez celui qui se trouve réellement ici.`, 'erreur'); return; }
-    if (chemin(y.id).some((c) => c.id === x.id)) { messageVue('Un contenant ne peut pas être rangé dans lui-même.', 'erreur'); return; }
-    const parent = contenant(y.parent);
+    const vers = y ? y.parent : dans;
+    if (chemin(vers).some((c) => c.id === x.id)) { messageVue('Un contenant ne peut pas être rangé dans lui-même.', 'erreur'); return; }
+    const parent = contenant(vers);
     const ancien = contenant(x.parent);
-    const ok = App.mettreEnFile({ action: 'deplacerContenant', contenant: x.id, place: y.id, vers: y.parent });
+    const retrouve = Boolean(x.desaffecte);
+    const date = new Date().toISOString();
+    const ok = App.mettreEnFile({ action: 'deplacerContenant', contenant: x.id, ...(y ? { place: y.id } : { dans }), vers, date });
     if (!ok) { messageVue('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur'); return; }
-    echangerLocal(x, y);
+    affecterLocal(x, y, date, dans);
     identification = '';
-    avis = `« ${x.nom} » est maintenant dans « ${parent ? parent.nom : '?'} ». « ${y.nom} » a pris sa place ${ancien ? `dans « ${ancien.nom} »` : 'hors contenant'} (échange).`;
+    avis = `« ${x.nom} » est maintenant dans « ${parent ? parent.nom : '?'} »${ancien ? ` (il était dans « ${ancien.nom} »)` : (retrouve ? ' : il est retrouvé' : '')}.`
+      + (y ? ` « ${y.nom} » est désaffecté : à retrouver, il est signalé sur la page des inventaires.` : '');
     aller(x.id);
   }
   /** Écran « Quel … se trouve ici ? » : QR code, NFC ou saisie, avant l'inventaire d'un contenant mobile. */
-  function vueIdentification(y) {
-    const parent = contenant(y.parent);
+  function vueIdentification(y, dans = '') {
+    const parent = contenant(y ? y.parent : dans);
+    const choisir = (id) => confirmerIdentification(y, id, dans);
     const champ = idChamp();
     const resultats = el('ul', { classe: 'inv-liste inv-resultats-recherche' });
     const mobiles = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'mobile' && !dansUnModele(c.id));
     // Même type d'abord : exemplaires du même contenant d'inventaire type, puis noms proches.
-    const memeType = (c) => (y.source && c.source === y.source) || cle(c.nom).replace(/\d+|n°/g, '').trim() === cle(y.nom).replace(/\d+|n°/g, '').trim();
+    const memeType = (c) => (y ? (y.source && c.source === y.source) || cle(c.nom).replace(/\d+|n°/g, '').trim() === cle(y.nom).replace(/\d+|n°/g, '').trim() : Boolean(c.desaffecte));
     const filtrer = (texte) => {
       resultats.innerHTML = '';
       const mots = cle(texte).split(' ').filter(Boolean);
       const trouves = mobiles.filter((c) => mots.every((m) => cle(c.nom).includes(m)))
-        .sort((a, b) => (memeType(b) - memeType(a)) || a.nom.localeCompare(b.nom, 'fr'));
+        .sort((a, b) => (memeType(b) - memeType(a)) || (Boolean(b.desaffecte) - Boolean(a.desaffecte)) || a.nom.localeCompare(b.nom, 'fr'));
       if (!mots.length && !trouves.some(memeType)) return;
       (mots.length ? trouves : trouves.filter(memeType)).slice(0, 12).forEach((c) => {
         const ou = contenant(c.parent);
-        resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => confirmerIdentification(y, c.id) },
-          el('strong', { texte: c.nom }), el('small', { texte: ou ? `actuellement dans ${chemin(ou.id).map((z) => z.nom).join(' › ')}` : 'hors contenant' }))));
+        resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => choisir(c.id) },
+          el('strong', { texte: c.nom }), el('small', { classe: c.desaffecte ? 'inv-desaffecte' : '', texte: ou ? `actuellement dans ${chemin(ou.id).map((z) => z.nom).join(' › ')}` : (c.desaffecte ? 'désaffecté : à retrouver' : 'hors contenant') }))));
       });
     };
-    const saisie = el('input', { id: champ, type: 'search', autocomplete: 'off', placeholder: `ex. ${y.nom}`, surinput: (e) => filtrer(e.target.value) });
+    const saisie = el('input', { id: champ, type: 'search', autocomplete: 'off', placeholder: y ? `ex. ${y.nom}` : 'ex. ampoulier, sacoche', surinput: (e) => filtrer(e.target.value) });
     filtrer('');
     const qr = 'BarcodeDetector' in window;
     const nfc = 'NDEFReader' in window;
     return [
       el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' }, el('a', { href: lien(''), texte: 'Inventaires' }),
-        ...chemin(y.parent).flatMap((p) => [el('span', { 'aria-hidden': 'true', texte: ' › ' }), el('a', { href: lien(p.id), texte: p.nom })])),
-      el('h1', { tabindex: '-1', texte: `Quel « ${y.nom.replace(/\s*n°\s*\d+$/i, '')} » se trouve ici ?` }),
+        ...chemin(parent ? parent.id : '').flatMap((p) => [el('span', { 'aria-hidden': 'true', texte: ' › ' }), el('a', { href: lien(p.id), texte: p.nom })])),
+      el('h1', { tabindex: '-1', texte: y ? `Quel « ${y.nom.replace(/\s*n°\s*\d+$/i, '')} » se trouve ici ?` : 'Quel contenant mobile se trouve ici ?' }),
       el('p', { classe: 'consigne' }, `Avant de vérifier son contenu et ses péremptions, identifiez le contenant réellement présent dans « ${parent ? parent.nom : ''} » : scannez son QR code, lisez sa puce NFC ou choisissez-le dans la liste.`),
       el('section', { classe: 'inv-encadre-recherche' },
         el('div', { classe: 'inv-boutons-scan' },
-          el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !qr, surclick: () => scanner({ qr: true, nfc: false }, (id) => confirmerIdentification(y, id)) }, logoQr(), el('span', { texte: 'Scanner son QR code' })),
-          el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !nfc, surclick: () => scanner({ qr: false, nfc: true }, (id) => confirmerIdentification(y, id)) }, logoNfc(), el('span', { texte: 'Lire sa puce NFC' }))),
+          el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !qr, surclick: () => scanner({ qr: true, nfc: false }, choisir) }, logoQr(), el('span', { texte: 'Scanner son QR code' })),
+          el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !nfc, surclick: () => scanner({ qr: false, nfc: true }, choisir) }, logoNfc(), el('span', { texte: 'Lire sa puce NFC' }))),
         el('label', { for: champ, classe: 'inv-libelle-recherche inv-libelle-identif', texte: 'Ou choisissez-le :' }), saisie, resultats),
       el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
-      el('p', { classe: 'aide-question', texte: `Prévu ici : « ${y.nom} ». Si c'est un autre, les deux échangent leur place ; l'échange est noté.` }),
+      el('p', { classe: 'aide-question', texte: y ? `Prévu ici : « ${y.nom} ». Si c'en est un autre, il prend sa place et « ${y.nom} » est désaffecté jusqu'à ce qu'on le retrouve ailleurs.` : `Le contenant choisi sera rangé dans « ${parent ? parent.nom : ''} ». S'il était désaffecté, il est retrouvé.` }),
       el('div', { classe: 'inv-pied' }, el('button', { type: 'button', classe: 'lien', texte: `← Retour à ${parent ? parent.nom : 'l\'inventaire'}`, surclick: () => { identification = ''; rendre(); } })),
     ];
   }
@@ -2077,12 +2113,15 @@ const Inventaires = (() => {
         el('span', {}, 'Inventaire type', el('small', { texte: 'sert de structure à des exemplaires identiques (ex. les sacs d\'intervention) ; il ne se vérifie pas' }))) : null,
       ligneSynchro(), ligneAvis(),
       blocModele(c), blocExemplaire(c),
+      c.desaffecte && !c.parent ? el('p', { classe: 'note-parc anomalie' }, el('strong', { texte: 'Désaffecté — à retrouver. ' }),
+        `Était dans ${c.desaffecte.deNom || '?'}. Pour le réaffecter, identifiez-le depuis le contenant où il se trouve (sa gommette ou sa carte).`) : null,
       edition || modele ? null : el('p', { classe: `inv-statut ${b.classe}` },
         el('strong', { texte: `${b.complet ? '✓ ' : ''}${b.texte}` }),
         v ? ` — cet inventaire à ${heure(v.date)} par ${v.agent}` : '',
         el('span', { classe: 'inv-badges' }, ...badges(b))),
       blocPhoto(c, fils),
       blocEnfants(c, fils),
+      !edition && !modele ? el('button', { type: 'button', classe: 'lien inv-mobile-ici', texte: '＋ Un contenant mobile se trouve ici', surclick: () => { identification = `dans:${c.id}`; rendre(); } }) : null,
       edition ? blocArticles(c) : (modele ? blocContenuModele(c) : blocVerification(c)),
       !edition && !aCocher(c).length && !fils.length ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : menu > Administration > Gestion des inventaires pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
       !edition && !aCocher(c).length ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
@@ -2112,7 +2151,9 @@ const Inventaires = (() => {
       ajoutSousOuvert = false;
     }
     zone.innerHTML = '';
-    if (identification && contenant(identification) && contenant(identification).parent === id) {
+    if (identification === `dans:${id}`) {
+      zone.append(...vueIdentification(null, id).filter(Boolean));
+    } else if (identification && contenant(identification) && contenant(identification).parent === id) {
       zone.append(...vueIdentification(contenant(identification)).filter(Boolean));
     } else if (id === BASE) {
       identification = '';
