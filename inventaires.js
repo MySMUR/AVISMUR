@@ -134,6 +134,8 @@ const Inventaires = (() => {
       ...(c.supprime ? { supprime: true } : {}),
     };
   }
+  /** Articles à cocher (sans les séparations, qui ne servent qu'à regrouper la liste). */
+  const aCocher = (c) => c.articles.filter((a) => !a.separateur);
   const contenant = (id) => {
     const c = structure.contenants[id];
     return c && !c.supprime ? c : null;
@@ -167,12 +169,12 @@ const Inventaires = (() => {
   function bilan(id) {
     const b = { total: 0, faits: 0, manquants: 0, perimes: 0, proches: 0, sansDate: 0 };
     descendants(id).forEach((c) => {
-      if (c.articles.length) {
+      if (aCocher(c).length) {
         b.total += 1;
         const v = verifDuJour(c.id);
         if (v) { b.faits += 1; b.manquants += v.manquants.length; }
       }
-      c.articles.filter((a) => a.peremption).forEach((a) => {
+      aCocher(c).filter((a) => a.peremption).forEach((a) => {
         const p = etatPeremption(datePeremption(c.id, a.id)).niveau;
         if (p === 'perime') b.perimes += 1;
         else if (p === 'proche') b.proches += 1;
@@ -452,7 +454,7 @@ const Inventaires = (() => {
       const coches = {};
       if (v) {
         const manquants = new Set(v.manquants.map((m) => m.id));
-        c.articles.forEach((a) => { if (!manquants.has(a.id)) coches[a.id] = true; });
+        aCocher(c).forEach((a) => { if (!manquants.has(a.id)) coches[a.id] = true; });
       }
       brouillons.liste[c.id] = { coches, quantites: {}, dates: {}, invalides: {}, remarque: v ? v.remarque : '' };
     }
@@ -468,11 +470,11 @@ const Inventaires = (() => {
 
   function valider(c) {
     const b = brouillon(c);
-    if (c.articles.some((a) => b.invalides[a.id])) {
+    if (aCocher(c).some((a) => b.invalides[a.id])) {
       messageVue('Une date de péremption n\'est pas reconnue : corrigez-la (ex. 03/2027 ou 15/03/2027).', 'erreur');
       return;
     }
-    const articles = c.articles.map((a) => {
+    const articles = aCocher(c).map((a) => {
       const att = attendue(a);
       const qte = trouvee(a, b);
       return {
@@ -636,7 +638,7 @@ const Inventaires = (() => {
 
     // Péremptions : tout ce qui est périmé ou le sera bientôt, avec le chemin pour y aller.
     const alertes = [];
-    tous.forEach((c) => c.articles.filter((a) => a.peremption).forEach((a) => {
+    tous.forEach((c) => aCocher(c).filter((a) => a.peremption).forEach((a) => {
       const date = datePeremption(c.id, a.id);
       const p = etatPeremption(date);
       if (p.niveau === 'perime' || p.niveau === 'proche') alertes.push({ c, a, date, p, jours: joursRestants(date) });
@@ -780,12 +782,13 @@ const Inventaires = (() => {
    */
   let peremptionsVisibles = false;
   function blocVerification(c) {
-    if (!c.articles.length) return null;
+    const articles = aCocher(c);
+    if (!articles.length) return null;
     const b = brouillon(c);
     const liste = el('ul', { classe: 'inv-articles' });
     const toutCocher = el('button', { type: 'button', classe: 'lien tout-cocher' });
     const compte = el('span', { classe: 'inv-compte' });
-    const suivis = c.articles.filter((a) => a.peremption);
+    const suivis = articles.filter((a) => a.peremption);
     const basculer = suivis.length ? el('button', { type: 'button', classe: 'lien inv-basculer-dates' }) : null;
     const majBascule = () => {
       if (!basculer) return;
@@ -794,18 +797,34 @@ const Inventaires = (() => {
       basculer.textContent = peremptionsVisibles ? 'Masquer les péremptions' : `Péremptions (${suivis.length})`;
     };
     const maj = () => {
-      const n = c.articles.filter((a) => b.coches[a.id]).length;
-      compte.textContent = `${n}/${c.articles.length}`;
-      toutCocher.textContent = n === c.articles.length ? 'Tout décocher' : 'Tout cocher';
+      const n = articles.filter((a) => b.coches[a.id]).length;
+      compte.textContent = `${n}/${articles.length}`;
+      toutCocher.textContent = n === articles.length ? 'Tout décocher' : 'Tout cocher';
+      groupes.forEach((g) => { g.bouton.textContent = g.membres.every((a) => b.coches[a.id]) ? 'Décocher' : 'Cocher'; });
     };
+    // Séparations : un intertitre par groupe, avec « Cocher » pour tout le groupe.
+    const groupes = [];
     const modifie = () => {
       sauverBrouillons();
       if (confirmer) { confirmer = ''; messageVue(''); zone.querySelector('.inv-valider').textContent = 'Valider cet inventaire'; }
       maj();
     };
     c.articles.forEach((a) => {
+      if (a.separateur) {
+        const g = { membres: [] };
+        let i = c.articles.indexOf(a) + 1;
+        while (i < c.articles.length && !c.articles[i].separateur) g.membres.push(c.articles[i++]);
+        g.bouton = el('button', { type: 'button', classe: 'lien inv-cocher-groupe', 'aria-label': `Cocher le groupe ${a.nom}`, surclick: () => {
+          const tout = !g.membres.every((x) => b.coches[x.id]);
+          g.membres.forEach((x) => { b.coches[x.id] = tout; const box = liste.querySelector(`input[data-article="${x.id}"]`); if (box) box.checked = tout; });
+          modifie();
+        } });
+        if (g.membres.length) groupes.push(g);
+        liste.append(el('li', { classe: 'inv-separation' }, el('span', { texte: a.nom }), g.membres.length ? g.bouton : null));
+        return;
+      }
       const champCase = idChamp();
-      const coche = el('input', { type: 'checkbox', id: champCase, checked: Boolean(b.coches[a.id]), surchange: (e) => { b.coches[a.id] = e.target.checked; modifie(); } });
+      const coche = el('input', { type: 'checkbox', id: champCase, 'data-article': a.id, checked: Boolean(b.coches[a.id]), surchange: (e) => { b.coches[a.id] = e.target.checked; modifie(); } });
       const li = el('li', { classe: 'inv-article' });
       const ligne = el('div', { classe: 'inv-ligne' }, coche, el('label', { for: champCase, classe: 'inv-nom', texte: a.nom }));
       const att = attendue(a);
@@ -860,14 +879,14 @@ const Inventaires = (() => {
       liste.append(li);
     });
     toutCocher.addEventListener('click', () => {
-      const tout = !c.articles.every((a) => b.coches[a.id]);
-      c.articles.forEach((a) => { b.coches[a.id] = tout; });
+      const tout = !articles.every((a) => b.coches[a.id]);
+      articles.forEach((a) => { b.coches[a.id] = tout; });
       liste.querySelectorAll('input[type="checkbox"]').forEach((x) => { x.checked = tout; });
       modifie();
     });
     if (basculer) basculer.addEventListener('click', () => { peremptionsVisibles = !peremptionsVisibles; majBascule(); });
     // Une date non reconnue reste visible pour être corrigée.
-    if (c.articles.some((a) => b.invalides[a.id])) peremptionsVisibles = true;
+    if (articles.some((a) => b.invalides[a.id])) peremptionsVisibles = true;
     maj();
     majBascule();
     const champRemarque = idChamp();
@@ -893,20 +912,31 @@ const Inventaires = (() => {
     c.articles.forEach((a, i) => {
       const deplacer = (sens) => { c.articles.splice(i + sens, 0, c.articles.splice(i, 1)[0]); marquer(c.id); rendre({ garderPosition: true }); };
       const suivi = idChamp();
+      const fleches = [
+        el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Monter ${a.nom}`, texte: '↑', disabled: i === 0, surclick: () => deplacer(-1) }),
+        el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Descendre ${a.nom}`, texte: '↓', disabled: i === c.articles.length - 1, surclick: () => deplacer(1) }),
+        el('button', { type: 'button', classe: 'cfg-mini danger', 'aria-label': `Supprimer ${a.nom}`, texte: '✕', surclick: () => { c.articles.splice(i, 1); marquer(c.id); rendre({ garderPosition: true }); } })];
+      if (a.separateur) {
+        liste.append(el('div', { classe: 'cfg-ligne inv-edition-article inv-edition-separation' },
+          el('span', { classe: 'inv-etiquette-separation', 'aria-hidden': 'true', texte: 'Séparation' }),
+          el('input', { 'aria-label': 'Titre de la séparation', maxlength: '120', valeur: a.nom, classe: 'inv-nom-article', surchange: (e) => { const t = e.target.value.trim(); if (t) { a.nom = t; marquer(c.id); } else e.target.value = a.nom; } }),
+          ...fleches));
+        return;
+      }
       liste.append(el('div', { classe: 'cfg-ligne inv-edition-article' },
         el('input', { 'aria-label': 'Désignation', maxlength: '120', valeur: a.nom, classe: 'inv-nom-article', surchange: (e) => { const t = e.target.value.trim(); if (t) { a.nom = t; marquer(c.id); } else e.target.value = a.nom; } }),
         el('input', { 'aria-label': `Quantité de ${a.nom}`, maxlength: '20', placeholder: 'Qté', valeur: a.quantite || '', classe: 'inv-court', surchange: (e) => { a.quantite = e.target.value.trim(); marquer(c.id); } }),
         el('label', { classe: 'cfg-case', for: suivi }, el('input', { type: 'checkbox', id: suivi, checked: a.peremption === true, surchange: (e) => { a.peremption = e.target.checked; marquer(c.id); } }), 'Péremption'),
-        el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Monter ${a.nom}`, texte: '↑', disabled: i === 0, surclick: () => deplacer(-1) }),
-        el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Descendre ${a.nom}`, texte: '↓', disabled: i === c.articles.length - 1, surclick: () => deplacer(1) }),
-        el('button', { type: 'button', classe: 'cfg-mini danger', 'aria-label': `Supprimer ${a.nom}`, texte: '✕', surclick: () => { c.articles.splice(i, 1); marquer(c.id); rendre({ garderPosition: true }); } })));
+        ...fleches));
     });
     const champ = idChamp();
-    const saisie = el('textarea', { id: champ, rows: '3', placeholder: 'Un article par ligne. Quantité à la fin, après « x » :\nCathéter 18 G x3\nAdrénaline 1 mg x5' });
+    const saisie = el('textarea', { id: champ, rows: '4', placeholder: 'Un article par ligne, quantité après « x ».\nUne ligne commençant par # crée une séparation :\n# Seringues\nSeringue 10 mL x6' });
     const ajouter = () => {
       const lignes = saisie.value.split('\n').map((l) => l.trim()).filter(Boolean);
       if (!lignes.length) return;
       lignes.forEach((ligne) => {
+        const titre = /^#+\s*(.+)$/.exec(ligne);
+        if (titre) { c.articles.push({ id: nouvelId(), nom: titre[1].slice(0, 120), separateur: true }); return; }
         const m = /^(.*\S)\s*[x×]\s*(\d+)$/i.exec(ligne);
         c.articles.push({ id: nouvelId(), nom: (m ? m[1] : ligne).slice(0, 120), quantite: m ? m[2] : '', peremption: false });
       });
@@ -917,7 +947,15 @@ const Inventaires = (() => {
       c.articles.length ? null : el('p', { classe: 'aide-question', texte: 'Aucun article : ce niveau sert seulement à ouvrir ses sous-inventaires.' }),
       liste,
       el('div', { classe: 'champ inv-ajout-articles' }, el('label', { for: champ, texte: 'Ajouter des articles' }), saisie,
-        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter à la liste', surclick: ajouter })));
+        el('div', { classe: 'cfg-actions inv-boutons-ajout' },
+          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter à la liste', surclick: ajouter }),
+          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter une séparation', surclick: () => {
+            c.articles.push({ id: nouvelId(), nom: 'Nouvelle séparation', separateur: true });
+            marquer(c.id);
+            rendre({ garderPosition: true, focus: '.inv-edition-separation:last-of-type input' });
+            const champTitre = zone.querySelector('.inv-edition-separation:last-of-type input');
+            if (champTitre) champTitre.select();
+          } }))));
   }
 
   /** QR code, lien, puce NFC, copie et suppression (administrateurs). */
@@ -1002,8 +1040,8 @@ const Inventaires = (() => {
       blocPhoto(c, fils),
       blocEnfants(c, fils),
       edition ? blocArticles(c) : blocVerification(c),
-      !edition && !c.articles.length && !fils.length ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : appuyez sur « Modifier » pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
-      !edition && !c.articles.length ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
+      !edition && !aCocher(c).length && !fils.length ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : appuyez sur « Modifier » pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
+      !edition && !aCocher(c).length ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
       edition ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
       edition ? blocAcces(c) : null,
       el('div', { classe: 'inv-pied' },
@@ -1095,10 +1133,10 @@ const Inventaires = (() => {
       const niveau = chemin(x.id).length - profondeur;
       return el('section', { classe: 'imp-niveau', style: `margin-left:${niveau * 1.2}em` },
         el(niveau ? 'h2' : 'h1', { texte: x.nom }),
-        x.articles.length ? el('ul', {}, ...x.articles.map((a) => el('li', {},
+        x.articles.length ? el('ul', {}, ...x.articles.map((a) => (a.separateur ? el('li', { classe: 'imp-separation', texte: a.nom }) : el('li', {},
           el('span', { classe: 'imp-case', 'aria-hidden': 'true' }),
           el('span', { classe: 'imp-nom', texte: `${a.nom}${a.quantite ? ` × ${a.quantite}` : ''}` }),
-          a.peremption ? el('span', { classe: 'imp-date', texte: `Pér. ${afficherDate(datePeremption(x.id, a.id)) || '……/………'}` }) : null))) : null);
+          a.peremption ? el('span', { classe: 'imp-date', texte: `Pér. ${afficherDate(datePeremption(x.id, a.id)) || '……/………'}` }) : null)))) : null);
     });
     lancerImpression([
       el('header', { classe: 'imp-entete' }, qrSvg(adresse(c.id)),

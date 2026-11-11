@@ -38,6 +38,7 @@ Un inventaire est un arbre de contenants : sac > sacoche > pochette, intercalair
 
 - une **photo** qui sert de plan, avec un **point numéroté** par sous-inventaire (toucher le point ouvre le sous-inventaire ; il passe au vert avec un ✓ une fois vérifié) ;
 - une **liste d'articles à cocher**, une ligne par article, avec « Tout cocher » et la **quantité** dans un champ numérique, préremplie avec la quantité attendue (une quantité inférieure est notée manquante, ex. « Seringue (4/6) ») ;
+- des **séparations** pour regrouper la liste (ex. « Seringues », « Cathéters ») : bouton « Ajouter une séparation », ou ligne commençant par `#` dans la saisie des articles. Chaque groupe a son bouton « Cocher » ;
 - des **dates de péremption**, masquées par défaut : le bouton « Péremptions » les affiche, et un repère (⏳ bientôt, ! périmé, ? date à saisir) signale les articles concernés même quand elles sont masquées. Saisie au clavier numérique : `0327` → 03/2027, `15032027` → 15/03/2027 ;
 - un **lien direct** `…/AVISMUR/#inv=<id>`, porté par son **QR code** et sa **puce NFC**. L'id ne change jamais : l'étiquette reste valable si le contenant est renommé.
 

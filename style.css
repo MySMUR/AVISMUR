@@ -1107,6 +1107,17 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .inv-article.proche .inv-echeance { color: #8A4B00; }
 .inv-article.proche .inv-date { border-color: var(--orange); }
 .inv-article.sans-date .inv-echeance { color: var(--gris); font-weight: 400; }
+.inv-separation {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+  margin-top: 0.7rem; padding: 0.3rem 0.1rem 0.2rem; grid-column: 1 / -1;
+  font-size: 0.85rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--bleu); border-bottom: 2px solid var(--trait);
+}
+.inv-separation:first-child { margin-top: 0.2rem; }
+.inv-cocher-groupe { font-size: 0.85rem; letter-spacing: 0; text-transform: none; }
+.inv-edition-separation { background: var(--ciel); padding: 0.4rem 0.5rem; border-radius: 8px; }
+.inv-etiquette-separation { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: var(--bleu); }
+.inv-boutons-ajout { margin-top: 0.4rem; }
 .inv-remarque { margin: 0.4rem 0 0.2rem; }
 .inv-remarque summary { cursor: pointer; font-weight: 700; color: var(--bleu); padding: 0.3rem 0; }
 .inv-remarque textarea { margin-top: 0.3rem; }
@@ -1163,6 +1174,7 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
   .imp-liste h2 { font-size: 12.5pt; margin: 4mm 0 1.5mm; break-after: avoid; }
   .imp-niveau ul { list-style: none; margin: 0; padding: 0; }
   .imp-niveau li { display: flex; align-items: baseline; gap: 2.5mm; padding: 1mm 0; border-bottom: 0.5px solid #bbb; break-inside: avoid; }
+  .imp-separation { display: block !important; margin-top: 2mm; font-weight: 700; text-transform: uppercase; font-size: 9.5pt; border-bottom: 1px solid #000 !important; }
   .imp-case { width: 3.6mm; height: 3.6mm; flex-shrink: 0; border: 1px solid #000; transform: translateY(0.6mm); }
   .imp-nom { flex: 1; }
   .imp-date { white-space: nowrap; font-size: 9.5pt; }
