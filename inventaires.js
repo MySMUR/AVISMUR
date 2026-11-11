@@ -138,12 +138,21 @@ const Inventaires = (() => {
       id: c.id, parent: c.parent || '', nom: c.nom || '', ordre: Number(c.ordre) || 0, photo: c.photo || '',
       points: Array.isArray(c.points) ? c.points : [], articles: Array.isArray(c.articles) ? c.articles : [],
       scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
+      categorie: CATEGORIES_CONTENANT[c.categorie] ? c.categorie : '', // primaire, immobile ou mobile
       ...(c.modele ? { modele: true } : {}), // inventaire type : sert de structure à ses exemplaires
       ...(c.source ? { source: c.source } : {}), // exemplaire : contenant du modèle dont il est la copie
       ...(c.base ? { base: c.base } : {}), // exemplaire : état du modèle lors de la dernière répercussion
       ...(c.supprime ? { supprime: true } : {}),
     };
   }
+  // ---------- Catégories de contenants ----------
+  /** Seuls les contenants primaires sont listés à l'accueil ; les autres s'ouvrent par recherche, QR code ou NFC. */
+  const CATEGORIES_CONTENANT = {
+    primaire: { nom: 'Primaire', aide: 'véhicule, réserve : point de départ des inventaires' },
+    immobile: { nom: 'Immobile', aide: 'tiroir, placard, armoire : ne change jamais de place' },
+    mobile: { nom: 'Mobile', aide: 'sac, sacoche, ampoulier : peut changer de véhicule' },
+  };
+
   // ---------- Base des articles (catalogue) ----------
   const CATEGORIES = ['Médicament', 'DM', 'Magasin'];
   /** Texte comparable : minuscules, sans accents, espaces simples. */
@@ -670,7 +679,8 @@ const Inventaires = (() => {
     const sous = enfants(c.id).length;
     return el('a', { classe: `inv-carte ${b.classe}`, href: lien(c.id) }, repere,
       el('span', { classe: 'inv-carte-texte' },
-        el('strong', {}, c.nom, c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null,
+        el('strong', {}, c.nom, c.categorie && c.categorie !== 'primaire' ? el('span', { classe: `inv-tag-scellable inv-tag-${c.categorie}`, texte: CATEGORIES_CONTENANT[c.categorie].nom }) : null,
+          c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null,
           c.modele ? el('span', { classe: 'inv-tag-scellable inv-tag-modele', texte: `Type · ${pluriel(exemplairesDe(c.id).length, 'exemplaire')}` }) : null),
         el('span', { classe: 'inv-carte-etat' }, b.complet ? '✓ ' : '', b.texte,
           sous ? ` · ${pluriel(sous, 'sous-inventaire')}` : ''),
@@ -733,35 +743,11 @@ const Inventaires = (() => {
     if (nbFiches || estAdmin()) {
       noeuds.push(el('a', { classe: 'lien inv-lien-base', href: lien(BASE), texte: `Base des articles (${nbFiches})` }));
     }
-    if (!racines.length) {
+    noeuds.push(encadreRecherche(tous));
+    if (!tous.length) {
       noeuds.push(el('p', { classe: 'consigne', texte: estAdmin()
-        ? 'Aucun inventaire pour l\'instant. Appuyez sur « Modifier » pour créer le premier (un sac, un tiroir, une armoire…), puis ajoutez-lui une photo, des sous-inventaires et des articles.'
+        ? 'Aucun inventaire pour l\'instant. Appuyez sur « Modifier » pour créer le premier (un véhicule, la réserve…), puis ajoutez-lui une photo, des sous-inventaires et des articles.'
         : 'Aucun inventaire n\'a encore été créé.' }));
-    }
-    if (scannerDisponible() && racines.length) {
-      noeuds.push(el('button', { type: 'button', classe: 'bouton-photo inv-scanner', texte: '📷 Scanner un QR code ou une puce NFC', surclick: scanner }));
-    }
-
-    // Recherche par nom, à tous les niveaux.
-    if (tous.length > 5) {
-      const resultats = el('ul', { classe: 'inv-liste' });
-      const champ = idChamp();
-      const filtrer = () => {
-        resultats.innerHTML = '';
-        const mots = recherche.trim().toLowerCase();
-        if (mots.length < 2) return;
-        const sansAccent = (t) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-        tous.filter((c) => sansAccent(c.nom).includes(sansAccent(mots))).slice(0, 12).forEach((c) => {
-          const parents = chemin(c.id).slice(0, -1).map((x) => x.nom).join(' › ');
-          const ligne = carte(c);
-          if (parents) ligne.querySelector('.inv-carte-etat').prepend(`${parents} · `);
-          resultats.append(el('li', {}, ligne));
-        });
-        if (!resultats.children.length) resultats.append(el('li', { classe: 'aide-question', texte: 'Aucun inventaire à ce nom.' }));
-      };
-      noeuds.push(el('div', { classe: 'champ inv-recherche' }, el('label', { for: champ, texte: 'Rechercher un inventaire' }),
-        el('input', { id: champ, type: 'search', valeur: recherche, autocomplete: 'off', surinput: (e) => { recherche = e.target.value; filtrer(); } })), resultats);
-      filtrer();
     }
 
     // Péremptions : tout ce qui est périmé ou le sera bientôt, avec le chemin pour y aller.
@@ -782,7 +768,20 @@ const Inventaires = (() => {
           el('span', { texte: `${afficherDate(x.date)} · ${x.p.texte}` }))))));
     }
 
-    noeuds.push(el('ul', { classe: 'inv-liste' }, ...racines.filter((c) => !c.modele).map((c) => el('li', {}, carte(c)))));
+    // Page des inventaires : seulement les contenants primaires (véhicules, réserve).
+    const primaires = tous.filter((c) => c.categorie === 'primaire' && !dansUnModele(c.id))
+      .sort((x, y) => x.ordre - y.ordre || x.nom.localeCompare(y.nom, 'fr'));
+    noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Contenants primaires' }));
+    noeuds.push(primaires.length
+      ? el('ul', { classe: 'inv-liste' }, ...primaires.map((c) => el('li', {}, carte(c))))
+      : el('p', { classe: 'aide-question', texte: estAdmin() ? 'Aucun contenant primaire : ouvrez un inventaire, « Modifier », puis catégorie « Primaire ».' : 'Aucun contenant primaire pour l\'instant : utilisez la recherche ci-dessus.' }));
+    // Administrateurs : inventaires de premier niveau pas encore classés.
+    const aClasser = racines.filter((c) => !c.modele && !c.categorie);
+    if (aClasser.length && estAdmin()) {
+      noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'À classer' }),
+        el('p', { classe: 'aide-question', texte: 'Sans catégorie : visibles des administrateurs seulement. Ouvrez-les, « Modifier », puis choisissez Primaire, Immobile ou Mobile.' }),
+        el('ul', { classe: 'inv-liste' }, ...aClasser.map((c) => el('li', {}, carte(c)))));
+    }
     // Inventaires types : visibles des administrateurs seulement.
     const modeles = racines.filter((c) => c.modele);
     if (modeles.length && estAdmin()) {
@@ -1095,6 +1094,60 @@ const Inventaires = (() => {
     document.body.append(fond);
     document.body.classList.add('fenetre-ouverte');
     fond.querySelector('.fenetre-fermer').focus();
+  }
+
+  // ---------- Accès à un inventaire : saisie, QR code, NFC ----------
+  function logoQr() {
+    const carres = [[1, 1], [15, 1], [1, 15]].flatMap(([x, y]) => [
+      el('svg:rect', { x, y, width: 8, height: 8, rx: 1.5, fill: 'none', stroke: 'currentColor', 'stroke-width': 2 }),
+      el('svg:rect', { x: x + 3, y: y + 3, width: 2, height: 2, fill: 'currentColor' })]);
+    const points = [[15, 15], [19, 15], [17, 17], [15, 19], [19, 19], [21, 21], [12, 3], [12, 7], [3, 12], [7, 12], [12, 12]]
+      .map(([x, y]) => el('svg:rect', { x, y, width: 2, height: 2, fill: 'currentColor' }));
+    return el('svg:svg', { viewBox: '0 0 24 24', classe: 'inv-logo', 'aria-hidden': 'true' }, ...carres, ...points);
+  }
+  function logoNfc() {
+    return el('svg:svg', { viewBox: '0 0 24 24', classe: 'inv-logo', 'aria-hidden': 'true' },
+      el('svg:rect', { x: 3, y: 2, width: 18, height: 20, rx: 3, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8 }),
+      el('svg:path', { d: 'M8 16V8l8 8V8', fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+  }
+  /**
+   * Encadré en tête de la page des inventaires : on atteint n'importe quel inventaire (primaire, immobile
+   * ou mobile, à n'importe quel niveau) par son nom, par son QR code ou par sa puce NFC.
+   */
+  function encadreRecherche(tous) {
+    const resultats = el('ul', { classe: 'inv-liste inv-resultats-recherche' });
+    const champ = idChamp();
+    const filtrer = () => {
+      resultats.innerHTML = '';
+      const mots = cle(recherche).split(' ').filter(Boolean);
+      if (!mots.length || cle(recherche).length < 2) return;
+      const trouves = tous.filter((c) => { const t = cle(`${c.nom} ${chemin(c.id).slice(0, -1).map((x) => x.nom).join(' ')}`); return mots.every((m) => t.includes(m)); });
+      trouves.slice(0, 12).forEach((c) => {
+        const parents = chemin(c.id).slice(0, -1).map((x) => x.nom).join(' › ');
+        const ligne = carte(c);
+        if (parents) ligne.querySelector('.inv-carte-etat').prepend(`${parents} · `);
+        resultats.append(el('li', {}, ligne));
+      });
+      if (trouves.length > 12) resultats.append(el('li', { classe: 'aide-question', texte: `${trouves.length - 12} autre(s) : précisez la recherche.` }));
+      if (!trouves.length) resultats.append(el('li', { classe: 'aide-question', texte: 'Aucun inventaire à ce nom.' }));
+    };
+    const qr = 'BarcodeDetector' in window;
+    const nfc = 'NDEFReader' in window;
+    const boutons = el('div', { classe: 'inv-boutons-scan' },
+      el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !qr, surclick: () => scanner({ qr: true, nfc: false }) }, logoQr(), el('span', { texte: 'Scanner un QR code' })),
+      el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !nfc, surclick: () => scanner({ qr: false, nfc: true }) }, logoNfc(), el('span', { texte: 'Lire une puce NFC' })));
+    const aide = !qr || !nfc ? el('p', { classe: 'aide-question inv-aide-scan', texte: !qr && !nfc
+      ? 'Sur cet appareil, scannez le QR code avec l\'appareil photo du téléphone : il ouvre directement l\'inventaire. La lecture NFC demande Chrome sur Android.'
+      : (!nfc ? 'Lecture NFC : Chrome sur Android seulement.' : 'QR code : vous pouvez aussi le scanner avec l\'appareil photo du téléphone.') }) : null;
+    const encadre = el('section', { classe: 'inv-encadre-recherche', 'aria-labelledby': `${champ}-titre` },
+      el('div', { classe: 'inv-encadre-titre' },
+        el('h2', { id: `${champ}-titre`, texte: 'Trouver un inventaire' }),
+        el('span', { classe: 'inv-logos', 'aria-hidden': 'true' }, logoQr(), logoNfc())),
+      el('label', { for: champ, classe: 'inv-libelle-recherche', texte: 'Nom (véhicule, sac, sacoche, tiroir…)' }),
+      el('input', { id: champ, type: 'search', valeur: recherche, autocomplete: 'off', placeholder: 'ex. F25, sac rouge, ampoulier', surinput: (e) => { recherche = e.target.value; filtrer(); } }),
+      boutons, aide, resultats);
+    filtrer();
+    return encadre;
   }
 
   // ---------- Glisser-déposer ----------
@@ -1570,7 +1623,7 @@ const Inventaires = (() => {
   /** Instantané d'un contenant du modèle : ce que ses exemplaires doivent reproduire. */
   function instantane(m) {
     return {
-      nom: m.nom, ordre: m.ordre, photo: m.photo, scellable: m.scellable,
+      nom: m.nom, ordre: m.ordre, photo: m.photo, scellable: m.scellable, categorie: m.categorie,
       points: m.points.map((p) => ({ cible: p.cible, x: p.x, y: p.y })),
       articles: m.articles.map((a) => ({ id: a.id, ...sigArticle(a), ...(a.ref ? { refNom: a.nom } : {}) })),
       enfants: enfants(m.id).map((x) => x.id),
@@ -1580,14 +1633,14 @@ const Inventaires = (() => {
   function vueExemplaire(e) {
     const versModele = (id) => (contenant(id) || {}).source || id;
     return {
-      nom: e.nom, ordre: e.ordre, photo: e.photo, scellable: e.scellable,
+      nom: e.nom, ordre: e.ordre, photo: e.photo, scellable: e.scellable, categorie: e.categorie,
       points: e.points.map((p) => ({ cible: versModele(p.cible), x: p.x, y: p.y })),
       articles: e.articles.map((a) => ({ id: a.id, ...sigArticle(a) })),
       enfants: enfants(e.id).map((x) => x.source).filter(Boolean),
     };
   }
   const sansNoms = (articles) => (articles || []).map(({ refNom, ...a }) => a);
-  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', scellable: 'scellable', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
+  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', scellable: 'scellable', categorie: 'catégorie', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
   /** Champs d'un contenant d'exemplaire modifiés localement depuis la dernière répercussion. */
   function personnalisations(e) {
     if (!e.base) return [];
@@ -1653,7 +1706,7 @@ const Inventaires = (() => {
     const v = vueExemplaire(e);
     const nm = instantane(m);
     const avant = canonique(e);
-    ['nom', 'ordre', 'photo', 'scellable'].forEach((k) => {
+    ['nom', 'ordre', 'photo', 'scellable', 'categorie'].forEach((k) => {
       if (racine && (k === 'nom' || k === 'ordre')) return; // le sac garde son nom et sa place
       if (forcer || egal(v[k], base[k])) e[k] = copieProfonde(m[k]);
       else if (!egal(v[k], nm[k])) bilanR.conserves += 1;
@@ -1813,12 +1866,23 @@ const Inventaires = (() => {
       : el('h1', { tabindex: '-1' }, c.nom, c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null);
     const caseScellable = idChamp();
     const caseModele = idChamp();
+    const groupeCategorie = idChamp();
+    const choixCategorie = edition ? el('div', { classe: 'champ inv-choix-categorie' },
+      el('span', { classe: 'inv-libelle', id: groupeCategorie, texte: 'Catégorie du contenant' }),
+      el('div', { classe: 'puces', role: 'radiogroup', 'aria-labelledby': groupeCategorie },
+        ...Object.entries(CATEGORIES_CONTENANT).flatMap(([cle, v]) => {
+          const i = idChamp();
+          return [el('input', { type: 'radio', name: groupeCategorie, id: i, checked: c.categorie === cle, surchange: () => { c.categorie = cle; marquer(c.id); rendre({ garderPosition: true }); } }),
+            el('label', { for: i, title: v.aide, texte: v.nom })];
+        })),
+      el('p', { classe: 'aide-question', texte: c.categorie ? `${CATEGORIES_CONTENANT[c.categorie].nom} : ${CATEGORIES_CONTENANT[c.categorie].aide}.${c.categorie === 'primaire' ? ' Affiché sur la page des inventaires.' : ' S\'ouvre par recherche, QR code ou NFC, ou depuis son contenant.'}` : 'Seuls les contenants primaires sont affichés sur la page des inventaires.' })) : null;
     const modele = dansUnModele(c.id);
     return [
       el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' },
         el('a', { href: lien(''), texte: 'Inventaires' }),
         ...parents.flatMap((p) => [el('span', { 'aria-hidden': 'true', texte: ' › ' }), el('a', { href: lien(p.id), texte: p.nom })])),
       el('div', { classe: 'inv-entete' }, titre, boutonEdition()),
+      choixCategorie,
       edition ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseScellable },
         el('input', { type: 'checkbox', id: caseScellable, checked: c.scellable, surchange: (e) => { c.scellable = e.target.checked; marquer(c.id); } }),
         el('span', {}, 'Contenant scellable', el('small', { texte: 'fermé par un scellé (plomb) une fois vérifié' }))) : null,
@@ -1951,17 +2015,16 @@ const Inventaires = (() => {
   }
 
   // ---------- Scanner (QR code par la caméra, puce NFC) ----------
-  const scannerDisponible = () => 'BarcodeDetector' in window || 'NDEFReader' in window;
 
-  function scanner() {
-    const qr = 'BarcodeDetector' in window;
-    const nfc = 'NDEFReader' in window;
+  function scanner(choix = { qr: true, nfc: true }) {
+    const qr = choix.qr && 'BarcodeDetector' in window;
+    const nfc = choix.nfc && 'NDEFReader' in window;
     const video = el('video', { playsinline: '', muted: '', autoplay: '' });
     video.muted = true;
     const lecture = el('p', { classe: 'lecture', role: 'status', texte: qr ? 'Ouverture de la caméra…' : 'Approchez la puce NFC du dos du téléphone.' });
     const annuler = el('button', { type: 'button', classe: 'camera-bouton secondaire', texte: 'Annuler' });
     const ecran = el('div', { classe: 'camera', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Scanner un inventaire' },
-      el('div', { classe: 'camera-vue' }, video, el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }),
+      el('div', { classe: `camera-vue${qr ? '' : ' inv-nfc-seul'}` }, qr ? video : el('div', { classe: 'inv-attente-nfc', 'aria-hidden': 'true' }, logoNfc()), qr ? el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }) : null,
         el('p', { classe: 'consigne-camera consigne-qr', texte: [qr ? 'Visez le QR code de l\'inventaire' : '', nfc ? 'approchez sa puce NFC' : ''].filter(Boolean).join(' ou ') })),
       lecture, el('div', { classe: 'camera-actions' }, annuler));
     document.body.append(ecran);

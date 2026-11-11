@@ -1542,3 +1542,35 @@ textarea:focus { border-color: var(--bleu); }
 .choix-icone-bouton.actif { color: #fff; background: var(--bleu); }
 .choix-icone-bouton:hover { border-color: var(--bleu); }
 .types-enregistrer { margin-top: 1rem; }
+
+/* Encadré « Trouver un inventaire » : saisie, QR code, NFC */
+.inv-encadre-recherche {
+  margin: 0.4rem 0 1.2rem; padding: 0.9rem 1rem 1rem;
+  background: var(--ciel); border: 2px solid var(--bleu); border-radius: 14px;
+}
+.inv-encadre-titre { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.4rem; }
+.inv-encadre-titre h2 { margin: 0; font-size: 1.15rem; color: var(--bleu); }
+.inv-logos { display: inline-flex; gap: 0.4rem; color: var(--bleu); }
+.inv-logos .inv-logo { width: 1.9rem; height: 1.9rem; }
+.inv-libelle-recherche { display: block; margin-bottom: 0.3rem; font-weight: 700; }
+.inv-encadre-recherche input[type="search"] { width: 100%; min-height: 3rem; font-size: 1.1rem; background: #fff; }
+.inv-boutons-scan { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.6rem; }
+.inv-bouton-scan {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3.2rem; padding: 0.4rem 0.6rem;
+  font: inherit; font-weight: 700; color: var(--bleu); background: #fff; border: 2px solid var(--bleu); border-radius: var(--rayon);
+}
+.inv-bouton-scan .inv-logo { width: 1.7rem; height: 1.7rem; flex-shrink: 0; }
+.inv-bouton-scan:not(:disabled):hover { color: #fff; background: var(--bleu); }
+.inv-bouton-scan:disabled { color: var(--gris); border-color: var(--trait); opacity: 0.8; }
+.inv-aide-scan { margin: 0.45rem 0 0; }
+.inv-resultats-recherche:not(:empty) { margin-top: 0.7rem; }
+/* Catégories de contenants */
+.inv-tag-mobile { color: #8A4B00; border-color: var(--orange); background: #FFF3E0; }
+.inv-tag-immobile { color: var(--gris); border-color: var(--trait); background: #fff; }
+.inv-choix-categorie { margin: 0.2rem 0 0.6rem; }
+.inv-choix-categorie .aide-question { margin: 0.3rem 0 0; }
+/* Lecture NFC seule */
+.inv-attente-nfc { display: flex; align-items: center; justify-content: center; height: 100%; color: #fff; }
+.inv-attente-nfc .inv-logo { width: 8rem; height: 8rem; animation: inv-pulse 1.4s ease-in-out infinite alternate; }
+@keyframes inv-pulse { to { opacity: 0.45; transform: scale(0.92); } }
+@media (prefers-reduced-motion: reduce) { .inv-attente-nfc .inv-logo { animation: none; } }

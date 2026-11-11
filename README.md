@@ -102,3 +102,9 @@ Case **« Inventaire type »** (mode Modifier, sur un inventaire de premier nive
 Données : un contenant d'exemplaire porte `source` (le contenant du type qu'il copie) et `base` (l'état du type lors de la dernière répercussion), dans la colonne « données » de l'onglet `Inventaires`.
 
 **Photos des articles** : chaque fiche de la base peut avoir une photo (fiche > Photo). Dans la liste à cocher, une vignette apparaît devant l'article ; la toucher affiche la photo en grand et les informations de la fiche.
+
+### Catégories de contenants et accès
+
+En mode Modifier, chaque contenant a une **catégorie** : **Primaire** (véhicule, réserve), **Immobile** (tiroir, placard : ne change pas de place) ou **Mobile** (sac, sacoche, ampoulier : peut changer de véhicule). La page des inventaires ne montre que les **contenants primaires** ; les inventaires de premier niveau sans catégorie apparaissent aux administrateurs dans « À classer ».
+
+Tous les autres s'atteignent par l'encadré **« Trouver un inventaire »** en tête de page : saisie du nom (cherche aussi dans le chemin, ex. « f25 tiroir »), **Scanner un QR code** (caméra, Chrome sur Android) ou **Lire une puce NFC** (Chrome sur Android). Sur les autres appareils, l'appareil photo du téléphone lit le QR code et ouvre directement l'inventaire.
