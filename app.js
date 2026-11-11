@@ -565,12 +565,14 @@ const accesVehicules = () => roleCourant !== 'iade';
 const accesInventaires = () => roleCourant !== 'ambulancier';
 
 /** Vue correspondant au lien « #inv… » de l'adresse. */
-const vueDuLien = () => (location.hash === '#inv-base' ? 'base-articles' : 'inventaires');
+// En gestion des inventaires (administration), naviguer d'un inventaire à l'autre reste en gestion.
+let gestionInventaires = false;
+const vueDuLien = () => (location.hash === '#inv-base' ? 'base-articles' : (gestionInventaires ? 'gestion-inventaires' : 'inventaires'));
 
 function vueAutorisee(vue) {
   if (VUES_VEHICULES[vue] && !accesVehicules()) return 'aujourdhui';
   if ((vue === 'inventaires' || vue === 'base-articles') && !accesInventaires()) return 'aujourdhui';
-  if ((vue === 'configuration' || vue === 'types-infos') && roleCourant !== 'admin') return 'accueil';
+  if ((vue === 'configuration' || vue === 'types-infos' || vue === 'gestion-inventaires') && roleCourant !== 'admin') return 'accueil';
   return vue;
 }
 
@@ -590,9 +592,11 @@ function ouvrirVue(demandee) {
   if (parc) Parc.afficher();
   else Parc.masquer();
 
-  const inventaires = vue === 'inventaires' || vue === 'base-articles' || (vue === 'aujourdhui' && roleCourant === 'iade');
+  if (vue === 'gestion-inventaires') gestionInventaires = true;
+  else if (vue !== 'base-articles') gestionInventaires = false;
+  const inventaires = vue === 'inventaires' || vue === 'gestion-inventaires' || vue === 'base-articles' || (vue === 'aujourdhui' && roleCourant === 'iade');
   if (inventaires) {
-    Inventaires.afficher();
+    Inventaires.afficher({ gestion: gestionInventaires });
   } else {
     Inventaires.masquer();
     // Le lien « #inv=… » ne doit pas rester dans l'adresse une fois sorti des inventaires.
@@ -662,7 +666,8 @@ menu.addEventListener('click', (e) => {
   fermerMenu();
   // Inventaires : on repart de la liste des inventaires (ou de la base des articles) ;
   // le changement de lien « #inv… » rouvre la vue (voir « hashchange » plus bas).
-  if (vue === 'inventaires' && accesInventaires() && location.hash && location.hash !== '#inv') {
+  if (vue === 'inventaires' || vue === 'gestion-inventaires') gestionInventaires = vue === 'gestion-inventaires' && roleCourant === 'admin';
+  if ((vue === 'inventaires' || vue === 'gestion-inventaires') && accesInventaires() && location.hash && location.hash !== '#inv') {
     location.hash = '#inv';
     return;
   }
@@ -696,6 +701,8 @@ Infos.initialiser({
 Ambulancier.initialiser();
 Inventaires.initialiser({
   appeler,
+  // « Voir en check-list » depuis la gestion des inventaires : même inventaire, vu comme les agents.
+  quitterGestion: () => { gestionInventaires = false; ouvrirVue('inventaires'); },
   mettreEnFile,
   role: () => roleCourant,
   agent: () => (session.lire() || appareil.lire() || {}).identifiant || '',
@@ -708,7 +715,7 @@ window.addEventListener('hashchange', () => {
   if ($('ecran-checklist').hidden) return;
   if (/^#info=/.test(location.hash)) ouvrirInfoDuLien(location.hash);
   else if (/^#inv\b/.test(location.hash)) ouvrirVue(vueDuLien());
-  else if (!$('zone-inventaires').hidden) Inventaires.afficher();
+  else if (!$('zone-inventaires').hidden) Inventaires.afficher({ gestion: gestionInventaires });
 });
 Parc.initialiser({ appeler });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });

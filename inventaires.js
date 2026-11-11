@@ -12,7 +12,7 @@
  *   - une vérification validée passe par la file d'attente de app.js (action « verifierInventaire ») ;
  *   - les modifications d'un administrateur sont gardées sur l'appareil puis envoyées au retour du réseau.
  *
- * Seuls les administrateurs créent et modifient les inventaires (bouton « Modifier »).
+ * Seuls les administrateurs créent et modifient les inventaires : menu > Administration > Gestion des inventaires.
  * Backend : Inventaires.gs (dépôt AVISMUR-backend).
  */
 const Inventaires = (() => {
@@ -36,6 +36,7 @@ const Inventaires = (() => {
   let baseOuverte = ''; // fiche dépliée dans la base des articles ('nouvelle' : création)
   let baseFiltre = { texte: '', categorie: '', archives: false };
   let edition = false;
+  let gestion = false; // ouvert depuis Administration > Gestion des inventaires (modification)
   let placement = ''; // sous-inventaire dont on place le point sur la photo
   let avis = ''; // message affiché une fois en haut de la vue
   let confirmer = ''; // action en attente d'une deuxième pression (valider avec manquants, supprimer)
@@ -688,13 +689,19 @@ const Inventaires = (() => {
       el('span', { classe: 'inv-chevron', 'aria-hidden': 'true', texte: '›' }));
   }
 
+  /**
+   * La modification des inventaires se fait dans l'administration (menu > Administration >
+   * Gestion des inventaires) : plus de bouton « Modifier » dans la check-list. En gestion, un lien
+   * permet de voir le même inventaire tel que les agents le vérifient.
+   */
   function boutonEdition() {
-    if (!estAdmin()) return null;
-    return el('button', {
-      type: 'button', classe: `cfg-bouton${edition ? ' inv-actif' : ''}`, 'aria-pressed': String(edition),
-      texte: edition ? 'Terminer les modifications' : 'Modifier',
-      surclick: () => { edition = !edition; placement = ''; confirmer = ''; rendre({ garderPosition: true }); },
-    });
+    if (!gestion) return null;
+    return el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Voir en check-list', surclick: () => App.quitterGestion() });
+  }
+  function bandeauGestion() {
+    if (!gestion) return null;
+    return el('p', { classe: 'inv-bandeau-gestion' }, el('strong', { texte: 'Administration · Gestion des inventaires' }),
+      ' — les modifications sont enregistrées au fur et à mesure.');
   }
 
   function ligneSynchro() {
@@ -734,9 +741,10 @@ const Inventaires = (() => {
   // ----- Premier niveau -----
   function vueRacine() {
     const racines = enfants('');
-    const tous = Object.values(structure.contenants).filter((c) => !c.supprime && (estAdmin() || !dansUnModele(c.id)));
+    const tous = Object.values(structure.contenants).filter((c) => !c.supprime && (gestion || !dansUnModele(c.id)));
     const noeuds = [
-      el('div', { classe: 'inv-entete' }, el('h1', { tabindex: '-1', texte: 'Inventaires' }), boutonEdition()),
+      bandeauGestion(),
+      el('div', { classe: 'inv-entete' }, el('h1', { tabindex: '-1', texte: gestion ? 'Gestion des inventaires' : 'Inventaires' }), boutonEdition()),
       ligneSynchro(), ligneAvis(),
     ];
     const nbFiches = Object.values(structure.catalogue).filter((f) => !f.archive).length;
@@ -746,7 +754,7 @@ const Inventaires = (() => {
     noeuds.push(encadreRecherche(tous));
     if (!tous.length) {
       noeuds.push(el('p', { classe: 'consigne', texte: estAdmin()
-        ? 'Aucun inventaire pour l\'instant. Appuyez sur « Modifier » pour créer le premier (un véhicule, la réserve…), puis ajoutez-lui une photo, des sous-inventaires et des articles.'
+        ? 'Aucun inventaire pour l\'instant. Menu > Administration > Gestion des inventaires pour créer le premier (un véhicule, la réserve…), puis ajoutez-lui une photo, des sous-inventaires et des articles.'
         : 'Aucun inventaire n\'a encore été créé.' }));
     }
 
@@ -774,17 +782,17 @@ const Inventaires = (() => {
     noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Contenants primaires' }));
     noeuds.push(primaires.length
       ? el('ul', { classe: 'inv-liste' }, ...primaires.map((c) => el('li', {}, carte(c))))
-      : el('p', { classe: 'aide-question', texte: estAdmin() ? 'Aucun contenant primaire : ouvrez un inventaire, « Modifier », puis catégorie « Primaire ».' : 'Aucun contenant primaire pour l\'instant : utilisez la recherche ci-dessus.' }));
+      : el('p', { classe: 'aide-question', texte: estAdmin() ? (gestion ? 'Aucun contenant primaire : ouvrez un inventaire et choisissez la catégorie « Primaire ».' : 'Aucun contenant primaire : menu > Administration > Gestion des inventaires.') : 'Aucun contenant primaire pour l\'instant : utilisez la recherche ci-dessus.' }));
     // Administrateurs : inventaires de premier niveau pas encore classés.
     const aClasser = racines.filter((c) => !c.modele && !c.categorie);
-    if (aClasser.length && estAdmin()) {
+    if (aClasser.length && gestion) {
       noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'À classer' }),
-        el('p', { classe: 'aide-question', texte: 'Sans catégorie : visibles des administrateurs seulement. Ouvrez-les, « Modifier », puis choisissez Primaire, Immobile ou Mobile.' }),
+        el('p', { classe: 'aide-question', texte: 'Sans catégorie : visibles des administrateurs seulement. Ouvrez-les (Administration > Gestion des inventaires) et choisissez Primaire, Immobile ou Mobile.' }),
         el('ul', { classe: 'inv-liste' }, ...aClasser.map((c) => el('li', {}, carte(c)))));
     }
     // Inventaires types : visibles des administrateurs seulement.
     const modeles = racines.filter((c) => c.modele);
-    if (modeles.length && estAdmin()) {
+    if (modeles.length && gestion) {
       noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Inventaires types' }),
         el('p', { classe: 'aide-question', texte: 'Ils servent de structure à leurs exemplaires et ne se vérifient pas.' }),
         el('ul', { classe: 'inv-liste' }, ...modeles.map((c) => el('li', {}, carte(c)))));
@@ -1881,6 +1889,7 @@ const Inventaires = (() => {
       el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' },
         el('a', { href: lien(''), texte: 'Inventaires' }),
         ...parents.flatMap((p) => [el('span', { 'aria-hidden': 'true', texte: ' › ' }), el('a', { href: lien(p.id), texte: p.nom })])),
+      bandeauGestion(),
       el('div', { classe: 'inv-entete' }, titre, boutonEdition()),
       choixCategorie,
       edition ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseScellable },
@@ -1902,7 +1911,7 @@ const Inventaires = (() => {
       blocPhoto(c, fils),
       blocEnfants(c, fils),
       edition ? blocArticles(c) : (modele ? blocContenuModele(c) : blocVerification(c)),
-      !edition && !aCocher(c).length && !fils.length ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : appuyez sur « Modifier » pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
+      !edition && !aCocher(c).length && !fils.length ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : menu > Administration > Gestion des inventaires pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
       !edition && !aCocher(c).length ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
       edition ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
       edition ? blocAcces(c) : null,
@@ -2108,11 +2117,12 @@ const Inventaires = (() => {
   }
 
   /** Affiche la vue (premier niveau, ou le contenant du lien « #inv=… »). */
-  function afficher() {
+  function afficher({ gestion: enGestion = false } = {}) {
     if (!zone) return;
     const dejaOuverte = !zone.hidden;
     zone.hidden = false;
-    if (!estAdmin()) edition = false;
+    gestion = enGestion && estAdmin();
+    edition = gestion;
     if (!dejaOuverte) { dernierAffiche = null; pile = []; }
     rendre();
     if (!dejaOuverte) synchroniser();
