@@ -1,7 +1,7 @@
 // À incrémenter à chaque mise à jour, avec les ?v= de index.html.
-const CACHE = 'avismur-v52';
+const CACHE = 'avismur-v53';
 const FICHIERS = [
-  './', 'index.html', 'style.css?v=31', 'app.js?v=23', 'config.js?v=6', 'checklists.js?v=13', 'ambulancier.js?v=24', 'actions.js?v=10', 'config-admin.js?v=6', 'parc.js?v=6', 'compteur.js?v=5', 'inventaires.js?v=4', 'lib/qrcode.js?v=1',
+  './', 'index.html', 'style.css?v=31', 'app.js?v=23', 'config.js?v=6', 'checklists.js?v=13', 'ambulancier.js?v=24', 'actions.js?v=10', 'config-admin.js?v=6', 'parc.js?v=6', 'compteur.js?v=5', 'inventaires.js?v=5', 'lib/qrcode.js?v=1',
   'manifest.webmanifest',
   'img/logo-smur.png', 'img/logo-cha.png', 'img/icon-192.png', 'img/icon-512.png', 'img/icon-maskable-512.png',
   'img/vues/jumpy_gauche.svg', 'img/vues/jumpy_droite.svg', 'img/vues/jumpy_avant.svg', 'img/vues/jumpy_arriere.svg',

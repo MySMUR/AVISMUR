@@ -1077,7 +1077,7 @@ const Inventaires = (() => {
         el('div', { classe: 'inv-edition-nom' },
           el('strong', { texte: nom }),
           f ? el('small', { texte: resumeFiche(f) })
-            : el('small', { classe: 'inv-hors-base' }, 'Pas dans la base des articles. ',
+            : el('small', { classe: 'inv-hors-base' }, a.ref ? 'Fiche supprimée de la base des articles. ' : 'Pas dans la base des articles. ',
               el('button', { type: 'button', classe: 'lien', texte: rattacher === a.id ? 'Annuler' : 'Rattacher', surclick: () => {
                 rattacher = rattacher === a.id ? '' : a.id;
                 rechercheAjout = rattacher ? a.nom : '';
