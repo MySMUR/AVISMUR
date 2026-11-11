@@ -1,8 +1,3 @@
-// Items fictifs pour le prototype IADE. La check-list ambulancier est dans checklists.js.
-const ITEMS_FICTIFS = {
-  iade: ['Exemple : température frigo relevée', 'Exemple : chariot d\'urgence scellé'],
-};
-
 const ECRANS = ['ecran-connexion', 'ecran-sms', 'ecran-code', 'ecran-mdp', 'ecran-checklist'];
 const $ = (id) => document.getElementById(id);
 const ERREUR_RESEAU = 'Le serveur ne répond pas. Vérifiez la connexion internet puis réessayez. Si le problème continue, prévenez l\'administrateur.';
@@ -90,6 +85,7 @@ function afficher(idEcran, erreur = '') {
   $('utilisateur').hidden = !connecte;
   $('menu').hidden = !connecte;
   document.body.classList.toggle('connecte', connecte);
+  if (!connecte) Inventaires.masquer(); // au prochain agent connecté, les inventaires seront relus sur le serveur
   const zone = $(idEcran).querySelector('.erreur');
   if (zone) zone.textContent = erreur;
   const champ = $(idEcran).querySelector('input');
@@ -108,11 +104,14 @@ function afficherApplication(infos) {
   roleCourant = infos.role;
   // Véhicules : réservé aux ambulanciers et à l'encadrement (l'IADE n'a pas de véhicule).
   $('menu-vehicules').hidden = infos.role === 'iade';
+  // Inventaires : pour l'IADE c'est « Aujourd'hui » ; entrée à part pour l'encadrement et les administrateurs.
+  $('menu-inventaires').hidden = infos.role === 'iade' || infos.role === 'ambulancier';
   // Écran de configuration des véhicules et des check-lists : administrateurs seulement.
   $('option-config').hidden = infos.role !== 'admin';
   $('option-config').disabled = infos.role !== 'admin';
   if ($('liste').value === 'config' && infos.role !== 'admin') $('liste').value = 'ambulancier';
-  ouvrirVue('aujourdhui');
+  // Arrivée par un QR code ou une puce NFC (« …/#inv=<id> ») : on ouvre directement l'inventaire.
+  ouvrirVue(/^#inv\b/.test(location.hash) ? 'inventaires' : 'aujourdhui');
   envoyerFileAttente();
   chargerConfig();
   chargerReleves();
@@ -215,7 +214,11 @@ async function envoyerFileAttente() {
     while ((suivante = fileAttente.lire().find((e) => !refusees.has(e.id)))) {
       let rep;
       try {
-        rep = suivante.action === 'enregistrerEvenement'
+        if (suivante.action === 'verifierInventaire') {
+          rep = await appeler('verifierInventaire', {
+            contenant: suivante.contenant, detail: suivante.detail, idSaisie: suivante.id, dateSaisie: suivante.date,
+          });
+        } else rep = suivante.action === 'enregistrerEvenement'
           ? await appeler('enregistrerEvenement', {
             type: suivante.type, vehicule: suivante.vehicule, detail: suivante.detail, idSaisie: suivante.id, dateSaisie: suivante.date,
           })
@@ -250,6 +253,7 @@ async function envoyerFileAttente() {
   }
   if (envoyees) chargerReleves();
   bilanEnvoi({ envoyees, restantes: fileAttente.lire().length, erreurServeur, avertissement });
+  Inventaires.surEnvoi();
 }
 
 function bilanEnvoi({ envoyees, restantes, erreurServeur, avertissement }) {
@@ -386,44 +390,22 @@ $('deconnexion').addEventListener('click', async () => {
 function afficherListe(liste) {
   const config = liste === 'config';
   $('zone-ambulancier').hidden = liste !== 'ambulancier';
-  $('items').hidden = liste === 'ambulancier' || config;
   $('zone-config').hidden = !config;
   majBarreEnvoi();
   if (config) ConfigAdmin.ouvrir();
-  else if (liste === 'ambulancier') Ambulancier.afficher();
-  else afficherItems(liste);
+  else Ambulancier.afficher();
   annulerConfirmation();
 }
 
 /**
- * Barre « Enregistrer la check-list » : seulement quand une check-list est ouverte
- * (véhicule choisi, ou check-list IADE). Jamais sur l'écran de configuration.
+ * Barre « Enregistrer la check-list » : seulement quand la check-list d'un véhicule est ouverte.
+ * Jamais sur l'écran de configuration ni dans les inventaires (chaque inventaire a son bouton « Valider »).
  */
 function majBarreEnvoi() {
   const liste = $('liste').value;
-  const visible = !$('ecran-checklist').hidden && liste !== 'config' && $('vue-plus').hidden && $('vue-parc').hidden
-    && (liste !== 'ambulancier' || Boolean(Ambulancier.vehiculeChoisi()));
+  const visible = !$('ecran-checklist').hidden && liste === 'ambulancier' && $('vue-plus').hidden && $('vue-parc').hidden
+    && $('zone-inventaires').hidden && Boolean(Ambulancier.vehiculeChoisi());
   document.querySelector('.envoi').hidden = !visible;
-}
-
-function afficherItems(liste) {
-  const ul = $('items');
-  ul.innerHTML = '';
-  ITEMS_FICTIFS[liste].forEach((texte) => {
-    const li = document.createElement('li');
-    const label = document.createElement('label');
-    const caseACocher = document.createElement('input');
-    caseACocher.type = 'checkbox';
-    const span = document.createElement('span');
-    span.textContent = texte;
-    label.append(caseACocher, span);
-    li.appendChild(label);
-    ul.appendChild(li);
-  });
-}
-
-function lireCoches() {
-  return [...document.querySelectorAll('#items input')].map((c) => c.checked);
 }
 
 function statut(texte, classe = '') {
@@ -493,6 +475,7 @@ function enregistrerAmbulancier() {
 // ---------- Menu principal ----------
 // Une vue par entrée du menu. « Aujourd'hui » : check-list du jour (liste choisie selon le rôle).
 // « Véhicules » : sur ordinateur, tableau de bord du parc (parc.js) ; sinon l'écran de check-list avec le choix de véhicule en tête.
+// « Inventaires » : inventaires emboîtés (inventaires.js) ; pour l'IADE, c'est la vue « Aujourd'hui ».
 // « Plus » : configuration (admin) et déconnexion. Pour une nouvelle fonctionnalité, voir README.md.
 let roleCourant = '';
 let vueCourante = 'aujourdhui';
@@ -500,7 +483,7 @@ let vueCourante = 'aujourdhui';
 const GRAND_ECRAN = window.matchMedia('(min-width: 1100px)');
 
 function ouvrirVue(vue) {
-  if (vue === 'vehicules' && roleCourant === 'iade') vue = 'aujourdhui';
+  if ((vue === 'vehicules' || vue === 'inventaires') && roleCourant === 'iade') vue = 'aujourdhui';
   vueCourante = vue;
   document.querySelectorAll('[data-vue]').forEach((bouton) => {
     if (bouton.dataset.vue === vue) bouton.setAttribute('aria-current', 'page');
@@ -513,15 +496,23 @@ function ouvrirVue(vue) {
   if (parc) Parc.afficher();
   else Parc.masquer();
   $('vue-plus').hidden = !plus;
-  if (plus || parc) {
+  const inventaires = vue === 'inventaires' || (vue === 'aujourdhui' && roleCourant === 'iade');
+  if (inventaires) {
+    Inventaires.afficher();
+  } else {
+    Inventaires.masquer();
+    // Le lien « #inv=… » ne doit pas rester dans l'adresse une fois sorti des inventaires.
+    if (/^#inv\b/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+  }
+  if (plus || parc || inventaires) {
     $('lien-configuration').hidden = roleCourant !== 'admin';
-    ['zone-ambulancier', 'zone-config', 'items', 'choix-liste'].forEach((id) => { $(id).hidden = true; });
+    ['zone-ambulancier', 'zone-config', 'choix-liste'].forEach((id) => { $(id).hidden = true; });
     document.querySelector('.envoi').hidden = true;
     return;
   }
-  $('choix-liste').hidden = metier || vue === 'vehicules';
-  if (vue === 'vehicules') $('liste').value = 'ambulancier';
-  else if (metier) $('liste').value = roleCourant;
+  // Le choix de liste ne sert plus qu'aux administrateurs (check-list ou configuration).
+  $('choix-liste').hidden = roleCourant !== 'admin' || vue === 'vehicules';
+  if (vue === 'vehicules' || $('liste').value !== 'config') $('liste').value = 'ambulancier';
   afficherListe($('liste').value);
   if (vue === 'vehicules') $('vehicules').scrollIntoView({ block: 'start' });
 }
@@ -557,16 +548,25 @@ $('zone-ambulancier').addEventListener('reponse', () => { annulerConfirmation();
 // Accès pour les écrans d'actions (actions.js).
 window.App = { appeler, envoyerEvenement, ouvrirChecklist };
 Ambulancier.initialiser();
+Inventaires.initialiser({
+  appeler,
+  mettreEnFile,
+  role: () => roleCourant,
+  agent: () => (session.lire() || appareil.lire() || {}).identifiant || '',
+  fileAttente: () => fileAttente.lire(),
+});
+
+// Liens « #inv=<id> » : QR code, puce NFC, et navigation d'un inventaire à l'autre
+// (le bouton Retour du téléphone remonte ainsi d'un niveau).
+window.addEventListener('hashchange', () => {
+  if ($('ecran-checklist').hidden) return;
+  if (/^#inv\b/.test(location.hash)) ouvrirVue('inventaires');
+  else if (!$('zone-inventaires').hidden) Inventaires.afficher();
+});
 Parc.initialiser({ appeler });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });
 
-$('enregistrer').addEventListener('click', () => {
-  if ($('liste').value === 'ambulancier') {
-    enregistrerAmbulancier();
-    return;
-  }
-  mettreEnFile({ liste: $('liste').value, items: lireCoches() });
-});
+$('enregistrer').addEventListener('click', enregistrerAmbulancier);
 
 // ---------- Indicateur hors ligne ----------
 // Affiché tant que le réseau (Wi-Fi ou GSM) n'est pas disponible. navigator.onLine peut rester

@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=27">
+  <link rel="stylesheet" href="style.css?v=28">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -149,7 +149,6 @@
         <label for="liste">Check-list</label>
         <select id="liste">
           <option value="ambulancier">Ambulancier</option>
-          <option value="iade">IADE</option>
           <option id="option-config" value="config" hidden disabled>Configuration (administrateurs)</option>
         </select>
       </div>
@@ -195,8 +194,8 @@
       <!-- Configuration des véhicules et des check-lists (administrateurs) -->
       <div id="zone-config" class="configuration" hidden></div>
 
-      <!-- Check-list IADE : prototype, items fictifs -->
-      <ul id="items" class="items" hidden></ul>
+      <!-- Inventaires emboîtés (IADE) : sac > sacoche > pochette, photos à points, péremptions (inventaires.js) -->
+      <div id="zone-inventaires" class="inventaires" hidden></div>
 
       <div class="envoi">
         <button id="enregistrer" type="button" class="principal">Enregistrer la check-list</button>
@@ -209,6 +208,7 @@
   <nav id="menu" class="menu-principal" aria-label="Menu principal" hidden>
     <button type="button" data-vue="aujourdhui" aria-current="page">Aujourd'hui</button>
     <button type="button" data-vue="vehicules" id="menu-vehicules">Véhicules</button>
+    <button type="button" data-vue="inventaires" id="menu-inventaires" hidden>Inventaires</button>
     <button type="button" data-vue="plus">Plus</button>
   </nav>
 
@@ -224,6 +224,8 @@
   <script src="actions.js?v=10"></script>
   <script src="config-admin.js?v=6"></script>
   <script src="parc.js?v=6"></script>
-  <script src="app.js?v=21"></script>
+  <script src="lib/qrcode.js?v=1"></script>
+  <script src="inventaires.js?v=1"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>
