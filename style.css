@@ -1096,7 +1096,8 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 }
 .inv-article.perime .inv-repere-date { color: #fff; background: var(--erreur); border-color: var(--erreur); }
 .inv-article.sans-date .inv-repere-date { color: var(--gris); background: var(--ciel); border-color: var(--trait); }
-.inv-articles:not(.dates-visibles) .inv-peremption { display: none; }
+.inv-articles:not(.dates-visibles) .inv-article:not(.date-ouverte) .inv-peremption { display: none; }
+.inv-article.date-ouverte .inv-repere-date { box-shadow: 0 0 0 3px rgb(29 79 159 / 0.25); }
 .inv-articles.dates-visibles .inv-repere-date { display: none; }
 .inv-peremption { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0 0 0.45rem 2.1rem; }
 .inv-peremption label { font-size: 0.85rem; font-weight: 400; color: var(--gris); }
@@ -1241,3 +1242,23 @@ h1 .inv-tag-scellable { font-size: 0.8rem; vertical-align: 0.35em; }
   color: var(--bleu); background: var(--ciel); border: 2px solid var(--bleu); border-radius: 50%;
 }
 .inv-plus[aria-expanded="true"] { color: #fff; background: var(--bleu); }
+
+/* Glisser-déposer : poignée « ⠿ » sur chaque ligne en mode Modifier */
+.inv-poignee {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 2.2rem; min-height: 2.6rem; padding: 0; font-size: 1.35rem; line-height: 1;
+  color: var(--gris); background: none; border: 0; border-radius: 6px;
+  cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.inv-poignee:hover { color: var(--bleu); background: var(--ciel); }
+.inv-tri-en-cours, .inv-tri-en-cours * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+.inv-deplacee { position: relative; z-index: 2; background: #fff; box-shadow: 0 6px 18px rgb(19 41 75 / 0.22); border-radius: var(--rayon); outline: 2px solid var(--bleu); }
+/* Articles : poignée, nom, quantité et ✕ sur une ligne quand la place le permet */
+.inv-edition-fiche { flex-wrap: nowrap; align-items: center; }
+.inv-edition-fiche .inv-edition-nom { flex: 1 1 auto; }
+.inv-edition-separation { flex-wrap: nowrap; }
+.inv-edition-separation .inv-nom-article { flex: 1 1 auto !important; min-width: 0; }
+/* Sous-inventaires : poignée à gauche de la carte */
+.inv-liste-triable > li.inv-ligne-triable { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 0.2rem; }
+.inv-liste-triable > li.inv-ligne-triable > .inv-outils { grid-column: 2; }
+.inv-repere-date, .inv-poignee, .inv-plus { -webkit-tap-highlight-color: transparent; }

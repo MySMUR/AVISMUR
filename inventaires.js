@@ -851,18 +851,12 @@ const Inventaires = (() => {
     if (!fils.length && !edition) return null;
     const liste = el('ul', { classe: 'inv-liste' });
     fils.forEach((f, i) => {
-      const li = el('li', {}, carte(f, i + 1));
+      const li = el('li', { 'data-cle': f.id }, carte(f, i + 1));
       if (edition) {
         const point = c.points.some((p) => p.cible === f.id);
-        const deplacer = (sens) => {
-          const ordre = fils.slice();
-          ordre.splice(i + sens, 0, ordre.splice(i, 1)[0]);
-          ordre.forEach((x, rang) => { if (x.ordre !== rang) { x.ordre = rang; marquer(x.id); } });
-          rendre({ garderPosition: true });
-        };
+        li.classList.add('inv-ligne-triable');
+        li.prepend(poignee(f.nom));
         li.append(el('div', { classe: 'cfg-ligne inv-outils' },
-          el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Monter ${f.nom}`, texte: '↑', disabled: i === 0, surclick: () => deplacer(-1) }),
-          el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Descendre ${f.nom}`, texte: '↓', disabled: i === fils.length - 1, surclick: () => deplacer(1) }),
           c.photo ? el('button', {
             type: 'button', classe: `cfg-mini${placement === f.id ? ' inv-actif' : ''}`, texte: point ? 'Déplacer le point' : 'Placer sur la photo',
             surclick: () => { placement = f.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); },
@@ -872,6 +866,11 @@ const Inventaires = (() => {
       liste.append(li);
     });
     if (!edition) return el('section', { classe: 'inv-section' }, el('h2', { texte: 'Sous-inventaires' }), liste);
+    liste.classList.add('inv-liste-triable');
+    triable(liste, (cles) => {
+      cles.forEach((id, rang) => { const x = contenant(id); if (x && x.ordre !== rang) { x.ordre = rang; marquer(x.id); } });
+      rendre({ garderPosition: true });
+    });
     const formulaire = formulaireAjout(c);
     formulaire.hidden = !ajoutSousOuvert;
     const plus = el('button', {
@@ -897,6 +896,7 @@ const Inventaires = (() => {
    * et le bouton « Péremptions » (ou ce repère) affiche les dates.
    */
   let peremptionsVisibles = false;
+  const datesOuvertes = new Set(); // articles dont on a ouvert la date en touchant leur repère
   function blocVerification(c) {
     const articles = aCocher(c);
     if (!articles.length) return null;
@@ -965,7 +965,15 @@ const Inventaires = (() => {
       if (suiviPeremption(a)) {
         const champ = idChamp();
         const echeance = el('span', { classe: 'inv-echeance' });
-        const repere = el('button', { type: 'button', classe: 'inv-repere-date', surclick: () => { peremptionsVisibles = true; majBascule(); liste.querySelector(`#${champ}`).focus(); } });
+        // Le repère n'ouvre (ou ne referme) que la date de cet article ; « Péremptions » les affiche toutes.
+        const repere = el('button', { type: 'button', classe: 'inv-repere-date', 'aria-expanded': String(datesOuvertes.has(a.id)), surclick: () => {
+          const ouvrir = !datesOuvertes.has(a.id);
+          if (ouvrir) datesOuvertes.add(a.id); else datesOuvertes.delete(a.id);
+          li.classList.toggle('date-ouverte', ouvrir);
+          repere.setAttribute('aria-expanded', String(ouvrir));
+          if (ouvrir) liste.querySelector(`#${champ}`).focus();
+        } });
+        if (datesOuvertes.has(a.id)) li.classList.add('date-ouverte');
         const montrer = () => {
           const p = b.invalides[a.id] ? { niveau: 'perime', texte: 'Date non reconnue' } : etatPeremption(dateCourante(c, a, b));
           echeance.textContent = p.texte;
@@ -973,7 +981,8 @@ const Inventaires = (() => {
           // Repère visible même dates masquées : seulement quand il y a quelque chose à voir.
           repere.hidden = p.niveau === 'ok';
           repere.textContent = p.niveau === 'perime' ? '!' : (p.niveau === 'proche' ? '⏳' : '?');
-          repere.setAttribute('aria-label', `${nomArticle(a)} : ${p.texte}. Afficher les péremptions`);
+          repere.setAttribute('aria-label', `${nomArticle(a)} : ${p.texte}. Afficher sa date de péremption`);
+          li.classList.toggle('date-ouverte', datesOuvertes.has(a.id));
           repere.title = p.texte;
         };
         ligne.insertBefore(repere, ligne.querySelector('.inv-qte-zone, .inv-qte-attendue'));
@@ -1020,6 +1029,94 @@ const Inventaires = (() => {
         el('textarea', { id: champRemarque, rows: '2', maxlength: '500', 'aria-label': 'Remarque', valeur: b.remarque, surinput: (e) => { b.remarque = e.target.value; sauverBrouillons(); } })),
       el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
       el('button', { type: 'button', classe: 'principal inv-valider', texte: 'Valider cet inventaire', surclick: () => valider(c) }));
+  }
+
+  // ---------- Glisser-déposer ----------
+  /**
+   * Poignée « ⠿ » d'une ligne déplaçable. À la souris ou au doigt : on attrape la poignée et on glisse.
+   * Au clavier : flèches haut et bas sur la poignée.
+   */
+  function poignee(nom) {
+    return el('button', { type: 'button', classe: 'inv-poignee', 'aria-label': `Déplacer ${nom} (glisser, ou flèches haut et bas)`, title: 'Glisser pour déplacer', texte: '⠿' });
+  }
+
+  /**
+   * Rend les lignes de `liste` (enfants directs portant data-cle) réordonnables par leur poignée.
+   * `surFin(cles)` reçoit le nouvel ordre des clés, seulement s'il a changé.
+   */
+  function triable(liste, surFin) {
+    const ordre = () => [...liste.children].filter((x) => x.dataset.cle).map((x) => x.dataset.cle);
+    let depart = '';
+    const terminer = () => {
+      const apres = ordre().join(',');
+      if (apres !== depart) surFin(ordre());
+    };
+    liste.addEventListener('keydown', (e) => {
+      const p = e.target.closest('.inv-poignee');
+      if (!p || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+      e.preventDefault();
+      const ligne = p.closest('[data-cle]');
+      const voisin = e.key === 'ArrowUp' ? ligne.previousElementSibling : ligne.nextElementSibling;
+      if (!voisin || !voisin.dataset.cle) return;
+      depart = ordre().join(',');
+      if (e.key === 'ArrowUp') liste.insertBefore(ligne, voisin); else liste.insertBefore(voisin, ligne);
+      const cle = ligne.dataset.cle;
+      terminer();
+      // La liste est redessinée : on remet le focus sur la poignée de la ligne déplacée.
+      const nouvelle = zone.querySelector(`[data-cle="${cle}"] .inv-poignee`);
+      if (nouvelle) nouvelle.focus();
+    });
+    liste.addEventListener('pointerdown', (e) => {
+      const p = e.target.closest('.inv-poignee');
+      if (!p || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      e.preventDefault();
+      const ligne = p.closest('[data-cle]');
+      depart = ordre().join(',');
+      // Pas de capture du pointeur : déplacer la ligne dans la page la ferait perdre au navigateur.
+      // On suit donc le pointeur sur toute la fenêtre.
+      const pointeur = e.pointerId;
+      ligne.classList.add('inv-deplacee');
+      liste.classList.add('inv-tri-en-cours');
+      let defilement = 0;
+      let dernierY = e.clientY;
+      let parti = false;
+      let dernierX = e.clientX;
+      const placer = (y, x = dernierX) => {
+        // La ligne se place avant la première ligne (dans l'ordre de lecture) que le pointeur précède :
+        // au-dessus d'elle, ou sur sa rangée et à gauche de son milieu (listes sur deux colonnes).
+        const autres = [...liste.children].filter((n) => n !== ligne && n.dataset.cle);
+        const suivante = autres.find((n) => {
+          const r = n.getBoundingClientRect();
+          const surDeuxColonnes = autres.some((o) => o !== n && Math.abs(o.getBoundingClientRect().top - r.top) < 4);
+          if (!surDeuxColonnes) return y < r.top + r.height / 2;
+          return y < r.top || (y <= r.bottom && x < r.left + r.width / 2);
+        });
+        if (suivante) { if (ligne.nextElementSibling !== suivante) liste.insertBefore(ligne, suivante); } else if (autres.length && liste.lastElementChild !== ligne) {
+          autres[autres.length - 1].after(ligne);
+        }
+      };
+      // Près du haut ou du bas de l'écran, la page défile toute seule.
+      const boucle = setInterval(() => {
+        const marge = 70;
+        if (!parti) return;
+        defilement = dernierY < marge ? -12 : (dernierY > window.innerHeight - marge ? 12 : 0);
+        if (defilement) { window.scrollBy(0, defilement); placer(dernierY); }
+      }, 16);
+      const bouger = (ev) => { if (ev.pointerId !== pointeur) return; ev.preventDefault(); if (Math.abs(ev.clientY - e.clientY) > 6 || Math.abs(ev.clientX - e.clientX) > 6) parti = true; dernierY = ev.clientY; dernierX = ev.clientX; placer(ev.clientY, ev.clientX); };
+      const lacher = (ev) => {
+        if (ev && ev.pointerId !== pointeur) return;
+        clearInterval(boucle);
+        window.removeEventListener('pointermove', bouger);
+        window.removeEventListener('pointerup', lacher);
+        window.removeEventListener('pointercancel', lacher);
+        ligne.classList.remove('inv-deplacee');
+        liste.classList.remove('inv-tri-en-cours');
+        terminer();
+      };
+      window.addEventListener('pointermove', bouger, { passive: false });
+      window.addEventListener('pointerup', lacher);
+      window.addEventListener('pointercancel', lacher);
+    });
   }
 
   /**
@@ -1094,13 +1191,10 @@ const Inventaires = (() => {
     const dansLaListe = new Set(c.articles.filter((a) => a.ref).map((a) => a.ref));
     c.articles.forEach((a, i) => {
       const nom = nomArticle(a);
-      const deplacer = (sens) => { c.articles.splice(i + sens, 0, c.articles.splice(i, 1)[0]); marquer(c.id); rendre({ garderPosition: true }); };
-      const fleches = [
-        el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Monter ${nom}`, texte: '↑', disabled: i === 0, surclick: () => deplacer(-1) }),
-        el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Descendre ${nom}`, texte: '↓', disabled: i === c.articles.length - 1, surclick: () => deplacer(1) }),
-        el('button', { type: 'button', classe: 'cfg-mini danger', 'aria-label': `Retirer ${nom} de cet inventaire`, texte: '✕', surclick: () => { c.articles.splice(i, 1); marquer(c.id); rendre({ garderPosition: true }); } })];
+      const retirer = el('button', { type: 'button', classe: 'cfg-mini danger', 'aria-label': `Retirer ${nom} de cet inventaire`, texte: '✕', surclick: () => { c.articles.splice(c.articles.indexOf(a), 1); marquer(c.id); rendre({ garderPosition: true }); } });
+      const fleches = [retirer];
       if (a.separateur) {
-        liste.append(el('div', { classe: 'cfg-ligne inv-edition-article inv-edition-separation' },
+        liste.append(el('div', { classe: 'cfg-ligne inv-edition-article inv-edition-separation', 'data-cle': a.id }, poignee(a.nom),
           el('span', { classe: 'inv-etiquette-separation', 'aria-hidden': 'true', texte: 'Séparation' }),
           el('input', { 'aria-label': 'Titre de la séparation', maxlength: '120', valeur: a.nom, classe: 'inv-nom-article', surchange: (e) => { const t = e.target.value.trim(); if (t) { a.nom = t; marquer(c.id); } else e.target.value = a.nom; } }),
           ...fleches));
@@ -1113,7 +1207,7 @@ const Inventaires = (() => {
         surfocus: (e) => e.target.select(),
         surchange: (e) => { const n = Math.round(Number(e.target.value)); a.quantite = e.target.value === '' || !(n >= 0) ? '' : String(Math.min(n, 999)); e.target.value = a.quantite; marquer(c.id); },
       });
-      liste.append(el('div', { classe: `inv-edition-article inv-edition-fiche${rattacher === a.id ? ' inv-rattache' : ''}` },
+      liste.append(el('div', { classe: `inv-edition-article inv-edition-fiche${rattacher === a.id ? ' inv-rattache' : ''}`, 'data-cle': a.id }, poignee(nom),
         el('div', { classe: 'inv-edition-nom' },
           el('strong', { texte: nom }),
           f ? el('small', { texte: resumeFiche(f) })
@@ -1125,6 +1219,14 @@ const Inventaires = (() => {
                 rendre({ garderPosition: true, focus: rattacher ? '.inv-recherche-article input' : '' });
               } }))),
         el('div', { classe: 'cfg-ligne inv-edition-outils' }, el('label', { classe: 'inv-qte-libelle' }, 'Qté ', qte), ...fleches)));
+    });
+
+    triable(liste, (cles) => {
+      const parId = {};
+      c.articles.forEach((x) => { parId[x.id] = x; });
+      c.articles = cles.map((id) => parId[id]).filter(Boolean);
+      marquer(c.id);
+      rendre({ garderPosition: true });
     });
 
     // ----- Ajout : recherche dans la base, sinon création de la fiche -----
