@@ -1233,3 +1233,11 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
   color: var(--bleu); background: var(--ciel); border: 1.5px solid var(--bleu); border-radius: 999px;
 }
 h1 .inv-tag-scellable { font-size: 0.8rem; vertical-align: 0.35em; }
+
+/* « + » qui déplie l'ajout d'un sous-inventaire */
+.inv-titre-plus { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.inv-plus {
+  width: 2.4rem; height: 2.4rem; flex-shrink: 0; padding: 0; font-size: 1.5rem; font-weight: 700; line-height: 1;
+  color: var(--bleu); background: var(--ciel); border: 2px solid var(--bleu); border-radius: 50%;
+}
+.inv-plus[aria-expanded="true"] { color: #fff; background: var(--bleu); }

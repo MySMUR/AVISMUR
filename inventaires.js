@@ -32,6 +32,7 @@ const Inventaires = (() => {
   let rattacher = ''; // article sans fiche que l'on rattache à la base des articles
   let rechercheAjout = ''; // recherche en cours dans « Ajouter un article »
   let creation = null; // fiche en cours de création ({ denomination, … }) depuis « Ajouter un article »
+  let ajoutSousOuvert = false; // formulaire « Ajouter un sous-inventaire » déplié (mode Modifier)
   let baseOuverte = ''; // fiche dépliée dans la base des articles ('nouvelle' : création)
   let baseFiltre = { texte: '', categorie: '', archives: false };
   let edition = false;
@@ -849,7 +850,24 @@ const Inventaires = (() => {
       }
       liste.append(li);
     });
-    return el('section', { classe: 'inv-section' }, el('h2', { texte: 'Sous-inventaires' }), liste, edition ? formulaireAjout(c) : null);
+    if (!edition) return el('section', { classe: 'inv-section' }, el('h2', { texte: 'Sous-inventaires' }), liste);
+    const formulaire = formulaireAjout(c);
+    formulaire.hidden = !ajoutSousOuvert;
+    const plus = el('button', {
+      type: 'button', classe: 'inv-plus', 'aria-label': 'Ajouter un sous-inventaire', 'aria-expanded': String(ajoutSousOuvert), title: 'Ajouter un sous-inventaire',
+      texte: ajoutSousOuvert ? '−' : '+',
+      surclick: () => {
+        ajoutSousOuvert = !ajoutSousOuvert;
+        formulaire.hidden = !ajoutSousOuvert;
+        plus.textContent = ajoutSousOuvert ? '−' : '+';
+        plus.setAttribute('aria-expanded', String(ajoutSousOuvert));
+        if (ajoutSousOuvert) formulaire.querySelector('input').focus();
+      },
+    });
+    return el('section', { classe: 'inv-section' },
+      el('h2', { classe: 'inv-titre-plus' }, el('span', { texte: 'Sous-inventaires' }), plus),
+      fils.length ? null : el('p', { classe: 'aide-question', texte: 'Aucun sous-inventaire. Touchez « + » pour en ajouter un (sacoche, pochette, tiroir…).' }),
+      liste, formulaire);
   }
 
   /**
@@ -1089,6 +1107,9 @@ const Inventaires = (() => {
     });
 
     // ----- Ajout : recherche dans la base, sinon création de la fiche -----
+    // Toucher une proposition ne retire pas le focus du champ de recherche : le clavier reste ouvert,
+    // la page ne bouge pas sous le doigt et le clic arrive bien sur la proposition touchée.
+    const garderFocus = { surmousedown: (e) => e.preventDefault(), surpointerdown: (e) => { if (e.pointerType !== 'mouse') e.preventDefault(); } };
     const cible = rattacher && c.articles.find((x) => x.id === rattacher);
     const champ = idChamp();
     const resultats = el('ul', { classe: 'inv-resultats', role: 'list' });
@@ -1125,21 +1146,26 @@ const Inventaires = (() => {
       const trouvees = chercherFiches(texte);
       trouvees.slice(0, 8).forEach((f) => {
         const deja = dansLaListe.has(f.id);
-        resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => ajouterFiche(f) },
+        resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => ajouterFiche(f), ...garderFocus },
           el('strong', { texte: f.denomination }),
           el('small', { texte: `${resumeFiche(f)}${deja ? ' · déjà dans cet inventaire' : ''}` }))));
       });
       if (trouvees.length > 8) resultats.append(el('li', { classe: 'aide-question', texte: `${trouvees.length - 8} autre(s) : précisez la recherche.` }));
       // On ne propose de créer que si la dénomination exacte n'existe pas déjà.
       if (!trouvees.some((f) => cle(f.denomination) === cle(texte))) {
-        resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat inv-creer', surclick: ouvrirCreation },
+        resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat inv-creer', surclick: ouvrirCreation, ...garderFocus },
           el('strong', { texte: `＋ Créer « ${texte} » dans la base` }),
           el('small', { texte: trouvees.length ? 'Aucun des articles ci-dessus ne convient' : 'Aucun article de la base ne correspond' }))));
       }
     };
     const recherche = el('input', {
       id: champ, type: 'search', autocomplete: 'off', valeur: rechercheAjout, placeholder: 'Nom ou référence (ex. KT 18, 404448)',
-      surinput: (e) => { rechercheAjout = e.target.value; creation = null; zoneCreation.innerHTML = ''; afficherResultats(); },
+      surinput: (e) => {
+        // Android renvoie le texte quand le clavier se ferme : sans changement, on ne reconstruit pas la liste
+        // (sinon la proposition touchée disparaît avant que le clic n'arrive).
+        if (e.target.value === rechercheAjout) return;
+        rechercheAjout = e.target.value; creation = null; zoneCreation.innerHTML = ''; afficherResultats();
+      },
       surkeydown: (e) => {
         if (e.key !== 'Enter') return;
         e.preventDefault();
@@ -1368,6 +1394,7 @@ const Inventaires = (() => {
       rattacher = '';
       rechercheAjout = '';
       creation = null;
+      ajoutSousOuvert = false;
     }
     zone.innerHTML = '';
     if (id === BASE) {
