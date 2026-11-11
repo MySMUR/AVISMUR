@@ -419,6 +419,15 @@ const Inventaires = (() => {
   }
 
   /** Relit les inventaires et leur état sur le serveur. */
+  /** JSON aux clés triées : deux objets de même contenu donnent le même texte, quel que soit l'ordre des champs. */
+  function canonique(v) {
+    if (Array.isArray(v)) return `[${v.map(canonique).join(',')}]`;
+    if (v && typeof v === 'object') return `{${Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => `${JSON.stringify(k)}:${canonique(v[k])}`).join(',')}}`;
+    return JSON.stringify(v);
+  }
+  const identiques = (a, b) => canonique(normaliser(a)) === canonique(normaliser(b));
+  let changeDistant = false; // un inventaire affiché a été modifié ailleurs (autre appareil, Sheet)
+
   async function tirer() {
     const rep = await App.appeler('lireInventaires');
     if (!rep.ok) {
@@ -428,7 +437,16 @@ const Inventaires = (() => {
     }
     synchro.serveurInconnu = false;
     const contenants = {};
-    rep.contenants.forEach((c) => { if (c && ID.test(c.id)) contenants[c.id] = normaliser(c); });
+    rep.contenants.forEach((c) => {
+      if (!c || !ID.test(c.id)) return;
+      const recu = normaliser(c);
+      const local = structure.contenants[c.id];
+      // Inventaire identique à celui de l'appareil (cas courant : on vient de l'envoyer) : on garde l'objet
+      // de l'appareil, auquel l'écran affiché est relié. Le remplacer ferait partir les ajouts suivants
+      // dans une copie qui n'est plus enregistrée.
+      if (local && identiques(local, recu)) contenants[c.id] = local;
+      else { contenants[c.id] = recu; if (local) changeDistant = true; }
+    });
     // Ce qui n'est pas encore envoyé reste tel que sur l'appareil.
     Object.keys(modifs.ids).forEach((id) => { if (structure.contenants[id]) contenants[id] = structure.contenants[id]; });
     const catalogue = {};
@@ -493,7 +511,10 @@ const Inventaires = (() => {
     }
     // On ne redessine pas sous les doigts de quelqu'un qui est en train de saisir.
     const saisie = zone.contains(document.activeElement) && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
-    if (recu && !saisie && !placement) rendre({ garderPosition: true });
+    // Un inventaire modifié ailleurs est redessiné même pendant une saisie : l'écran doit montrer
+    // (et modifier) la version à jour.
+    if (recu && (changeDistant || !saisie) && !placement) rendre({ garderPosition: true });
+    changeDistant = false;
     if (synchro.encore) { synchro.encore = false; synchroniser(); return; }
     if (recu) prechargerPhotos();
   }
