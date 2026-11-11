@@ -25,10 +25,15 @@ const Inventaires = (() => {
 
   let App = null; // fonctions de app.js (appeler, mettreEnFile, role, agent, fileAttente)
   let zone = null;
-  let structure = { contenants: {}, reglages: { alerteJours: 30 } };
+  let structure = { contenants: {}, catalogue: {}, reglages: { alerteJours: 30 } };
   let etat = { verifs: {}, peremptions: {} };
   let brouillons = { jour: '', liste: {} };
-  let modifs = { ids: {}, reglages: false }; // contenants modifiés sur l'appareil, pas encore envoyés
+  let modifs = { ids: {}, fiches: {}, reglages: false }; // contenants et fiches modifiés sur l'appareil, pas encore envoyés
+  let rattacher = ''; // article sans fiche que l'on rattache à la base des articles
+  let rechercheAjout = ''; // recherche en cours dans « Ajouter un article »
+  let creation = null; // fiche en cours de création ({ denomination, … }) depuis « Ajouter un article »
+  let baseOuverte = ''; // fiche dépliée dans la base des articles ('nouvelle' : création)
+  let baseFiltre = { texte: '', categorie: '', archives: false };
   let edition = false;
   let placement = ''; // sous-inventaire dont on place le point sur la photo
   let avis = ''; // message affiché une fois en haut de la vue
@@ -134,6 +139,61 @@ const Inventaires = (() => {
       ...(c.supprime ? { supprime: true } : {}),
     };
   }
+  // ---------- Base des articles (catalogue) ----------
+  const CATEGORIES = ['Médicament', 'DM', 'Magasin'];
+  /** Texte comparable : minuscules, sans accents, espaces simples. */
+  const cle = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  function normaliserFiche(f) {
+    return {
+      id: f.id, denomination: String(f.denomination || ''), categorie: CATEGORIES.includes(f.categorie) ? f.categorie : '',
+      horsStock: f.horsStock === true, refInterne: String(f.refInterne || ''), refFournisseur: String(f.refFournisseur || ''),
+      consommable: f.consommable === true, perissable: f.perissable === true, archive: f.archive === true,
+    };
+  }
+  /** Fiche de la base d'un article d'inventaire (null pour un article ancien, saisi sans la base). */
+  const fiche = (a) => (a && a.ref && structure.catalogue[a.ref]) || null;
+  const nomArticle = (a) => (fiche(a) ? fiche(a).denomination : a.nom);
+  /** Péremption suivie : d'après la fiche (« périssable »), sinon d'après l'article lui-même. */
+  const suiviPeremption = (a) => (fiche(a) ? fiche(a).perissable : a.peremption === true);
+  function resumeFiche(f) {
+    return [f.categorie || 'Sans catégorie', f.refInterne ? `réf. ${f.refInterne}` : '', f.horsStock ? 'dotation hors stock' : '',
+      f.consommable ? '' : 'non consommable', f.perissable ? 'périssable' : '', f.archive ? 'archivé' : ''].filter(Boolean).join(' · ');
+  }
+  /** Fiches dont la dénomination ou une référence contient tous les mots cherchés. */
+  function chercherFiches(texte, { archives = false, categorie = '' } = {}) {
+    const mots = cle(texte).split(' ').filter(Boolean);
+    return Object.values(structure.catalogue)
+      .filter((f) => (archives || !f.archive) && (!categorie || f.categorie === categorie))
+      .filter((f) => { const t = cle(`${f.denomination} ${f.refInterne} ${f.refFournisseur}`); return mots.every((m) => t.includes(m)); })
+      .sort((x, y) => {
+        // Les dénominations qui commencent par la recherche d'abord.
+        const dx = cle(x.denomination).startsWith(mots[0] || '') ? 0 : 1;
+        const dy = cle(y.denomination).startsWith(mots[0] || '') ? 0 : 1;
+        return dx - dy || x.denomination.localeCompare(y.denomination, 'fr');
+      });
+  }
+  /** Autre fiche (non archivée) qui porte déjà ce nom ou cette réf. interne. */
+  function doublon(f) {
+    return Object.values(structure.catalogue).find((x) => x.id !== f.id && !x.archive
+      && (cle(x.denomination) === cle(f.denomination) || (f.refInterne && cle(x.refInterne) === cle(f.refInterne)))) || null;
+  }
+  /** Inventaires où chaque fiche est utilisée : { idFiche: [contenant, …] }. */
+  function utilisations() {
+    const u = {};
+    Object.values(structure.contenants).filter((c) => !c.supprime).forEach((c) => c.articles.forEach((a) => {
+      if (a.ref) (u[a.ref] = u[a.ref] || []).includes(c) || u[a.ref].push(c);
+    }));
+    return u;
+  }
+  function enregistrerFiche(f) {
+    structure.catalogue[f.id] = f;
+    modifs.fiches[f.id] = (modifs.fiches[f.id] || 0) + 1;
+    sauverStructure();
+    sauverModifs();
+    programmerEnvoi();
+  }
+  const enAttente = () => Object.keys(modifs.ids).length || Object.keys(modifs.fiches).length || modifs.reglages;
+
   /** Articles à cocher (sans les séparations, qui ne servent qu'à regrouper la liste). */
   const aCocher = (c) => c.articles.filter((a) => !a.separateur);
   const contenant = (id) => {
@@ -174,7 +234,7 @@ const Inventaires = (() => {
         const v = verifDuJour(c.id);
         if (v) { b.faits += 1; b.manquants += v.manquants.length; }
       }
-      aCocher(c).filter((a) => a.peremption).forEach((a) => {
+      aCocher(c).filter(suiviPeremption).forEach((a) => {
         const p = etatPeremption(datePeremption(c.id, a.id)).niveau;
         if (p === 'perime') b.perimes += 1;
         else if (p === 'proche') b.proches += 1;
@@ -312,9 +372,16 @@ const Inventaires = (() => {
 
   class RefusServeur extends Error {}
 
-  /** Envoie les modifications de l'administrateur : d'abord les photos, puis les contenants. */
+  /** Envoie les modifications de l'administrateur : d'abord les fiches de la base, puis les photos, puis les contenants. */
   async function pousser() {
     etatSynchro('Envoi des modifications…');
+    const fichesEnvoyees = { ...modifs.fiches };
+    if (Object.keys(fichesEnvoyees).length) {
+      const repFiches = await App.appeler('enregistrerCatalogue', { fiches: Object.keys(fichesEnvoyees).map((id) => structure.catalogue[id]).filter(Boolean) });
+      if (!repFiches.ok) throw new RefusServeur(repFiches.erreur || 'base des articles refusée');
+      Object.keys(fichesEnvoyees).forEach((id) => { if (modifs.fiches[id] === fichesEnvoyees[id]) delete modifs.fiches[id]; });
+      sauverModifs();
+    }
     for (const id of Object.keys(modifs.ids)) {
       const c = structure.contenants[id];
       if (!c || !c.photo.startsWith('local-')) continue;
@@ -362,7 +429,10 @@ const Inventaires = (() => {
     rep.contenants.forEach((c) => { if (c && ID.test(c.id)) contenants[c.id] = normaliser(c); });
     // Ce qui n'est pas encore envoyé reste tel que sur l'appareil.
     Object.keys(modifs.ids).forEach((id) => { if (structure.contenants[id]) contenants[id] = structure.contenants[id]; });
-    structure = { contenants, reglages: modifs.reglages ? structure.reglages : { alerteJours: Number(rep.reglages && rep.reglages.alerteJours) || 30 } };
+    const catalogue = {};
+    (rep.catalogue || []).forEach((f) => { if (f && ID.test(f.id)) catalogue[f.id] = normaliserFiche(f); });
+    Object.keys(modifs.fiches).forEach((id) => { if (structure.catalogue[id]) catalogue[id] = structure.catalogue[id]; });
+    structure = { contenants, catalogue, reglages: modifs.reglages ? structure.reglages : { alerteJours: Number(rep.reglages && rep.reglages.alerteJours) || 30 } };
 
     // État : entre l'appareil (vérifications pas encore envoyées) et le serveur, le plus récent l'emporte.
     const recent = Date.now() - 2 * 86400000;
@@ -402,13 +472,13 @@ const Inventaires = (() => {
     clearTimeout(minuterieEnvoi);
     let recu = false;
     try {
-      const aEnvoyer = Object.keys(modifs.ids).length || modifs.reglages;
+      const aEnvoyer = enAttente();
       if (aEnvoyer && estAdmin()) await pousser();
       await tirer();
       recu = true;
       etatSynchro(aEnvoyer ? 'Modifications enregistrées.' : '', 'succes');
     } catch (e) {
-      const attente = Object.keys(modifs.ids).length || modifs.reglages;
+      const attente = enAttente();
       if (e instanceof RefusServeur) {
         etatSynchro(synchro.serveurInconnu
           ? (estAdmin() ? `Le serveur ne connaît pas encore les inventaires : ajouter Inventaires.gs dans Apps Script puis redéployer (README du backend).${attente ? ' Vos modifications restent sur cet appareil.' : ''}` : 'Les inventaires ne sont pas encore disponibles.')
@@ -427,11 +497,13 @@ const Inventaires = (() => {
   }
 
   // ---------- Navigation ----------
+  const BASE = '@base'; // « #inv-base » : base des articles
   function idCourant() {
+    if (location.hash === '#inv-base') return BASE;
     const m = /^#inv=([a-z0-9]{6,16})$/.exec(location.hash);
     return m ? m[1] : '';
   }
-  const lien = (id) => (id ? `#inv=${id}` : '#inv');
+  const lien = (id) => (id === BASE ? '#inv-base' : (id ? `#inv=${id}` : '#inv'));
   function aller(id) {
     placement = '';
     confirmer = '';
@@ -478,9 +550,9 @@ const Inventaires = (() => {
       const att = attendue(a);
       const qte = trouvee(a, b);
       return {
-        id: a.id, nom: a.nom, ok: Boolean(b.coches[a.id]),
+        id: a.id, nom: nomArticle(a), ok: Boolean(b.coches[a.id]),
         ...(att !== null ? { attendu: att, quantite: qte === null || qte === '' ? 0 : Number(qte) } : {}),
-        ...(a.peremption ? { peremption: dateCourante(c, a, b) } : {}),
+        ...(suiviPeremption(a) ? { peremption: dateCourante(c, a, b) } : {}),
       };
     });
     // Manquant : non coché, ou coché avec une quantité inférieure à celle attendue.
@@ -605,6 +677,10 @@ const Inventaires = (() => {
       el('div', { classe: 'inv-entete' }, el('h1', { tabindex: '-1', texte: 'Inventaires' }), boutonEdition()),
       ligneSynchro(), ligneAvis(),
     ];
+    const nbFiches = Object.values(structure.catalogue).filter((f) => !f.archive).length;
+    if (nbFiches || estAdmin()) {
+      noeuds.push(el('a', { classe: 'lien inv-lien-base', href: lien(BASE), texte: `Base des articles (${nbFiches})` }));
+    }
     if (!racines.length) {
       noeuds.push(el('p', { classe: 'consigne', texte: estAdmin()
         ? 'Aucun inventaire pour l\'instant. Appuyez sur « Modifier » pour créer le premier (un sac, un tiroir, une armoire…), puis ajoutez-lui une photo, des sous-inventaires et des articles.'
@@ -638,7 +714,7 @@ const Inventaires = (() => {
 
     // Péremptions : tout ce qui est périmé ou le sera bientôt, avec le chemin pour y aller.
     const alertes = [];
-    tous.forEach((c) => aCocher(c).filter((a) => a.peremption).forEach((a) => {
+    tous.forEach((c) => aCocher(c).filter(suiviPeremption).forEach((a) => {
       const date = datePeremption(c.id, a.id);
       const p = etatPeremption(date);
       if (p.niveau === 'perime' || p.niveau === 'proche') alertes.push({ c, a, date, p, jours: joursRestants(date) });
@@ -649,7 +725,7 @@ const Inventaires = (() => {
       noeuds.push(el('details', { classe: 'inv-alertes', open: perimes > 0 },
         el('summary', {}, 'Péremptions : ', [perimes ? pluriel(perimes, 'périmé') : '', alertes.length - perimes ? `${alertes.length - perimes} à moins de ${structure.reglages.alerteJours} jours` : ''].filter(Boolean).join(', ')),
         el('ul', {}, ...alertes.map((x) => el('li', { classe: x.p.niveau },
-          el('a', { href: lien(x.c.id) }, el('strong', { texte: x.a.nom }), ` — ${chemin(x.c.id).map((y) => y.nom).join(' › ')}`),
+          el('a', { href: lien(x.c.id) }, el('strong', { texte: nomArticle(x.a) }), ` — ${chemin(x.c.id).map((y) => y.nom).join(' › ')}`),
           el('span', { texte: `${afficherDate(x.date)} · ${x.p.texte}` }))))));
     }
 
@@ -788,7 +864,7 @@ const Inventaires = (() => {
     const liste = el('ul', { classe: 'inv-articles' });
     const toutCocher = el('button', { type: 'button', classe: 'lien tout-cocher' });
     const compte = el('span', { classe: 'inv-compte' });
-    const suivis = articles.filter((a) => a.peremption);
+    const suivis = articles.filter(suiviPeremption);
     const basculer = suivis.length ? el('button', { type: 'button', classe: 'lien inv-basculer-dates' }) : null;
     const majBascule = () => {
       if (!basculer) return;
@@ -826,12 +902,12 @@ const Inventaires = (() => {
       const champCase = idChamp();
       const coche = el('input', { type: 'checkbox', id: champCase, 'data-article': a.id, checked: Boolean(b.coches[a.id]), surchange: (e) => { b.coches[a.id] = e.target.checked; modifie(); } });
       const li = el('li', { classe: 'inv-article' });
-      const ligne = el('div', { classe: 'inv-ligne' }, coche, el('label', { for: champCase, classe: 'inv-nom', texte: a.nom }));
+      const ligne = el('div', { classe: 'inv-ligne' }, coche, el('label', { for: champCase, classe: 'inv-nom', texte: nomArticle(a) }));
       const att = attendue(a);
       if (att !== null) {
         const champQte = el('input', {
           type: 'number', inputmode: 'numeric', min: '0', max: '999', step: '1', classe: 'inv-qte',
-          'aria-label': `Quantité de ${a.nom} (attendu ${att})`, valeur: String(trouvee(a, b)),
+          'aria-label': `Quantité de ${nomArticle(a)} (attendu ${att})`, valeur: String(trouvee(a, b)),
           surfocus: (e) => e.target.select(),
           surinput: (e) => {
             const v = e.target.value === '' ? '' : Math.max(0, Math.round(Number(e.target.value)));
@@ -846,7 +922,7 @@ const Inventaires = (() => {
         ligne.append(el('span', { classe: 'inv-qte-attendue', texte: a.quantite }));
       }
       li.append(ligne);
-      if (a.peremption) {
+      if (suiviPeremption(a)) {
         const champ = idChamp();
         const echeance = el('span', { classe: 'inv-echeance' });
         const repere = el('button', { type: 'button', classe: 'inv-repere-date', surclick: () => { peremptionsVisibles = true; majBascule(); liste.querySelector(`#${champ}`).focus(); } });
@@ -857,7 +933,7 @@ const Inventaires = (() => {
           // Repère visible même dates masquées : seulement quand il y a quelque chose à voir.
           repere.hidden = p.niveau === 'ok';
           repere.textContent = p.niveau === 'perime' ? '!' : (p.niveau === 'proche' ? '⏳' : '?');
-          repere.setAttribute('aria-label', `${a.nom} : ${p.texte}. Afficher les péremptions`);
+          repere.setAttribute('aria-label', `${nomArticle(a)} : ${p.texte}. Afficher les péremptions`);
           repere.title = p.texte;
         };
         ligne.insertBefore(repere, ligne.querySelector('.inv-qte-zone, .inv-qte-attendue'));
@@ -906,16 +982,83 @@ const Inventaires = (() => {
       el('button', { type: 'button', classe: 'principal inv-valider', texte: 'Valider cet inventaire', surclick: () => valider(c) }));
   }
 
+  /**
+   * Formulaire d'une fiche de la base des articles.
+   * `surEnregistrer(fiche)` reçoit la fiche validée ; `utiliser(fiche)`, s'il est fourni, propose
+   * d'utiliser la fiche existante quand la dénomination ou la réf. interne est déjà dans la base.
+   */
+  function formulaireFiche(depart, { titre, surEnregistrer, surAnnuler, utiliser, actions = [] }) {
+    const f = { ...depart };
+    const perissableTouche = { valeur: Boolean(depart.id && structure.catalogue[depart.id]) };
+    const ids = { nom: idChamp(), interne: idChamp(), fourn: idChamp(), cat: idChamp() };
+    const erreur = el('p', { classe: 'message erreur', role: 'alert', hidden: true });
+    const caseFiche = (champ, texte, aide) => {
+      const i = idChamp();
+      return el('label', { classe: 'cfg-case inv-case-fiche', for: i },
+        el('input', { type: 'checkbox', id: i, checked: f[champ] === true, 'data-champ': champ, surchange: (e) => {
+          f[champ] = e.target.checked;
+          if (champ === 'perissable') perissableTouche.valeur = true;
+        } }), el('span', {}, texte, aide ? el('small', { texte: aide }) : null));
+    };
+    const casePerissable = caseFiche('perissable', 'Périssable', 'date de péremption suivie dans les inventaires');
+    const categories = el('div', { classe: 'puces', role: 'radiogroup', 'aria-labelledby': ids.cat });
+    CATEGORIES.forEach((cat) => {
+      const i = idChamp();
+      categories.append(el('input', { type: 'radio', name: ids.cat, id: i, value: cat, checked: f.categorie === cat, surchange: () => {
+        f.categorie = cat;
+        // Un médicament est périssable par défaut, tant qu'on n'a pas choisi soi-même.
+        if (!perissableTouche.valeur) { f.perissable = cat === 'Médicament'; casePerissable.querySelector('input').checked = f.perissable; }
+      } }), el('label', { for: i, texte: cat }));
+    });
+    const valider = () => {
+      f.denomination = f.denomination.trim().replace(/\s+/g, ' ');
+      f.refInterne = f.refInterne.trim();
+      f.refFournisseur = f.refFournisseur.trim();
+      const probleme = !f.denomination ? 'Indiquez la dénomination.' : (!f.categorie ? 'Choisissez la catégorie : Médicament, DM ou Magasin.' : '');
+      erreur.innerHTML = '';
+      if (probleme) { erreur.textContent = probleme; erreur.hidden = false; return; }
+      const autre = doublon(f);
+      if (autre) {
+        erreur.append(cle(autre.denomination) === cle(f.denomination)
+          ? `« ${autre.denomination} » existe déjà dans la base. `
+          : `La réf. interne ${f.refInterne} est déjà celle de « ${autre.denomination} ». `);
+        if (utiliser) erreur.append(el('button', { type: 'button', classe: 'lien', texte: 'Utiliser cet article', surclick: () => utiliser(autre) }));
+        erreur.hidden = false;
+        return;
+      }
+      surEnregistrer(normaliserFiche(f));
+    };
+    const texte = (champ, id, libelle, attributs = {}) => el('div', { classe: 'champ' }, el('label', { for: id, texte: libelle }),
+      el('input', { id, valeur: f[champ], autocomplete: 'off', surinput: (e) => { f[champ] = e.target.value; }, ...attributs }));
+    return el('form', { classe: 'inv-fiche', novalidate: true, sursubmit: (e) => { e.preventDefault(); valider(); } },
+      titre ? el('h3', { texte: titre }) : null,
+      texte('denomination', ids.nom, 'Dénomination', { maxlength: '120', required: true }),
+      el('div', { classe: 'champ' }, el('span', { classe: 'inv-libelle', id: ids.cat, texte: 'Catégorie' }), categories),
+      el('div', { classe: 'inv-refs' },
+        texte('refInterne', ids.interne, 'Réf. interne', { maxlength: '60', inputmode: 'text' }),
+        texte('refFournisseur', ids.fourn, 'Réf. fournisseur', { maxlength: '120' })),
+      el('div', { classe: 'inv-cases-fiche' },
+        caseFiche('consommable', 'Consommable', 'usage unique, à remplacer après utilisation'),
+        casePerissable,
+        caseFiche('horsStock', 'Dotation hors stock', 'ne fait pas partie du stock de la pharmacie')),
+      erreur,
+      el('div', { classe: 'cfg-actions' },
+        el('button', { type: 'submit', classe: 'cfg-bouton inv-actif', texte: 'Enregistrer la fiche' }),
+        surAnnuler ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Annuler', surclick: surAnnuler }) : null,
+        ...actions));
+  }
+
   /** Édition des articles d'un contenant (administrateurs). */
   function blocArticles(c) {
     const liste = el('div', { classe: 'inv-edition-articles' });
+    const dansLaListe = new Set(c.articles.filter((a) => a.ref).map((a) => a.ref));
     c.articles.forEach((a, i) => {
+      const nom = nomArticle(a);
       const deplacer = (sens) => { c.articles.splice(i + sens, 0, c.articles.splice(i, 1)[0]); marquer(c.id); rendre({ garderPosition: true }); };
-      const suivi = idChamp();
       const fleches = [
-        el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Monter ${a.nom}`, texte: '↑', disabled: i === 0, surclick: () => deplacer(-1) }),
-        el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Descendre ${a.nom}`, texte: '↓', disabled: i === c.articles.length - 1, surclick: () => deplacer(1) }),
-        el('button', { type: 'button', classe: 'cfg-mini danger', 'aria-label': `Supprimer ${a.nom}`, texte: '✕', surclick: () => { c.articles.splice(i, 1); marquer(c.id); rendre({ garderPosition: true }); } })];
+        el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Monter ${nom}`, texte: '↑', disabled: i === 0, surclick: () => deplacer(-1) }),
+        el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Descendre ${nom}`, texte: '↓', disabled: i === c.articles.length - 1, surclick: () => deplacer(1) }),
+        el('button', { type: 'button', classe: 'cfg-mini danger', 'aria-label': `Retirer ${nom} de cet inventaire`, texte: '✕', surclick: () => { c.articles.splice(i, 1); marquer(c.id); rendre({ garderPosition: true }); } })];
       if (a.separateur) {
         liste.append(el('div', { classe: 'cfg-ligne inv-edition-article inv-edition-separation' },
           el('span', { classe: 'inv-etiquette-separation', 'aria-hidden': 'true', texte: 'Séparation' }),
@@ -923,39 +1066,195 @@ const Inventaires = (() => {
           ...fleches));
         return;
       }
-      liste.append(el('div', { classe: 'cfg-ligne inv-edition-article' },
-        el('input', { 'aria-label': 'Désignation', maxlength: '120', valeur: a.nom, classe: 'inv-nom-article', surchange: (e) => { const t = e.target.value.trim(); if (t) { a.nom = t; marquer(c.id); } else e.target.value = a.nom; } }),
-        el('input', { 'aria-label': `Quantité de ${a.nom}`, maxlength: '20', placeholder: 'Qté', valeur: a.quantite || '', classe: 'inv-court', surchange: (e) => { a.quantite = e.target.value.trim(); marquer(c.id); } }),
-        el('label', { classe: 'cfg-case', for: suivi }, el('input', { type: 'checkbox', id: suivi, checked: a.peremption === true, surchange: (e) => { a.peremption = e.target.checked; marquer(c.id); } }), 'Péremption'),
-        ...fleches));
-    });
-    const champ = idChamp();
-    const saisie = el('textarea', { id: champ, rows: '4', placeholder: 'Un article par ligne, quantité après « x ».\nUne ligne commençant par # crée une séparation :\n# Seringues\nSeringue 10 mL x6' });
-    const ajouter = () => {
-      const lignes = saisie.value.split('\n').map((l) => l.trim()).filter(Boolean);
-      if (!lignes.length) return;
-      lignes.forEach((ligne) => {
-        const titre = /^#+\s*(.+)$/.exec(ligne);
-        if (titre) { c.articles.push({ id: nouvelId(), nom: titre[1].slice(0, 120), separateur: true }); return; }
-        const m = /^(.*\S)\s*[x×]\s*(\d+)$/i.exec(ligne);
-        c.articles.push({ id: nouvelId(), nom: (m ? m[1] : ligne).slice(0, 120), quantite: m ? m[2] : '', peremption: false });
+      const f = fiche(a);
+      const qte = el('input', {
+        type: 'number', inputmode: 'numeric', min: '0', max: '999', step: '1', classe: 'inv-qte', 'aria-label': `Quantité attendue de ${nom}`,
+        valeur: /^\d+$/.test(String(a.quantite || '')) ? a.quantite : '', placeholder: '–',
+        surfocus: (e) => e.target.select(),
+        surchange: (e) => { const n = Math.round(Number(e.target.value)); a.quantite = e.target.value === '' || !(n >= 0) ? '' : String(Math.min(n, 999)); e.target.value = a.quantite; marquer(c.id); },
       });
+      liste.append(el('div', { classe: `inv-edition-article inv-edition-fiche${rattacher === a.id ? ' inv-rattache' : ''}` },
+        el('div', { classe: 'inv-edition-nom' },
+          el('strong', { texte: nom }),
+          f ? el('small', { texte: resumeFiche(f) })
+            : el('small', { classe: 'inv-hors-base' }, 'Pas dans la base des articles. ',
+              el('button', { type: 'button', classe: 'lien', texte: rattacher === a.id ? 'Annuler' : 'Rattacher', surclick: () => {
+                rattacher = rattacher === a.id ? '' : a.id;
+                rechercheAjout = rattacher ? a.nom : '';
+                creation = null;
+                rendre({ garderPosition: true, focus: rattacher ? '.inv-recherche-article input' : '' });
+              } }))),
+        el('div', { classe: 'cfg-ligne inv-edition-outils' }, el('label', { classe: 'inv-qte-libelle' }, 'Qté ', qte), ...fleches)));
+    });
+
+    // ----- Ajout : recherche dans la base, sinon création de la fiche -----
+    const cible = rattacher && c.articles.find((x) => x.id === rattacher);
+    const champ = idChamp();
+    const resultats = el('ul', { classe: 'inv-resultats', role: 'list' });
+    const zoneCreation = el('div', { classe: 'inv-zone-creation' });
+    const ajouterFiche = (f) => {
+      if (cible) {
+        cible.ref = f.id; cible.nom = f.denomination; cible.peremption = f.perissable;
+        rattacher = '';
+      } else {
+        c.articles.push({ id: nouvelId(), ref: f.id, nom: f.denomination, quantite: '1', peremption: f.perissable });
+      }
+      rechercheAjout = '';
+      creation = null;
       marquer(c.id);
-      rendre({ garderPosition: true, focus: '.inv-ajout-articles textarea' });
+      // Le curseur revient dans la recherche pour enchaîner les ajouts ; la quantité reste modifiable dans la liste.
+      rendre({ garderPosition: true, focus: '.inv-recherche-article input' });
     };
+    const ouvrirCreation = () => {
+      creation = creation || { id: nouvelId(), denomination: rechercheAjout.trim(), categorie: '', horsStock: false, refInterne: '', refFournisseur: '', consommable: true, perissable: false, archive: false };
+      zoneCreation.innerHTML = '';
+      zoneCreation.append(formulaireFiche(creation, {
+        titre: 'Nouvel article dans la base',
+        surEnregistrer: (f) => { enregistrerFiche(f); ajouterFiche(f); },
+        surAnnuler: () => { creation = null; zoneCreation.innerHTML = ''; afficherResultats(); },
+        utiliser: ajouterFiche,
+      }));
+      resultats.innerHTML = '';
+      zoneCreation.querySelector('input').focus();
+    };
+    const afficherResultats = () => {
+      resultats.innerHTML = '';
+      const texte = rechercheAjout.trim();
+      if (cle(texte).length < 2) return;
+      const trouvees = chercherFiches(texte);
+      trouvees.slice(0, 8).forEach((f) => {
+        const deja = dansLaListe.has(f.id);
+        resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => ajouterFiche(f) },
+          el('strong', { texte: f.denomination }),
+          el('small', { texte: `${resumeFiche(f)}${deja ? ' · déjà dans cet inventaire' : ''}` }))));
+      });
+      if (trouvees.length > 8) resultats.append(el('li', { classe: 'aide-question', texte: `${trouvees.length - 8} autre(s) : précisez la recherche.` }));
+      // On ne propose de créer que si la dénomination exacte n'existe pas déjà.
+      if (!trouvees.some((f) => cle(f.denomination) === cle(texte))) {
+        resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat inv-creer', surclick: ouvrirCreation },
+          el('strong', { texte: `＋ Créer « ${texte} » dans la base` }),
+          el('small', { texte: trouvees.length ? 'Aucun des articles ci-dessus ne convient' : 'Aucun article de la base ne correspond' }))));
+      }
+    };
+    const recherche = el('input', {
+      id: champ, type: 'search', autocomplete: 'off', valeur: rechercheAjout, placeholder: 'Nom ou référence (ex. KT 18, 404448)',
+      surinput: (e) => { rechercheAjout = e.target.value; creation = null; zoneCreation.innerHTML = ''; afficherResultats(); },
+      surkeydown: (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const premier = resultats.querySelector('button');
+        if (premier) premier.click();
+      },
+    });
+    afficherResultats();
+    if (creation) setTimeout(() => { if (document.contains(zoneCreation)) ouvrirCreation(); });
+
     return el('section', { classe: 'inv-section' }, el('h2', { texte: 'Articles à cocher' }),
       c.articles.length ? null : el('p', { classe: 'aide-question', texte: 'Aucun article : ce niveau sert seulement à ouvrir ses sous-inventaires.' }),
       liste,
-      el('div', { classe: 'champ inv-ajout-articles' }, el('label', { for: champ, texte: 'Ajouter des articles' }), saisie,
-        el('div', { classe: 'cfg-actions inv-boutons-ajout' },
-          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter à la liste', surclick: ajouter }),
+      el('div', { classe: 'champ inv-recherche-article' },
+        el('label', { for: champ, texte: cible ? `Rattacher « ${cible.nom} » à un article de la base` : 'Ajouter un article' }),
+        recherche, resultats, zoneCreation,
+        cible ? null : el('div', { classe: 'cfg-actions inv-boutons-ajout' },
           el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter une séparation', surclick: () => {
             c.articles.push({ id: nouvelId(), nom: 'Nouvelle séparation', separateur: true });
             marquer(c.id);
             rendre({ garderPosition: true, focus: '.inv-edition-separation:last-of-type input' });
             const champTitre = zone.querySelector('.inv-edition-separation:last-of-type input');
             if (champTitre) champTitre.select();
-          } }))));
+          } }),
+          el('a', { classe: 'lien', href: lien(BASE), texte: 'Base des articles' }))));
+  }
+
+  /** Base des articles : recherche, filtre par catégorie, création et modification des fiches. */
+  function vueBase() {
+    const admin = estAdmin();
+    const usages = utilisations();
+    const liste = el('ul', { classe: 'inv-base-liste' });
+    const compte = el('p', { classe: 'aide-question', role: 'status' });
+    const nouvelle = el('div');
+    const fermer = () => { baseOuverte = ''; remplir(); };
+    const detail = (f) => {
+      const ou = usages[f.id] || [];
+      const lieux = ou.length
+        ? el('p', { classe: 'inv-usages' }, `Dans ${pluriel(ou.length, 'inventaire')} : `,
+          ...ou.flatMap((c, i) => [i ? ', ' : '', el('a', { href: lien(c.id), texte: chemin(c.id).map((x) => x.nom).join(' › ') })]))
+        : el('p', { classe: 'inv-usages', texte: 'Utilisé dans aucun inventaire.' });
+      if (!admin) {
+        return el('div', { classe: 'inv-fiche-detail' },
+          el('dl', { classe: 'reponses' }, ...[['Catégorie', f.categorie], ['Réf. interne', f.refInterne], ['Réf. fournisseur', f.refFournisseur],
+            ['Dotation hors stock', f.horsStock ? 'Oui' : 'Non'], ['Consommable', f.consommable ? 'Oui' : 'Non'], ['Périssable', f.perissable ? 'Oui' : 'Non']]
+            .map(([k, v]) => el('div', { classe: 'reponse' }, el('dt', { texte: k }), el('dd', { texte: v || '—' })))), lieux);
+      }
+      const archiver = f.archive
+        ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Réactiver', surclick: () => { enregistrerFiche({ ...f, archive: false }); avis = `« ${f.denomination} » réactivé.`; rendre({ garderPosition: true }); } })
+        : (ou.length ? null : el('button', { type: 'button', classe: 'cfg-bouton danger', texte: 'Archiver', surclick: () => { enregistrerFiche({ ...f, archive: true }); baseOuverte = ''; avis = `« ${f.denomination} » archivé : il n'est plus proposé à l'ajout.`; rendre({ garderPosition: true }); } }));
+      return el('div', { classe: 'inv-fiche-detail' },
+        formulaireFiche(f, {
+          surEnregistrer: (g) => {
+            enregistrerFiche(g);
+            // La copie du nom dans les inventaires suit la fiche (historique des vérifications plus lisible).
+            Object.values(structure.contenants).forEach((c) => {
+              let change = false;
+              c.articles.forEach((a) => { if (a.ref === g.id && (a.nom !== g.denomination || a.peremption !== g.perissable)) { a.nom = g.denomination; a.peremption = g.perissable; change = true; } });
+              if (change) marquer(c.id);
+            });
+            baseOuverte = '';
+            avis = `Fiche « ${g.denomination} » enregistrée.`;
+            rendre({ garderPosition: true });
+          },
+          surAnnuler: fermer,
+          actions: [archiver],
+        }),
+        lieux, ou.length && !f.archive ? el('p', { classe: 'aide-question', texte: 'Pour l\'archiver, retirez-le d\'abord de ces inventaires.' }) : null);
+    };
+    function remplir() {
+      liste.innerHTML = '';
+      const trouvees = chercherFiches(baseFiltre.texte, { archives: baseFiltre.archives, categorie: baseFiltre.categorie });
+      const affichees = trouvees.slice(0, 60);
+      compte.textContent = trouvees.length ? `${pluriel(trouvees.length, 'article')}${trouvees.length > 60 ? ' — 60 premiers affichés, précisez la recherche' : ''}` : 'Aucun article ne correspond.';
+      affichees.forEach((f) => {
+        const ouvert = baseOuverte === f.id;
+        const nb = (usages[f.id] || []).length;
+        const li = el('li', { classe: `inv-base-article${f.archive ? ' archive' : ''}${ouvert ? ' ouvert' : ''}` },
+          el('button', { type: 'button', classe: 'inv-resultat', 'aria-expanded': String(ouvert), surclick: () => { baseOuverte = ouvert ? '' : f.id; remplir(); } },
+            el('strong', { texte: f.denomination }),
+            el('small', { texte: `${resumeFiche(f)}${nb ? ` · ${pluriel(nb, 'inventaire')}` : ''}` })));
+        if (ouvert) li.append(detail(f));
+        liste.append(li);
+      });
+    }
+    const champ = idChamp();
+    const filtres = el('div', { classe: 'puces inv-filtres', role: 'radiogroup', 'aria-label': 'Catégorie' });
+    ['', ...CATEGORIES].forEach((cat) => {
+      const i = idChamp();
+      filtres.append(el('input', { type: 'radio', name: 'inv-filtre-cat', id: i, checked: baseFiltre.categorie === cat, surchange: () => { baseFiltre.categorie = cat; remplir(); } }),
+        el('label', { for: i, texte: cat || 'Toutes' }));
+    });
+    const caseArchives = idChamp();
+    remplir();
+    if (baseOuverte === 'nouvelle') {
+      nouvelle.append(formulaireFiche({ id: nouvelId(), denomination: baseFiltre.texte.trim(), categorie: baseFiltre.categorie, horsStock: false, refInterne: '', refFournisseur: '', consommable: true, perissable: baseFiltre.categorie === 'Médicament', archive: false }, {
+        titre: 'Nouvel article',
+        surEnregistrer: (f) => { enregistrerFiche(f); baseOuverte = ''; avis = `« ${f.denomination} » ajouté à la base.`; rendre({ garderPosition: true }); },
+        surAnnuler: () => { baseOuverte = ''; rendre({ garderPosition: true }); },
+        utiliser: (f) => { baseOuverte = f.id; baseFiltre.texte = f.denomination; rendre({ garderPosition: true }); },
+      }));
+    }
+    return [
+      el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' }, el('a', { href: lien(''), texte: 'Inventaires' })),
+      el('div', { classe: 'inv-entete' }, el('h1', { tabindex: '-1', texte: 'Base des articles' }),
+        admin && baseOuverte !== 'nouvelle' ? el('button', { type: 'button', classe: 'cfg-bouton', texte: '＋ Nouvel article', surclick: () => { baseOuverte = 'nouvelle'; rendre({ garderPosition: true, focus: '.inv-fiche input' }); } }) : null),
+      ligneSynchro(), ligneAvis(),
+      el('p', { classe: 'consigne', texte: 'Chaque article des inventaires est décrit ici une seule fois. Une modification de fiche s\'applique à tous les inventaires qui l\'utilisent.' }),
+      nouvelle,
+      el('div', { classe: 'champ' }, el('label', { for: champ, texte: 'Rechercher (nom ou référence)' }),
+        el('input', { id: champ, type: 'search', autocomplete: 'off', valeur: baseFiltre.texte, surinput: (e) => { baseFiltre.texte = e.target.value; remplir(); } })),
+      filtres,
+      el('label', { classe: 'cfg-case', for: caseArchives }, el('input', { type: 'checkbox', id: caseArchives, checked: baseFiltre.archives, surchange: (e) => { baseFiltre.archives = e.target.checked; remplir(); } }), 'Afficher les articles archivés'),
+      compte, liste,
+      el('div', { classe: 'inv-pied' }, el('a', { classe: 'lien', href: lien(''), texte: '← Tous les inventaires' })),
+    ];
   }
 
   /** QR code, lien, puce NFC, copie et suppression (administrateurs). */
@@ -1061,9 +1360,14 @@ const Inventaires = (() => {
       confirmer = '';
       if (pile.length > 1 && pile[pile.length - 2] === id) pile.pop();
       else pile.push(id);
+      rattacher = '';
+      rechercheAjout = '';
+      creation = null;
     }
     zone.innerHTML = '';
-    if (id && !c) {
+    if (id === BASE) {
+      zone.append(...vueBase().filter(Boolean));
+    } else if (id && !c) {
       zone.append(el('h1', { tabindex: '-1', texte: 'Inventaire introuvable' }), ligneSynchro(),
         el('p', { classe: 'consigne', texte: synchro.enCours ? 'Chargement des inventaires…' : 'Cet inventaire n\'existe pas ou a été supprimé. Si vous venez de scanner une étiquette, elle n\'est plus à jour.' }),
         el('a', { classe: 'lien', href: lien(''), texte: '← Tous les inventaires' }));
@@ -1135,8 +1439,8 @@ const Inventaires = (() => {
         el(niveau ? 'h2' : 'h1', { texte: x.nom }),
         x.articles.length ? el('ul', {}, ...x.articles.map((a) => (a.separateur ? el('li', { classe: 'imp-separation', texte: a.nom }) : el('li', {},
           el('span', { classe: 'imp-case', 'aria-hidden': 'true' }),
-          el('span', { classe: 'imp-nom', texte: `${a.nom}${a.quantite ? ` × ${a.quantite}` : ''}` }),
-          a.peremption ? el('span', { classe: 'imp-date', texte: `Pér. ${afficherDate(datePeremption(x.id, a.id)) || '……/………'}` }) : null)))) : null);
+          el('span', { classe: 'imp-nom', texte: `${nomArticle(a)}${a.quantite ? ` × ${a.quantite}` : ''}` }),
+          suiviPeremption(a) ? el('span', { classe: 'imp-date', texte: `Pér. ${afficherDate(datePeremption(x.id, a.id)) || '……/………'}` }) : null)))) : null);
     });
     lancerImpression([
       el('header', { classe: 'imp-entete' }, qrSvg(adresse(c.id)),
@@ -1219,15 +1523,16 @@ const Inventaires = (() => {
     zone = document.getElementById('zone-inventaires');
     const garde = lireJson(CLE_STRUCTURE, null);
     if (garde && garde.contenants) {
-      structure = { contenants: {}, reglages: { alerteJours: Number(garde.reglages && garde.reglages.alerteJours) || 30 } };
+      structure = { contenants: {}, catalogue: {}, reglages: { alerteJours: Number(garde.reglages && garde.reglages.alerteJours) || 30 } };
       Object.values(garde.contenants).forEach((c) => { if (c && ID.test(c.id)) structure.contenants[c.id] = normaliser(c); });
+      Object.values(garde.catalogue || {}).forEach((f) => { if (f && ID.test(f.id)) structure.catalogue[f.id] = normaliserFiche(f); });
     }
     const etatGarde = lireJson(CLE_ETAT, null);
     if (etatGarde && etatGarde.verifs && etatGarde.peremptions) etat = etatGarde;
     brouillons = lireJson(CLE_BROUILLONS, brouillons);
     if (!brouillons.liste) brouillons = { jour: '', liste: {} };
     const modifsGardees = lireJson(CLE_MODIFS, null);
-    if (modifsGardees && modifsGardees.ids) modifs = modifsGardees;
+    if (modifsGardees && modifsGardees.ids) modifs = { fiches: {}, reglages: false, ...modifsGardees };
     window.addEventListener('online', synchroniser);
     // Les liens internes passent par aller() (voir la pile ci-dessus).
     zone.addEventListener('click', (e) => {
@@ -1235,7 +1540,7 @@ const Inventaires = (() => {
       if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
       e.preventDefault();
       const m = /^#inv=([a-z0-9]{6,16})$/.exec(a.getAttribute('href'));
-      aller(m ? m[1] : '');
+      aller(a.getAttribute('href') === '#inv-base' ? BASE : (m ? m[1] : ''));
     });
   }
 
