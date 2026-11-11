@@ -1,7 +1,7 @@
 // À incrémenter à chaque mise à jour, avec les ?v= de index.html.
-const CACHE = 'avismur-v60';
+const CACHE = 'avismur-v61';
 const FICHIERS = [
-  './', 'index.html', 'style.css?v=37', 'app.js?v=24', 'config.js?v=6', 'checklists.js?v=13', 'ambulancier.js?v=25', 'actions.js?v=11', 'config-admin.js?v=6', 'parc.js?v=7', 'compteur.js?v=5', 'inventaires.js?v=10', 'lib/qrcode.js?v=1',
+  './', 'index.html', 'style.css?v=38', 'app.js?v=25', 'config.js?v=6', 'checklists.js?v=13', 'ambulancier.js?v=25', 'actions.js?v=11', 'config-admin.js?v=6', 'parc.js?v=7', 'compteur.js?v=5', 'inventaires.js?v=10', 'infos.js?v=1', 'lib/qrcode.js?v=1',
   'manifest.webmanifest',
   'img/logo-smur.png', 'img/logo-cha.png', 'img/icon-192.png', 'img/icon-512.png', 'img/icon-maskable-512.png',
   'img/vues/jumpy_gauche.svg', 'img/vues/jumpy_droite.svg', 'img/vues/jumpy_avant.svg', 'img/vues/jumpy_arriere.svg',
@@ -41,4 +41,39 @@ self.addEventListener('fetch', (e) => {
       })
       .catch(() => caches.open(CACHE).then((c) => c.match(e.request)))
   );
+});
+
+// ---------- Notifications push (mur d'informations, voir infos.js et Push.gs du backend) ----------
+// Le serveur envoie un message chiffré : { titre, corps, tag, url, urgent }.
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { corps: e.data ? e.data.text() : '' }; }
+  const options = {
+    body: d.corps || '',
+    icon: 'img/icon-192.png',
+    tag: d.tag || undefined,
+    renotify: Boolean(d.tag),
+    requireInteraction: Boolean(d.urgent), // une alerte urgente reste affichée jusqu'à ce qu'on la touche
+    vibrate: d.urgent ? [300, 100, 300, 100, 600] : [150],
+    data: { url: d.url || './' },
+  };
+  e.waitUntil(Promise.all([
+    self.registration.showNotification(d.titre || 'MySMUR', options),
+    // Appli ouverte : le mur se met à jour tout seul.
+    self.clients.matchAll({ type: 'window' }).then((liste) => liste.forEach((c) => c.postMessage({ type: 'push-recu' }))),
+  ]));
+});
+
+// Toucher la notification : ouvre l'appli (ou la ramène au premier plan) sur l'information concernée.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((liste) => {
+    const ouverte = liste.find((c) => c.url.startsWith(self.registration.scope));
+    if (ouverte) {
+      ouverte.postMessage({ type: 'ouvrir-info', url });
+      return ouverte.focus();
+    }
+    return self.clients.openWindow(url);
+  }));
 });

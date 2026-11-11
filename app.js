@@ -127,6 +127,7 @@ function afficher(idEcran, erreur = '') {
   if (!connecte) fermerMenu();
   document.body.classList.toggle('connecte', connecte);
   if (!connecte) Inventaires.masquer(); // au prochain agent connecté, les inventaires seront relus sur le serveur
+  if (!connecte) Infos.masquer();
   const zone = $(idEcran).querySelector('.erreur');
   if (zone) zone.textContent = erreur;
   const champ = $(idEcran).querySelector('input');
@@ -155,7 +156,11 @@ function afficherApplication(infos) {
   $('rubrique-inventaires').hidden = !accesInventaires();
   $('rubrique-admin').hidden = roleCourant !== 'admin';
   // Arrivée par un QR code ou une puce NFC (« …/#inv=<id> ») : on ouvre directement l'inventaire.
-  ouvrirVue(/^#inv\b/.test(location.hash) ? vueDuLien() : 'aujourdhui');
+  // Arrivée par une notification (« …/#info=<id> ») : le mur, sur l'information concernée.
+  // Sinon : la page d'accueil, le mur d'informations.
+  if (/^#info=/.test(location.hash)) ouvrirInfoDuLien(location.hash);
+  else ouvrirVue(/^#inv\b/.test(location.hash) ? vueDuLien() : 'accueil');
+  Infos.demarrer();
   envoyerFileAttente();
   chargerConfig();
   chargerReleves();
@@ -264,6 +269,7 @@ async function envoyerFileAttente() {
   const nb = fileAttente.lire().length;
   const fin = nb ? chargement.debut(nb > 1 ? `Envoi de ${nb} enregistrements…` : 'Envoi en cours…') : () => {};
   let envoyees = 0;
+  let infosEnvoyees = false;
   let erreurServeur = '';
   let avertissement = '';
   const refusees = new Set();
@@ -272,7 +278,10 @@ async function envoyerFileAttente() {
     while ((suivante = fileAttente.lire().find((e) => !refusees.has(e.id)))) {
       let rep;
       try {
-        if (suivante.action === 'verifierInventaire') {
+        if (suivante.donnees) { // mur d'informations : creerInfo, terminerInfo
+          rep = await appeler(suivante.action, { ...suivante.donnees, idSaisie: suivante.id, dateSaisie: suivante.date });
+          infosEnvoyees = true;
+        } else if (suivante.action === 'verifierInventaire') {
           rep = await appeler('verifierInventaire', {
             contenant: suivante.contenant, detail: suivante.detail, idSaisie: suivante.id, dateSaisie: suivante.date,
           });
@@ -312,6 +321,7 @@ async function envoyerFileAttente() {
   if (envoyees) chargerReleves();
   bilanEnvoi({ envoyees, restantes: fileAttente.lire().length, erreurServeur, avertissement });
   Inventaires.surEnvoi();
+  if (infosEnvoyees) Infos.surEnvoi();
 }
 
 function bilanEnvoi({ envoyees, restantes, erreurServeur, avertissement }) {
@@ -437,9 +447,11 @@ document.querySelectorAll('.voir').forEach((bouton) => {
 
 $('deconnexion').addEventListener('click', async () => {
   const enregistre = appareil.lire();
+  await Infos.desabonner(); // cet appareil ne reçoit plus les notifications de l'agent
   try {
     await requete('logout', { jetonAppareil: enregistre && enregistre.jetonAppareil });
   } catch (err) { /* déconnexion locale quand même */ }
+  Infos.oublier();
   session.effacer();
   appareil.effacer();
   afficher('ecran-connexion');
@@ -470,6 +482,11 @@ function annulerConfirmation() {
   confirmationDemandee = false;
   $('enregistrer').textContent = 'Enregistrer la check-list';
   statut('');
+}
+
+/** Retire un élément pas encore envoyé (publication annulée sur le mur d'informations). */
+function retirerDeFile(id) {
+  try { fileAttente.ecrire(fileAttente.lire().filter((e) => e.id !== id)); } catch (err) { /* rien */ }
 }
 
 /** Garde la check-list sur l'appareil puis lance l'envoi. */
@@ -524,12 +541,15 @@ function enregistrerAmbulancier() {
 
 // ---------- Menu principal (burger) ----------
 // Une vue par lien du menu (data-vue). Pour une nouvelle fonctionnalité, voir README.md.
-// « aujourdhui » (Accueil) : check-list du jour selon le métier (véhicules pour l'ambulancier, inventaires pour l'IADE).
+// « accueil » : mur d'informations et rappels (infos.js), page d'arrivée après la connexion.
+// « types-infos » (admins) : types d'informations du mur.
+// « aujourdhui » : check-list du jour selon le métier (véhicules pour l'ambulancier, inventaires pour l'IADE).
 // Véhicules : « checklist-ambulancier » (tableau de bord du parc sur ordinateur, cases sinon),
 //   « carburant », « carrosserie », « mecanique » (mêmes cases ; toucher un véhicule ouvre directement l'écran voulu).
 // Inventaires : « inventaires » (inventaires.js). Administration : « configuration », « base-articles ».
 let roleCourant = '';
-let vueCourante = 'aujourdhui';
+let vueCourante = 'accueil';
+let cibleInfo = ''; // information à mettre en évidence à l'ouverture du mur (lien d'une notification)
 // Sur ordinateur, la check-list ambulancier ouvre le tableau de bord du parc (parc.js) au lieu de la liste de cases.
 const GRAND_ECRAN = window.matchMedia('(min-width: 1100px)');
 
@@ -550,7 +570,7 @@ const vueDuLien = () => (location.hash === '#inv-base' ? 'base-articles' : 'inve
 function vueAutorisee(vue) {
   if (VUES_VEHICULES[vue] && !accesVehicules()) return 'aujourdhui';
   if ((vue === 'inventaires' || vue === 'base-articles') && !accesInventaires()) return 'aujourdhui';
-  if (vue === 'configuration' && roleCourant !== 'admin') return 'aujourdhui';
+  if ((vue === 'configuration' || vue === 'types-infos') && roleCourant !== 'admin') return 'accueil';
   return vue;
 }
 
@@ -558,8 +578,8 @@ function ouvrirVue(demandee) {
   const precedente = vueCourante;
   const vue = vueAutorisee(demandee);
   vueCourante = vue;
-  // Lien actif dans le menu ; l'Accueil de l'IADE, ce sont ses inventaires.
-  const active = vue === 'aujourdhui' && roleCourant === 'iade' ? 'inventaires' : vue;
+  // Lien actif dans le menu : la check-list du jour de l'IADE, ce sont ses inventaires ; celle de l'ambulancier, ses véhicules.
+  const active = vue === 'aujourdhui' ? (roleCourant === 'iade' ? 'inventaires' : 'checklist-ambulancier') : vue;
   document.querySelectorAll('#menu [data-vue]').forEach((lien) => {
     if (lien.dataset.vue === active) lien.setAttribute('aria-current', 'page');
     else lien.removeAttribute('aria-current');
@@ -583,7 +603,13 @@ function ouvrirVue(demandee) {
   $('zone-config').hidden = !config;
   if (config) ConfigAdmin.ouvrir();
 
-  const vehicules = !parc && !inventaires && !config;
+  const infos = vue === 'accueil' || vue === 'types-infos';
+  if (vue === 'accueil') Infos.afficher(cibleInfo);
+  else if (vue === 'types-infos') Infos.afficherTypes();
+  else Infos.masquer();
+  cibleInfo = '';
+
+  const vehicules = !parc && !inventaires && !config && !infos;
   $('zone-ambulancier').hidden = !vehicules;
   if (vehicules) {
     const def = VUES_VEHICULES[vue] || VUES_VEHICULES['checklist-ambulancier'];
@@ -604,7 +630,7 @@ GRAND_ECRAN.addEventListener('change', () => {
 
 /** Ouvre la check-list d'un véhicule, y compris depuis le tableau de bord du parc ou l'écran Carburant. */
 function ouvrirChecklist(id) {
-  if (!$('vue-parc').hidden || Ambulancier.mode()) ouvrirVue('aujourdhui');
+  if (!$('vue-parc').hidden || Ambulancier.mode() || $('zone-ambulancier').hidden) ouvrirVue('aujourdhui');
   Ambulancier.ouvrirChecklist(id);
 }
 
@@ -648,8 +674,25 @@ menu.addEventListener('click', (e) => {
 });
 
 $('zone-ambulancier').addEventListener('reponse', () => { annulerConfirmation(); majBarreEnvoi(); });
+/** Lien « #info=<id> » (notification touchée) : ouvre le mur sur cette information, puis nettoie l'adresse. */
+function ouvrirInfoDuLien(lien) {
+  const m = String(lien).match(/#info=([A-Za-z0-9-]+)/);
+  cibleInfo = m ? m[1] : '';
+  history.replaceState(null, '', location.pathname + location.search);
+  ouvrirVue('accueil');
+}
+
 // Accès pour les écrans d'actions (actions.js).
 window.App = { appeler, envoyerEvenement, ouvrirChecklist };
+Infos.initialiser({
+  appeler,
+  mettreEnFile,
+  retirerDeFile,
+  ouvrirVue,
+  role: () => roleCourant,
+  agent: () => (session.lire() || appareil.lire() || {}).identifiant || '',
+  fileAttente: () => fileAttente.lire(),
+});
 Ambulancier.initialiser();
 Inventaires.initialiser({
   appeler,
@@ -663,7 +706,8 @@ Inventaires.initialiser({
 // (le bouton Retour du téléphone remonte ainsi d'un niveau).
 window.addEventListener('hashchange', () => {
   if ($('ecran-checklist').hidden) return;
-  if (/^#inv\b/.test(location.hash)) ouvrirVue(vueDuLien());
+  if (/^#info=/.test(location.hash)) ouvrirInfoDuLien(location.hash);
+  else if (/^#inv\b/.test(location.hash)) ouvrirVue(vueDuLien());
   else if (!$('zone-inventaires').hidden) Inventaires.afficher();
 });
 Parc.initialiser({ appeler });
@@ -684,6 +728,12 @@ window.addEventListener('offline', () => marquerReseau(false));
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => { /* PWA hors ligne indisponible */ });
+  // Messages du service worker : notification reçue (le mur se met à jour) ou touchée (ouvrir l'information).
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if ($('ecran-checklist').hidden || !e.data) return;
+    if (e.data.type === 'push-recu') Infos.surEnvoi();
+    if (e.data.type === 'ouvrir-info') ouvrirInfoDuLien(new URL(e.data.url).hash);
+  });
 }
 
 // Au chargement : reprendre la session si elle est encore valide, sinon le jeton d'appareil

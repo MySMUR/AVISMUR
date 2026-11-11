@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=37">
+  <link rel="stylesheet" href="style.css?v=38">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -165,6 +165,9 @@
         </svg>
         <span id="chargement-texte">Chargement…</span>
       </div>
+      <!-- Page d'accueil : mur d'informations et rappels (infos.js) ; aussi l'écran « Types d'informations » des administrateurs -->
+      <div id="zone-infos" class="mur" hidden></div>
+
       <!-- Tableau de bord du parc (ordinateur, menu Véhicules > Check-list ambulancier) : cases à gauche, tableau ou fiche au centre -->
       <div id="vue-parc" class="vue-parc" hidden>
         <h1 class="invisible">Tableau de bord du parc</h1>
@@ -210,7 +213,7 @@
         </button>
       </div>
       <nav class="tiroir-corps" aria-label="Menu principal">
-        <button type="button" class="tiroir-lien tiroir-accueil" data-vue="aujourdhui">Accueil<small>Ce que j'ai à faire aujourd'hui</small></button>
+        <button type="button" class="tiroir-lien tiroir-accueil" data-vue="accueil">Accueil<small>Informations et rappels</small></button>
 
         <section id="rubrique-vehicules" class="rubrique" aria-labelledby="titre-rubrique-vehicules">
           <h2 id="titre-rubrique-vehicules"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 16V8a1 1 0 0 1 1-1h10l4 4h2a1 1 0 0 1 1 1v4"/><path d="M3 16h2m4 0h6m4 0h2"/><circle cx="7" cy="16.5" r="2"/><circle cx="17" cy="16.5" r="2"/><path d="M8 10.5h3M9.5 9v3"/></svg>Véhicules</h2>
@@ -238,6 +241,7 @@
           <ul>
           <li><button type="button" class="tiroir-lien" data-vue="configuration">Configuration<small>Véhicules et questions des check-lists</small></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="base-articles">Base des articles<small>Fiches des articles des inventaires</small></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="types-infos">Types d'informations<small>Catégories du mur d'accueil</small></button></li>
           </ul>
         </section>
       </nav>
@@ -261,6 +265,7 @@
   <script src="parc.js?v=7"></script>
   <script src="lib/qrcode.js?v=1"></script>
   <script src="inventaires.js?v=10"></script>
-  <script src="app.js?v=24"></script>
+  <script src="infos.js?v=1"></script>
+  <script src="app.js?v=25"></script>
 </body>
 </html>

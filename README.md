@@ -6,7 +6,9 @@ Check-lists du SMUR d'Avignon, servies par GitHub Pages. Fonctionne hors ligne :
 - `ambulancier.js` : écran de la check-list ambulancier (brouillon gardé sur l'appareil jusqu'à l'envoi).
 - `parc.js` : tableau de bord du parc (ordinateur, écran ≥ 1100 px) : menu Véhicules > Check-list ambulancier → cases empilées à gauche, tableau de tous les éléments des check-lists du jour au centre ; tableau limité aux véhicules disponibles ; clic sur un véhicule → fiche en pavés sans défilement (check-lists, kilométrage, pleins, garage, carrosserie, nettoyages) ; clic sur un pavé → historique détaillé (check-lists jour par jour ou entre deux dates, kilomètres par jour/mois/année, pleins, garage, nettoyages), action `historiquePlage` du backend (Historique.gs).
 - `inventaires.js` : inventaires emboîtés des IADE (voir plus bas). `lib/qrcode.js` : génération des QR codes (bibliothèque « qrcode-generator », licence MIT), utilisable hors ligne.
+- `infos.js` : page d'accueil, mur d'informations et rappels, notifications push (voir plus bas).
 - `app.js` : connexion, file d'attente hors ligne, envoi.
+- `sw.js` : service worker (hors ligne, réception et clic des notifications push).
 - `config.js` : URL de l'Apps Script (dépôt `AVISMUR-backend`).
 
 À chaque mise à jour : incrémenter les `?v=` dans `index.html` et `CACHE` dans `sw.js` (mêmes valeurs dans la liste `FICHIERS`).
@@ -17,10 +19,10 @@ Bandeau du haut, une fois connecté : nom prénom et fonction de l'agent, et le 
 
 Menu (tiroir à droite, `<dialog id="menu">` dans `index.html`) :
 
-- **Accueil** : check-list du jour selon le métier (véhicules pour l'ambulancier, inventaires pour l'IADE).
+- **Accueil** : mur d'informations et rappels (page d'arrivée après la connexion). La check-list du jour reste accessible par Véhicules > Check-list ambulancier, Inventaires > Check-list, ou les liens en bas du mur.
 - **Véhicules** (ambulanciers, encadrement, admins) : Check-list ambulancier (tableau de bord du parc sur ordinateur), Commande d'oxygène *(à venir)*, Carburant, Carrosserie, Suivi mécanique. Carburant, Carrosserie et Suivi mécanique affichent les cases des véhicules ; toucher un véhicule ouvre directement l'écran du plein, de la vérification extérieure ou du passage au garage (`Ambulancier.choisirMode()`, `Actions.ouvrirAction()`).
 - **Inventaires** (IADE, encadrement, admins) : Check-list (inventaires emboîtés), Suivi matériel, Stupéfiants, Stérilisation *(à venir)*.
-- **Administration** (admins) : Configuration (véhicules et questions des check-lists), Base des articles.
+- **Administration** (admins) : Configuration (véhicules et questions des check-lists), Base des articles, Types d'informations (mur d'accueil).
 - **Se déconnecter**, en bas du menu.
 
 Chaque lien porte un `data-vue` ; la vue est ouverte par `ouvrirVue()` dans `app.js`. Une sous-rubrique pas encore développée porte la classe `a-venir` et `aria-disabled="true"` (étiquette « À venir ») : pour l'activer, lui donner un `data-vue` et gérer la vue dans `ouvrirVue()`.
@@ -41,6 +43,32 @@ Liens connexes à prévoir (fonctionnalités non encore développées) :
 | Stupéfiants | Matériel ; Inventaires > Stupéfiants (accès restreint et journalisé) |
 | Maintenance | Fiche véhicule ; Matériel ; Aujourd'hui (échéances) |
 | Pilotage (cadre, chef d'unité) | Menu (rubrique à créer) ; historiques par véhicule et par agent |
+
+## Mur d'informations (page d'accueil)
+
+Chaque agent peut publier une information, une alerte ou un rappel (bouton « Nouvelle information ») :
+
+- **Type** : Consigne, Véhicule, Panne, Accident, Matériel à rendre, Matériel à récupérer, Information… Liste gérée par les administrateurs (menu Administration > Types d'informations : nom, pictogramme, ordre, importance proposée par défaut, archivage). Un type déjà utilisé n'est jamais supprimé, il est archivé.
+- **Importance**, avec un code couleur : **urgente** (rouge, en tête du mur, notification qui reste affichée), **importante** (orange), **normale** (bleu). Proposée selon le type, modifiable.
+- **Période** : début (aujourd'hui par défaut), fin facultative (sans fin, l'information reste jusqu'à ce que quelqu'un y mette fin). Raccourcis « Aujourd'hui seulement », « Une semaine », « Sans date de fin ».
+- **Destinataires** : Ambulanciers, IADE, Encadrement (tous cochés par défaut).
+
+Classement : **Urgent**, puis **En cours** (importantes d'abord, puis celles dont c'est le dernier jour, puis les plus récentes), **À venir** (par date de début), **Terminées cette semaine** (repliées). Filtres : « Pour moi » (selon le métier de l'agent ; « Tout le service » par défaut pour l'encadrement) et par type.
+
+**Mettre fin** : tout le monde peut mettre fin à une information jugée obsolète (« Plus d'actualité », avec confirmation) ; le nom de la personne est noté.
+
+**Hors ligne** : le dernier mur reçu est gardé sur l'appareil ; une publication ou une fin passe par la file d'attente (« En attente d'envoi » sur la carte). Une publication pas encore envoyée peut être annulée.
+
+### Notifications push
+
+Chaque publication est notifiée aux appareils des destinataires (pas à l'auteur). Un rappel dont la période commence plus tard est notifié le jour du début, vers 7 h. Toucher la notification ouvre l'appli sur l'information (lien `…/#info=<id>`).
+
+- L'agent active les notifications une fois par appareil (encart « Recevez les alertes sur cet appareil » en haut du mur). L'appareil se réabonne ensuite seul à chaque ouverture ; la déconnexion le désabonne.
+- **Android** (Chrome) et ordinateur : fonctionne dans le navigateur ou l'appli installée.
+- **iPhone** (iOS 16.4 ou plus) : uniquement avec l'appli installée sur l'écran d'accueil (Partager > Sur l'écran d'accueil) ; l'encart l'explique.
+- Notifications bloquées : l'encart indique de les autoriser dans les réglages du navigateur.
+
+Standard Web Push, sans Firebase ni serveur supplémentaire : l'envoi est fait par l'Apps Script (Push.gs).
 
 ## Inventaires emboîtés (IADE)
 
