@@ -108,3 +108,7 @@ Données : un contenant d'exemplaire porte `source` (le contenant du type qu'il 
 En gestion des inventaires, chaque contenant a une **catégorie** : **Primaire** (véhicule, réserve), **Immobile** (tiroir, placard : ne change pas de place) ou **Mobile** (sac, sacoche, ampoulier : peut changer de véhicule). La page des inventaires ne montre que les **contenants primaires** ; les inventaires de premier niveau sans catégorie apparaissent aux administrateurs dans « À classer ».
 
 Tous les autres s'atteignent par l'encadré **« Trouver un inventaire »** en tête de page : saisie du nom (cherche aussi dans le chemin, ex. « f25 tiroir »), **Scanner un QR code** (caméra, Chrome sur Android) ou **Lire une puce NFC** (Chrome sur Android). Sur les autres appareils, l'appareil photo du téléphone lit le QR code et ouvre directement l'inventaire.
+
+### Plusieurs vues d'un contenant primaire
+
+Un contenant **primaire** (pièce, cellule sanitaire…) peut avoir plusieurs photos, sous plusieurs angles. En gestion des inventaires, « **＋ Vue** » ajoute une vue ; chaque vue a un nom (ex. « Côté gauche »), sa photo et ses propres gommettes. Un sous-inventaire peut être placé sur plusieurs vues (« aussi sur : … »). En check-list, les vues s'affichent en onglets au-dessus de la photo, avec le nombre de gommettes de chacune.

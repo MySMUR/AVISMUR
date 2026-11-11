@@ -138,6 +138,10 @@ const Inventaires = (() => {
     return {
       id: c.id, parent: c.parent || '', nom: c.nom || '', ordre: Number(c.ordre) || 0, photo: c.photo || '',
       points: Array.isArray(c.points) ? c.points : [], articles: Array.isArray(c.articles) ? c.articles : [],
+      // Vues supplémentaires (contenants primaires : une pièce, une cellule sanitaire vue sous plusieurs angles).
+      // La photo principale (`photo`, `points`, nom `nomVue`) est la vue 1.
+      vues: Array.isArray(c.vues) ? c.vues.map((v) => ({ id: v.id, nom: v.nom || '', photo: v.photo || '', points: Array.isArray(v.points) ? v.points : [] })) : [],
+      nomVue: c.nomVue || '',
       scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
       categorie: CATEGORIES_CONTENANT[c.categorie] ? c.categorie : '', // primaire, immobile ou mobile
       ...(c.modele ? { modele: true } : {}), // inventaire type : sert de structure à ses exemplaires
@@ -153,6 +157,41 @@ const Inventaires = (() => {
     immobile: { nom: 'Immobile', aide: 'tiroir, placard, armoire : ne change jamais de place' },
     mobile: { nom: 'Mobile', aide: 'sac, sacoche, ampoulier : peut changer de véhicule' },
   };
+
+  // ---------- Vues (photos) d'un contenant ----------
+  /** Toutes les vues : la principale (clé '') puis les supplémentaires. */
+  function vuesDe(c) {
+    return [{ cle: '', nom: c.nomVue || 'Vue 1', photo: c.photo, points: c.points },
+      ...c.vues.map((v, i) => ({ cle: v.id, nom: v.nom || `Vue ${i + 2}`, photo: v.photo, points: v.points }))];
+  }
+  /** Écrit dans une vue (principale : champs du contenant). */
+  function majVue(c, cle, champs) {
+    if (!cle) {
+      if ('photo' in champs) c.photo = champs.photo;
+      if ('points' in champs) c.points = champs.points;
+      if ('nom' in champs) c.nomVue = champs.nom;
+    } else {
+      const v = c.vues.find((x) => x.id === cle);
+      if (v) Object.assign(v, champs);
+    }
+  }
+  const vueActive = new Map(); // contenant → clé de la vue affichée
+  function vueCourante(c) {
+    const toutes = vuesDe(c);
+    return toutes.find((v) => v.cle === (vueActive.get(c.id) || '')) || toutes[0];
+  }
+  /** Retire les points d'un sous-inventaire sur toutes les vues. */
+  function retirerCible(c, id) {
+    c.points = c.points.filter((p) => p.cible !== id);
+    c.vues.forEach((v) => { v.points = v.points.filter((p) => p.cible !== id); });
+  }
+  /** Traduit les cibles des points de toutes les vues (copie, exemplaire). */
+  function traduireCibles(c, traduire) {
+    const t = (points) => points.map((p) => { const cible = traduire(p.cible); return cible ? { ...p, cible } : null; }).filter(Boolean);
+    c.points = t(c.points);
+    c.vues = c.vues.map((v) => ({ ...v, points: t(v.points) }));
+  }
+  const photosDe = (c) => [c.photo, ...c.vues.map((v) => v.photo)].filter(Boolean);
 
   // ---------- Base des articles (catalogue) ----------
   const CATEGORIES = ['Médicament', 'DM', 'Magasin'];
@@ -420,24 +459,27 @@ const Inventaires = (() => {
     }
     for (const id of Object.keys(modifs.ids)) {
       const c = structure.contenants[id];
-      if (!c || !c.photo.startsWith('local-')) continue;
-      const locale = c.photo;
-      const donnees = await Photos.lire(locale);
-      let distante = '';
-      if (donnees) {
-        const rep = await App.appeler('envoyerPhotoInventaire', { photo: donnees });
-        if (!rep.ok) throw new RefusServeur(rep.erreur || 'photo refusée');
-        distante = rep.id;
-        await Photos.ecrire(distante, donnees);
+      if (!c) continue;
+      for (const locale of photosDe(c).filter((ph) => ph.startsWith('local-'))) {
+        const donnees = await Photos.lire(locale);
+        let distante = '';
+        if (donnees) {
+          const rep = await App.appeler('envoyerPhotoInventaire', { photo: donnees });
+          if (!rep.ok) throw new RefusServeur(rep.erreur || 'photo refusée');
+          distante = rep.id;
+          await Photos.ecrire(distante, donnees);
+        }
+        // Une copie d'inventaire peut partager la même photo en attente (photo principale ou vue).
+        Object.values(structure.contenants).forEach((x) => {
+          let change = false;
+          if (x.photo === locale) { x.photo = distante; change = true; }
+          x.vues.forEach((v) => { if (v.photo === locale) { v.photo = distante; change = true; } });
+          if (change) modifs.ids[x.id] = (modifs.ids[x.id] || 0) + 1;
+        });
+        await Photos.supprimer(locale);
+        sauverStructure();
+        sauverModifs();
       }
-      // Une copie d'inventaire peut partager la même photo en attente.
-      Object.values(structure.contenants).filter((x) => x.photo === locale).forEach((x) => {
-        x.photo = distante;
-        modifs.ids[x.id] = (modifs.ids[x.id] || 0) + 1;
-      });
-      await Photos.supprimer(locale);
-      sauverStructure();
-      sauverModifs();
     }
     const envoyes = { ...modifs.ids };
     const reglages = modifs.reglages;
@@ -506,7 +548,7 @@ const Inventaires = (() => {
   /** Télécharge les photos manquantes pour le hors ligne, puis oublie celles qui ne servent plus. */
   async function prechargerPhotos() {
     const vivants = Object.values(structure.contenants).filter((c) => !c.supprime);
-    const utiles = new Set(vivants.filter((c) => c.photo).map((c) => c.photo));
+    const utiles = new Set(vivants.flatMap(photosDe));
     // Photos des articles : seulement ceux présents dans un inventaire (inutile de tout télécharger).
     vivants.forEach((c) => c.articles.forEach((a) => { const f = fiche(a); if (f && f.photo) utiles.add(f.photo); }));
     Object.values(structure.catalogue).forEach((f) => { if (f.photo && f.photo.startsWith('local-')) utiles.add(f.photo); });
@@ -731,7 +773,7 @@ const Inventaires = (() => {
         structure.contenants[c.id] = c;
         marquer(c.id);
         // Avec une photo, on enchaîne : toucher l'endroit où se trouve ce sous-inventaire.
-        if (parent && parent.photo) { placement = c.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+        if (parent && vueCourante(parent).photo) { placement = c.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); }
         else rendre({ garderPosition: true, focus: '.inv-ajout input' });
       },
     }, el('label', { for: champ, texte: parent ? 'Ajouter un sous-inventaire' : 'Ajouter un inventaire' }),
@@ -822,28 +864,51 @@ const Inventaires = (() => {
 
   // ----- Un contenant -----
   function blocPhoto(c, fils) {
-    if (!c.photo && !edition) return null;
+    const vues = vuesDe(c);
+    const vc = vueCourante(c);
+    const avecPhoto = vues.some((v) => v.photo);
+    if (!avecPhoto && !edition) return null;
     const bloc = el('div', { classe: 'inv-bloc-photo' });
-    if (c.photo) {
-      const img = el('img', { alt: `Photo : ${c.nom}` });
+    // Onglets des vues (plusieurs angles d'une pièce, d'une cellule sanitaire…)
+    const plusieurs = vues.length > 1;
+    const peutAjouter = edition && c.categorie === 'primaire';
+    if (plusieurs || peutAjouter) {
+      const onglets = el('div', { classe: 'inv-onglets-vues', role: 'tablist', 'aria-label': 'Vues' },
+        ...vues.map((v) => {
+          const nb = v.points.filter((p) => fils.some((f) => f.id === p.cible)).length;
+          return el('button', { type: 'button', role: 'tab', classe: 'inv-onglet-vue', 'aria-selected': String(v.cle === vc.cle),
+            surclick: () => { vueActive.set(c.id, v.cle); rendre({ garderPosition: true }); } },
+          v.nom, nb ? el('small', { texte: ` · ${nb}` }) : null);
+        }),
+        peutAjouter ? el('button', { type: 'button', classe: 'inv-onglet-vue inv-onglet-ajout', 'aria-label': 'Ajouter une vue', title: 'Ajouter une vue (autre angle)', texte: '＋ Vue', surclick: () => {
+          const v = { id: nouvelId(), nom: `Vue ${c.vues.length + 2}`, photo: '', points: [] };
+          c.vues.push(v);
+          vueActive.set(c.id, v.id);
+          marquer(c.id);
+          rendre({ garderPosition: true });
+        } }) : null);
+      bloc.append(onglets);
+    }
+    if (vc.photo) {
+      const img = el('img', { alt: `Photo : ${c.nom}${plusieurs ? ` — ${vc.nom}` : ''}` });
       const attente = el('p', { classe: 'inv-photo-attente', texte: 'Chargement de la photo…' });
       const cadre = el('div', { classe: `inv-photo${placement ? ' placement' : ''}` }, img, attente);
       const montrer = (donnees) => {
         if (donnees) { img.src = donnees; attente.remove(); } else { attente.textContent = 'Photo pas encore disponible hors ligne : passez par la liste ci-dessous.'; cadre.classList.add('sans-image'); }
       };
-      if (Photos.enMemoire(c.photo)) montrer(Photos.enMemoire(c.photo));
-      else obtenirPhoto(c.photo).then(montrer);
+      if (Photos.enMemoire(vc.photo)) montrer(Photos.enMemoire(vc.photo));
+      else obtenirPhoto(vc.photo).then(montrer);
       img.addEventListener('click', (e) => {
         if (!placement) return;
         const r = img.getBoundingClientRect();
         const borne = (v) => Math.min(1, Math.max(0, v));
-        c.points = c.points.filter((p) => p.cible !== placement)
-          .concat({ cible: placement, x: borne((e.clientX - r.left) / r.width), y: borne((e.clientY - r.top) / r.height) });
+        majVue(c, vc.cle, { points: vc.points.filter((p) => p.cible !== placement)
+          .concat({ cible: placement, x: borne((e.clientX - r.left) / r.width), y: borne((e.clientY - r.top) / r.height) }) });
         placement = '';
         marquer(c.id);
         rendre({ garderPosition: true });
       });
-      c.points.forEach((p) => {
+      vc.points.forEach((p) => {
         const rang = fils.findIndex((f) => f.id === p.cible);
         if (rang === -1) return;
         const b = bilan(fils[rang].id);
@@ -857,7 +922,7 @@ const Inventaires = (() => {
       });
       if (placement && contenant(placement)) {
         bloc.append(el('p', { classe: 'inv-consigne-placement', role: 'status' },
-          `Touchez la photo à l'endroit de « ${contenant(placement).nom} ». `,
+          `Touchez la photo${plusieurs ? ` « ${vc.nom} »` : ''} à l'endroit de « ${contenant(placement).nom} ». `,
           el('button', { type: 'button', classe: 'lien', texte: 'Plus tard', surclick: () => { placement = ''; rendre({ garderPosition: true }); } })));
       }
       bloc.append(cadre);
@@ -865,6 +930,7 @@ const Inventaires = (() => {
     if (edition) {
       const prendre = idChamp();
       const choisir = idChamp();
+      const nomVue = idChamp();
       const recevoir = async (e) => {
         const fichier = e.target.files[0];
         if (!fichier) return;
@@ -872,21 +938,33 @@ const Inventaires = (() => {
           const donnees = await reduirePhoto(fichier);
           const id = `local-${nouvelId()}`;
           await Photos.ecrire(id, donnees);
-          if (c.photo.startsWith('local-')) await Photos.supprimer(c.photo);
-          c.photo = id;
+          if (vc.photo.startsWith('local-')) await Photos.supprimer(vc.photo);
+          majVue(c, vc.cle, { photo: id });
           marquer(c.id);
           rendre({ garderPosition: true });
         } catch (err) {
           messageVue('Photo illisible ou trop lourde : réessayez.', 'erreur');
         }
       };
+      if (plusieurs) {
+        bloc.append(el('div', { classe: 'cfg-ligne inv-nom-vue' }, el('label', { for: nomVue, texte: 'Nom de la vue' }),
+          el('input', { id: nomVue, maxlength: '40', valeur: vc.nom, placeholder: 'ex. côté gauche, plafond, porte arrière', surchange: (e) => { majVue(c, vc.cle, { nom: e.target.value.trim() }); marquer(c.id); rendre({ garderPosition: true }); } })));
+      }
       bloc.append(el('div', { classe: 'champ-photo' },
-        el('label', { for: prendre, classe: 'bouton-photo', texte: c.photo ? '📷 Reprendre la photo' : '📷 Prendre la photo' }),
+        el('label', { for: prendre, classe: 'bouton-photo', texte: vc.photo ? '📷 Reprendre la photo' : '📷 Prendre la photo' }),
         el('input', { type: 'file', id: prendre, accept: 'image/*', capture: 'environment', classe: 'invisible', surchange: recevoir }),
         el('label', { for: choisir, classe: 'bouton-photo', texte: 'Choisir une image' }),
         el('input', { type: 'file', id: choisir, accept: 'image/*', classe: 'invisible', surchange: recevoir }),
-        c.photo ? el('button', { type: 'button', classe: 'lien danger', texte: 'Retirer la photo', surclick: () => { c.photo = ''; c.points = []; marquer(c.id); rendre({ garderPosition: true }); } }) : null));
-      if (!c.photo) bloc.append(el('p', { classe: 'aide-question', texte: 'La photo sert de plan : chaque sous-inventaire y est repéré par un point numéroté.' }));
+        vc.photo && !vc.cle ? el('button', { type: 'button', classe: 'lien danger', texte: 'Retirer la photo', surclick: () => { majVue(c, '', { photo: '', points: [] }); marquer(c.id); rendre({ garderPosition: true }); } }) : null,
+        vc.cle ? el('button', { type: 'button', classe: 'lien danger', texte: confirmer === `vue-${vc.cle}` ? 'Confirmer : supprimer cette vue' : 'Supprimer cette vue', surclick: () => {
+          if (confirmer !== `vue-${vc.cle}`) { confirmer = `vue-${vc.cle}`; rendre({ garderPosition: true }); return; }
+          confirmer = '';
+          c.vues = c.vues.filter((v) => v.id !== vc.cle);
+          vueActive.delete(c.id);
+          marquer(c.id);
+          rendre({ garderPosition: true });
+        } }) : null));
+      if (!avecPhoto) bloc.append(el('p', { classe: 'aide-question', texte: `La photo sert de plan : chaque sous-inventaire y est repéré par un point numéroté.${c.categorie === 'primaire' ? ' « ＋ Vue » ajoute d\'autres photos (autres angles).' : ''}` }));
     }
     return bloc;
   }
@@ -897,15 +975,18 @@ const Inventaires = (() => {
     fils.forEach((f, i) => {
       const li = el('li', { 'data-cle': f.id }, carte(f, i + 1));
       if (edition) {
-        const point = c.points.some((p) => p.cible === f.id);
+        const vc = vueCourante(c);
+        const point = vc.points.some((p) => p.cible === f.id);
+        const ailleurs = vuesDe(c).filter((v) => v.cle !== vc.cle && v.points.some((p) => p.cible === f.id)).map((v) => v.nom);
         li.classList.add('inv-ligne-triable');
         li.prepend(poignee(f.nom));
         li.append(el('div', { classe: 'cfg-ligne inv-outils' },
-          c.photo ? el('button', {
-            type: 'button', classe: `cfg-mini${placement === f.id ? ' inv-actif' : ''}`, texte: point ? 'Déplacer le point' : 'Placer sur la photo',
+          vc.photo ? el('button', {
+            type: 'button', classe: `cfg-mini${placement === f.id ? ' inv-actif' : ''}`, texte: point ? 'Déplacer le point' : `Placer sur ${vuesDe(c).length > 1 ? `« ${vc.nom} »` : 'la photo'}`,
             surclick: () => { placement = f.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); },
           }) : null,
-          point ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Retirer le point', surclick: () => { c.points = c.points.filter((p) => p.cible !== f.id); marquer(c.id); rendre({ garderPosition: true }); } }) : null));
+          point ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Retirer le point', surclick: () => { majVue(c, vc.cle, { points: vc.points.filter((p) => p.cible !== f.id) }); marquer(c.id); rendre({ garderPosition: true }); } }) : null,
+          ailleurs.length ? el('small', { classe: 'aide-question', texte: `aussi sur : ${ailleurs.join(', ')}` }) : null));
       }
       liste.append(li);
     });
@@ -1582,7 +1663,7 @@ const Inventaires = (() => {
           return;
         }
         const parent = contenant(c.parent);
-        if (parent) { parent.points = parent.points.filter((p) => p.cible !== c.id); marquer(parent.id); }
+        if (parent) { retirerCible(parent, c.id); marquer(parent.id); }
         tout.forEach((x) => { x.supprime = true; marquer(x.id); });
         avis = `« ${c.nom} » supprimé.`;
         aller(c.parent);
@@ -1633,6 +1714,8 @@ const Inventaires = (() => {
     return {
       nom: m.nom, ordre: m.ordre, photo: m.photo, scellable: m.scellable, categorie: m.categorie,
       points: m.points.map((p) => ({ cible: p.cible, x: p.x, y: p.y })),
+      nomVue: m.nomVue,
+      vues: m.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map((p) => ({ cible: p.cible, x: p.x, y: p.y })) })),
       articles: m.articles.map((a) => ({ id: a.id, ...sigArticle(a), ...(a.ref ? { refNom: a.nom } : {}) })),
       enfants: enfants(m.id).map((x) => x.id),
     };
@@ -1643,12 +1726,14 @@ const Inventaires = (() => {
     return {
       nom: e.nom, ordre: e.ordre, photo: e.photo, scellable: e.scellable, categorie: e.categorie,
       points: e.points.map((p) => ({ cible: versModele(p.cible), x: p.x, y: p.y })),
+      nomVue: e.nomVue,
+      vues: e.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map((p) => ({ cible: versModele(p.cible), x: p.x, y: p.y })) })),
       articles: e.articles.map((a) => ({ id: a.id, ...sigArticle(a) })),
       enfants: enfants(e.id).map((x) => x.source).filter(Boolean),
     };
   }
   const sansNoms = (articles) => (articles || []).map(({ refNom, ...a }) => a);
-  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', scellable: 'scellable', categorie: 'catégorie', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
+  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', nomVue: 'nom de la vue', vues: 'vues', scellable: 'scellable', categorie: 'catégorie', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
   /** Champs d'un contenant d'exemplaire modifiés localement depuis la dernière répercussion. */
   function personnalisations(e) {
     if (!e.base) return [];
@@ -1664,10 +1749,9 @@ const Inventaires = (() => {
   function copierDepuisModele(m, parent, ordre) {
     const copie = normaliser({ ...copieProfonde(m), id: nouvelId(), parent, ordre, source: m.id, base: instantane(m) });
     delete copie.modele;
-    copie.points = [];
     structure.contenants[copie.id] = copie;
     const fils = enfants(m.id).map((f) => copierDepuisModele(f, copie.id, f.ordre));
-    copie.points = m.points.map((p) => { const f = fils.find((x) => x.source === p.cible); return f ? { ...p, cible: f.id } : null; }).filter(Boolean);
+    traduireCibles(copie, (cible) => (fils.find((x) => x.source === cible) || {}).id);
     marquer(copie.id);
     return copie;
   }
@@ -1714,7 +1798,7 @@ const Inventaires = (() => {
     const v = vueExemplaire(e);
     const nm = instantane(m);
     const avant = canonique(e);
-    ['nom', 'ordre', 'photo', 'scellable', 'categorie'].forEach((k) => {
+    ['nom', 'ordre', 'photo', 'nomVue', 'scellable', 'categorie'].forEach((k) => {
       if (racine && (k === 'nom' || k === 'ordre')) return; // le sac garde son nom et sa place
       if (forcer || egal(v[k], base[k])) e[k] = copieProfonde(m[k]);
       else if (!egal(v[k], nm[k])) bilanR.conserves += 1;
@@ -1734,14 +1818,19 @@ const Inventaires = (() => {
       if (!ef.source || nm.enfants.includes(ef.source)) return;
       if (base.enfants.includes(ef.source) && (forcer || !toutPersonnalise(ef))) {
         descendants(ef.id).forEach((x) => { x.supprime = true; marquer(x.id); });
-        e.points = e.points.filter((p) => p.cible !== ef.id);
+        retirerCible(e, ef.id);
         bilanR.modifies += 1;
       } else if (base.enfants.includes(ef.source)) bilanR.conserves += 1;
     });
     // Points : traduits vers les sous-inventaires de cet exemplaire
+    const versExemplaire = (cible) => (enfants(e.id).find((x) => x.source === cible) || {}).id;
     if (forcer || egal(vueExemplaire(e).points, base.points)) {
-      e.points = m.points.map((p) => { const f = enfants(e.id).find((x) => x.source === p.cible); return f ? { ...p, cible: f.id } : null; }).filter(Boolean);
+      e.points = m.points.map((p) => { const id = versExemplaire(p.cible); return id ? { ...p, cible: id } : null; }).filter(Boolean);
     } else if (!egal(vueExemplaire(e).points, nm.points)) bilanR.conserves += 1;
+    // Vues supplémentaires : comme les points, l'ensemble suit le modèle tant que le sac ne les a pas modifiées.
+    if (forcer || egal(vueExemplaire(e).vues, base.vues || [])) {
+      e.vues = m.vues.map((v) => ({ ...copieProfonde(v), points: v.points.map((p) => { const id = versExemplaire(p.cible); return id ? { ...p, cible: id } : null; }).filter(Boolean) }));
+    } else if (!egal(vueExemplaire(e).vues, nm.vues)) bilanR.conserves += 1;
     // Articles
     const [articles, conserves] = fusionnerArticles(e, sansNoms(base.articles), m, forcer);
     e.articles = articles;
@@ -1846,7 +1935,7 @@ const Inventaires = (() => {
       } else {
         copie.parent = correspondance[copie.parent];
       }
-      copie.points = copie.points.filter((p) => correspondance[p.cible]).map((p) => ({ ...p, cible: correspondance[p.cible] }));
+      traduireCibles(copie, (cible) => correspondance[cible]);
       structure.contenants[copie.id] = copie;
       marquer(copie.id);
     });
