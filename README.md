@@ -37,7 +37,8 @@ Liens connexes à prévoir (fonctionnalités non encore développées) :
 Un inventaire est un arbre de contenants : sac > sacoche > pochette, intercalaire, tiroir… Chaque contenant a :
 
 - une **photo** qui sert de plan, avec un **point numéroté** par sous-inventaire (toucher le point ouvre le sous-inventaire ; il passe au vert avec un ✓ une fois vérifié) ;
-- une **liste d'articles à cocher**, avec « Tout cocher », une quantité et, pour les articles suivis, une **date de péremption** (saisie au clavier numérique : `0327` → 03/2027, `15032027` → 15/03/2027) ;
+- une **liste d'articles à cocher**, une ligne par article, avec « Tout cocher » et la **quantité** dans un champ numérique, préremplie avec la quantité attendue (une quantité inférieure est notée manquante, ex. « Seringue (4/6) ») ;
+- des **dates de péremption**, masquées par défaut : le bouton « Péremptions » les affiche, et un repère (⏳ bientôt, ! périmé, ? date à saisir) signale les articles concernés même quand elles sont masquées. Saisie au clavier numérique : `0327` → 03/2027, `15032027` → 15/03/2027 ;
 - un **lien direct** `…/AVISMUR/#inv=<id>`, porté par son **QR code** et sa **puce NFC**. L'id ne change jamais : l'étiquette reste valable si le contenant est renommé.
 
 **Vérifier** : ouvrir l'inventaire (liste, point sur la photo, QR code, puce NFC ou recherche), cocher, « Valider cet inventaire ». Chaque niveau se valide séparément ; l'état du jour remonte aux niveaux supérieurs (« 2 sur 3 vérifiés »). Un article non coché est noté manquant et rappelé le lendemain. Les péremptions dépassées ou proches (délai réglable, 30 jours par défaut) sont listées sur la page d'accueil des inventaires.

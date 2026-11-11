@@ -1071,19 +1071,45 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .inv-photo.placement { outline: 4px solid var(--orange); outline-offset: 2px; }
 .inv-consigne-placement { margin: 0 0 0.5rem; padding: 0.55rem 0.8rem; font-weight: 700; background: #FFF3E0; border: 2px solid var(--orange); border-radius: var(--rayon); }
 
-/* Liste à cocher et péremptions */
-.inv-articles li { padding: 0.1rem 0; }
-.inv-compte { margin-left: 0.4rem; font-size: 0.9rem; font-weight: 400; color: var(--gris); }
-.inv-quantite { font-weight: 700; color: var(--bleu); font-size: 1rem; }
-.inv-peremption { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: -0.3rem 0 0.6rem 2.5rem; }
-.inv-peremption label { display: inline; min-height: 0; padding: 0; font-size: 0.9rem; font-weight: 400; color: var(--gris); cursor: default; }
-.inv-articles .inv-peremption .inv-date { width: 8.5rem; height: auto; min-height: 2.6rem; padding: 0.3rem 0.6rem; font-variant-numeric: tabular-nums; accent-color: auto; }
-.inv-echeance { font-size: 0.9rem; font-weight: 700; }
+/* Liste à cocher : une ligne par article, péremptions masquées à la demande */
+.inv-liste-entete { display: flex; align-items: baseline; justify-content: space-between; gap: 0.4rem 1rem; flex-wrap: wrap; padding-bottom: 0.3rem; border-bottom: 2px solid var(--bleu); }
+.inv-liste-entete h2 { font-size: 1.1rem; }
+.inv-liste-actions { display: flex; gap: 1rem; }
+.inv-liste-actions .lien { font-size: 0.95rem; }
+.inv-compte { margin-left: 0.3rem; font-size: 0.9rem; font-weight: 400; color: var(--gris); }
+.inv-articles { list-style: none; margin: 0 0 0.6rem; padding: 0; }
+.inv-article { border-bottom: 1px solid #E1E8F2; }
+.inv-ligne { display: flex; align-items: center; gap: 0.6rem; min-height: 2.9rem; padding: 0.15rem 0; }
+.inv-ligne input[type="checkbox"] { width: 1.5rem; height: 1.5rem; min-height: 0; flex-shrink: 0; margin: 0; accent-color: var(--rhone); }
+.inv-nom { flex: 1; min-width: 0; padding: 0.45rem 0; font-weight: 400; line-height: 1.25; cursor: pointer; }
+.inv-qte-zone { display: inline-flex; align-items: center; gap: 0.15rem; flex-shrink: 0; }
+.inv-ligne .inv-qte {
+  width: 3.4rem; min-height: 2.4rem; padding: 0.2rem 0.3rem; text-align: center;
+  font-weight: 700; font-variant-numeric: tabular-nums; -moz-appearance: textfield;
+}
+.inv-qte::-webkit-outer-spin-button, .inv-qte::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.inv-qte.insuffisant { color: var(--erreur); border-color: var(--erreur); background: #FDF0EF; }
+.inv-qte-attendue { min-width: 1.8rem; font-size: 0.85rem; color: var(--gris); font-variant-numeric: tabular-nums; }
+.inv-repere-date {
+  width: 1.9rem; height: 1.9rem; flex-shrink: 0; padding: 0; font-size: 0.9rem; font-weight: 700; line-height: 1;
+  color: #8A4B00; background: #FFF3E0; border: 2px solid var(--orange); border-radius: 50%;
+}
+.inv-article.perime .inv-repere-date { color: #fff; background: var(--erreur); border-color: var(--erreur); }
+.inv-article.sans-date .inv-repere-date { color: var(--gris); background: var(--ciel); border-color: var(--trait); }
+.inv-articles:not(.dates-visibles) .inv-peremption { display: none; }
+.inv-articles.dates-visibles .inv-repere-date { display: none; }
+.inv-peremption { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0 0 0.45rem 2.1rem; }
+.inv-peremption label { font-size: 0.85rem; font-weight: 400; color: var(--gris); }
+.inv-peremption .inv-date { width: 7.5rem; min-height: 2.3rem; padding: 0.2rem 0.5rem; font-variant-numeric: tabular-nums; }
+.inv-echeance { font-size: 0.85rem; font-weight: 700; }
 .inv-article.perime .inv-echeance { color: var(--erreur); }
 .inv-article.perime .inv-date { border-color: var(--erreur); }
 .inv-article.proche .inv-echeance { color: #8A4B00; }
 .inv-article.proche .inv-date { border-color: var(--orange); }
 .inv-article.sans-date .inv-echeance { color: var(--gris); font-weight: 400; }
+.inv-remarque { margin: 0.4rem 0 0.2rem; }
+.inv-remarque summary { cursor: pointer; font-weight: 700; color: var(--bleu); padding: 0.3rem 0; }
+.inv-remarque textarea { margin-top: 0.3rem; }
 .inv-valider { margin-bottom: 0.4rem; }
 
 .inv-alertes { margin: 0 0 1rem; padding: 0.6rem 0.8rem; background: #FFF8F0; border: 2px solid var(--orange); border-radius: var(--rayon); }
@@ -1113,6 +1139,7 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 
 @media (min-width: 640px) {
   .inv-liste { grid-template-columns: 1fr 1fr; }
+  .inv-articles { display: grid; grid-template-columns: 1fr 1fr; column-gap: 2rem; }
   .inv-edition-article .inv-nom-article { flex: 1 1 14rem; }
 }
 @media (prefers-reduced-motion: reduce) { .inv-point.deplace { animation: none; } }

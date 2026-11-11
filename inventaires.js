@@ -454,10 +454,16 @@ const Inventaires = (() => {
         const manquants = new Set(v.manquants.map((m) => m.id));
         c.articles.forEach((a) => { if (!manquants.has(a.id)) coches[a.id] = true; });
       }
-      brouillons.liste[c.id] = { coches, dates: {}, invalides: {}, remarque: v ? v.remarque : '' };
+      brouillons.liste[c.id] = { coches, quantites: {}, dates: {}, invalides: {}, remarque: v ? v.remarque : '' };
     }
-    return brouillons.liste[c.id];
+    const b = brouillons.liste[c.id];
+    if (!b.quantites) b.quantites = {};
+    return b;
   }
+  /** Quantité attendue (nombre) d'un article, ou null s'il n'en a pas. */
+  const attendue = (a) => (/^\d+$/.test(String(a.quantite || '').trim()) ? Number(a.quantite) : null);
+  /** Quantité trouvée : par défaut, la quantité attendue. */
+  const trouvee = (a, b) => (b.quantites[a.id] !== undefined ? b.quantites[a.id] : attendue(a));
   const dateCourante = (c, a, b) => (b.dates[a.id] !== undefined ? b.dates[a.id] : datePeremption(c.id, a.id));
 
   function valider(c) {
@@ -466,13 +472,22 @@ const Inventaires = (() => {
       messageVue('Une date de péremption n\'est pas reconnue : corrigez-la (ex. 03/2027 ou 15/03/2027).', 'erreur');
       return;
     }
-    const articles = c.articles.map((a) => ({
-      id: a.id, nom: a.nom, ok: Boolean(b.coches[a.id]), ...(a.peremption ? { peremption: dateCourante(c, a, b) } : {}),
-    }));
-    const manquants = articles.filter((a) => !a.ok);
+    const articles = c.articles.map((a) => {
+      const att = attendue(a);
+      const qte = trouvee(a, b);
+      return {
+        id: a.id, nom: a.nom, ok: Boolean(b.coches[a.id]),
+        ...(att !== null ? { attendu: att, quantite: qte === null || qte === '' ? 0 : Number(qte) } : {}),
+        ...(a.peremption ? { peremption: dateCourante(c, a, b) } : {}),
+      };
+    });
+    // Manquant : non coché, ou coché avec une quantité inférieure à celle attendue.
+    const incomplet = (a) => !a.ok || (a.attendu !== undefined && a.quantite < a.attendu);
+    const manquants = articles.filter(incomplet);
     if (manquants.length && confirmer !== `valider-${c.id}`) {
       confirmer = `valider-${c.id}`;
-      messageVue(`Non coché (sera noté manquant) : ${manquants.map((a) => a.nom).join(' ; ')}. Cochez-les ou appuyez de nouveau pour valider quand même.`, 'erreur');
+      const libelle = (a) => (a.ok ? `${a.nom} (${a.quantite}/${a.attendu})` : a.nom);
+      messageVue(`Sera noté manquant : ${manquants.map(libelle).join(' ; ')}. Corrigez ou appuyez de nouveau pour valider quand même.`, 'erreur');
       zone.querySelector('.inv-valider').textContent = 'Valider quand même';
       return;
     }
@@ -486,7 +501,7 @@ const Inventaires = (() => {
     }
     // Affiché tout de suite, sans attendre la réponse du serveur.
     const maintenant = new Date().toISOString();
-    etat.verifs[c.id] = { date: maintenant, agent: App.agent(), manquants: manquants.map((a) => ({ id: a.id, nom: a.nom })), remarque: b.remarque.trim() };
+    etat.verifs[c.id] = { date: maintenant, agent: App.agent(), manquants: manquants.map((a) => ({ id: a.id, nom: a.ok ? `${a.nom} (${a.quantite}/${a.attendu})` : a.nom })), remarque: b.remarque.trim() };
     articles.filter((a) => a.peremption !== undefined).forEach((a) => { etat.peremptions[`${c.id}/${a.id}`] = { date: a.peremption, maj: maintenant }; });
     delete brouillons.liste[c.id];
     sauverEtat();
@@ -758,16 +773,29 @@ const Inventaires = (() => {
     return el('section', { classe: 'inv-section' }, el('h2', { texte: 'Sous-inventaires' }), liste, edition ? formulaireAjout(c) : null);
   }
 
-  /** Liste à cocher d'un contenant, avec les dates de péremption des articles suivis. */
+  /**
+   * Liste à cocher d'un contenant : une ligne par article (case, désignation, quantité modifiable).
+   * Les dates de péremption sont masquées ; un repère signale un article périmé ou bientôt périmé,
+   * et le bouton « Péremptions » (ou ce repère) affiche les dates.
+   */
+  let peremptionsVisibles = false;
   function blocVerification(c) {
     if (!c.articles.length) return null;
     const b = brouillon(c);
-    const liste = el('ul', { classe: 'items inv-articles' });
+    const liste = el('ul', { classe: 'inv-articles' });
     const toutCocher = el('button', { type: 'button', classe: 'lien tout-cocher' });
     const compte = el('span', { classe: 'inv-compte' });
+    const suivis = c.articles.filter((a) => a.peremption);
+    const basculer = suivis.length ? el('button', { type: 'button', classe: 'lien inv-basculer-dates' }) : null;
+    const majBascule = () => {
+      if (!basculer) return;
+      liste.classList.toggle('dates-visibles', peremptionsVisibles);
+      basculer.setAttribute('aria-pressed', String(peremptionsVisibles));
+      basculer.textContent = peremptionsVisibles ? 'Masquer les péremptions' : `Péremptions (${suivis.length})`;
+    };
     const maj = () => {
       const n = c.articles.filter((a) => b.coches[a.id]).length;
-      compte.textContent = `${n} sur ${c.articles.length}`;
+      compte.textContent = `${n}/${c.articles.length}`;
       toutCocher.textContent = n === c.articles.length ? 'Tout décocher' : 'Tout cocher';
     };
     const modifie = () => {
@@ -776,19 +804,46 @@ const Inventaires = (() => {
       maj();
     };
     c.articles.forEach((a) => {
-      const coche = el('input', { type: 'checkbox', checked: Boolean(b.coches[a.id]), 'data-article': a.id, surchange: (e) => { b.coches[a.id] = e.target.checked; modifie(); } });
-      const li = el('li', {}, el('label', {}, coche,
-        el('span', {}, a.nom, a.quantite ? el('small', { classe: 'inv-quantite', texte: ` × ${a.quantite}` }) : null)));
+      const champCase = idChamp();
+      const coche = el('input', { type: 'checkbox', id: champCase, checked: Boolean(b.coches[a.id]), surchange: (e) => { b.coches[a.id] = e.target.checked; modifie(); } });
+      const li = el('li', { classe: 'inv-article' });
+      const ligne = el('div', { classe: 'inv-ligne' }, coche, el('label', { for: champCase, classe: 'inv-nom', texte: a.nom }));
+      const att = attendue(a);
+      if (att !== null) {
+        const champQte = el('input', {
+          type: 'number', inputmode: 'numeric', min: '0', max: '999', step: '1', classe: 'inv-qte',
+          'aria-label': `Quantité de ${a.nom} (attendu ${att})`, valeur: String(trouvee(a, b)),
+          surfocus: (e) => e.target.select(),
+          surinput: (e) => {
+            const v = e.target.value === '' ? '' : Math.max(0, Math.round(Number(e.target.value)));
+            b.quantites[a.id] = v;
+            champQte.classList.toggle('insuffisant', v !== '' && v < att);
+            modifie();
+          },
+        });
+        champQte.classList.toggle('insuffisant', Number(trouvee(a, b)) < att);
+        ligne.append(el('span', { classe: 'inv-qte-zone' }, champQte, el('span', { classe: 'inv-qte-attendue', 'aria-hidden': 'true', texte: `/${att}` })));
+      } else if (a.quantite) {
+        ligne.append(el('span', { classe: 'inv-qte-attendue', texte: a.quantite }));
+      }
+      li.append(ligne);
       if (a.peremption) {
         const champ = idChamp();
         const echeance = el('span', { classe: 'inv-echeance' });
+        const repere = el('button', { type: 'button', classe: 'inv-repere-date', surclick: () => { peremptionsVisibles = true; majBascule(); liste.querySelector(`#${champ}`).focus(); } });
         const montrer = () => {
           const p = b.invalides[a.id] ? { niveau: 'perime', texte: 'Date non reconnue' } : etatPeremption(dateCourante(c, a, b));
           echeance.textContent = p.texte;
           li.className = `inv-article ${p.niveau}`;
+          // Repère visible même dates masquées : seulement quand il y a quelque chose à voir.
+          repere.hidden = p.niveau === 'ok';
+          repere.textContent = p.niveau === 'perime' ? '!' : (p.niveau === 'proche' ? '⏳' : '?');
+          repere.setAttribute('aria-label', `${a.nom} : ${p.texte}. Afficher les péremptions`);
+          repere.title = p.texte;
         };
+        ligne.insertBefore(repere, ligne.querySelector('.inv-qte-zone, .inv-qte-attendue'));
         li.append(el('div', { classe: 'inv-peremption' },
-          el('label', { for: champ, texte: 'Péremption' }),
+          el('label', { for: champ, texte: 'Pér.' }),
           el('input', {
             id: champ, inputmode: 'numeric', autocomplete: 'off', placeholder: 'MM/AAAA', classe: 'inv-date',
             valeur: afficherDate(dateCourante(c, a, b)),
@@ -810,19 +865,24 @@ const Inventaires = (() => {
       liste.querySelectorAll('input[type="checkbox"]').forEach((x) => { x.checked = tout; });
       modifie();
     });
+    if (basculer) basculer.addEventListener('click', () => { peremptionsVisibles = !peremptionsVisibles; majBascule(); });
+    // Une date non reconnue reste visible pour être corrigée.
+    if (c.articles.some((a) => b.invalides[a.id])) peremptionsVisibles = true;
     maj();
+    majBascule();
     const champRemarque = idChamp();
     const v = etat.verifs[c.id];
     const veille = v && !verifDuJour(c.id) && (v.manquants.length || v.remarque)
       ? el('p', { classe: 'note-parc anomalie', texte: `Dernière vérification le ${new Date(v.date).toLocaleDateString('fr-FR')} par ${v.agent} : ${[v.manquants.length ? `manquant : ${v.manquants.map((m) => m.nom).join(', ')}` : '', v.remarque].filter(Boolean).join(' — ')}` })
       : null;
     return el('section', { classe: 'inv-section' },
-      el('fieldset', { classe: 'question groupe' },
-        el('legend', {}, el('span', {}, 'Contenu ', compte), toutCocher),
-        el('p', { classe: 'aide-question', texte: 'Cochez ce qui est présent et conforme. Un article non coché sera noté manquant.' }),
-        veille, liste),
-      el('div', { classe: 'champ' }, el('label', { for: champRemarque, texte: 'Remarque (facultatif)' }),
-        el('textarea', { id: champRemarque, rows: '2', maxlength: '500', valeur: b.remarque, surinput: (e) => { b.remarque = e.target.value; sauverBrouillons(); } })),
+      el('div', { classe: 'inv-liste-entete' },
+        el('h2', {}, 'Contenu ', compte),
+        el('div', { classe: 'inv-liste-actions' }, basculer, toutCocher)),
+      veille, liste,
+      el('details', { classe: 'inv-remarque', open: Boolean(b.remarque) },
+        el('summary', { texte: 'Ajouter une remarque' }),
+        el('textarea', { id: champRemarque, rows: '2', maxlength: '500', 'aria-label': 'Remarque', valeur: b.remarque, surinput: (e) => { b.remarque = e.target.value; sauverBrouillons(); } })),
       el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
       el('button', { type: 'button', classe: 'principal inv-valider', texte: 'Valider cet inventaire', surclick: () => valider(c) }));
   }
