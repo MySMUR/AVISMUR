@@ -136,6 +136,7 @@ const Inventaires = (() => {
     return {
       id: c.id, parent: c.parent || '', nom: c.nom || '', ordre: Number(c.ordre) || 0, photo: c.photo || '',
       points: Array.isArray(c.points) ? c.points : [], articles: Array.isArray(c.articles) ? c.articles : [],
+      scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
       ...(c.supprime ? { supprime: true } : {}),
     };
   }
@@ -619,7 +620,7 @@ const Inventaires = (() => {
     const sous = enfants(c.id).length;
     return el('a', { classe: `inv-carte ${b.classe}`, href: lien(c.id) }, repere,
       el('span', { classe: 'inv-carte-texte' },
-        el('strong', { texte: c.nom }),
+        el('strong', {}, c.nom, c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null),
         el('span', { classe: 'inv-carte-etat' }, b.complet ? '✓ ' : '', b.texte,
           sous ? ` · ${pluriel(sous, 'sous-inventaire')}` : ''),
         el('span', { classe: 'inv-badges' }, ...badges(b))),
@@ -1325,12 +1326,16 @@ const Inventaires = (() => {
     const titre = edition
       ? el('div', { classe: 'champ inv-champ-nom' }, el('label', { for: 'inv-nom', texte: 'Nom' }),
         el('input', { id: 'inv-nom', maxlength: '80', valeur: c.nom, surchange: (e) => { const t = e.target.value.trim(); if (t) { c.nom = t; marquer(c.id); } else e.target.value = c.nom; } }))
-      : el('h1', { tabindex: '-1', texte: c.nom });
+      : el('h1', { tabindex: '-1' }, c.nom, c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null);
+    const caseScellable = idChamp();
     return [
       el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' },
         el('a', { href: lien(''), texte: 'Inventaires' }),
         ...parents.flatMap((p) => [el('span', { 'aria-hidden': 'true', texte: ' › ' }), el('a', { href: lien(p.id), texte: p.nom })])),
       el('div', { classe: 'inv-entete' }, titre, boutonEdition()),
+      edition ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseScellable },
+        el('input', { type: 'checkbox', id: caseScellable, checked: c.scellable, surchange: (e) => { c.scellable = e.target.checked; marquer(c.id); } }),
+        el('span', {}, 'Contenant scellable', el('small', { texte: 'fermé par un scellé (plomb) une fois vérifié' }))) : null,
       ligneSynchro(), ligneAvis(),
       edition ? null : el('p', { classe: `inv-statut ${b.classe}` },
         el('strong', { texte: `${b.complet ? '✓ ' : ''}${b.texte}` }),
@@ -1436,7 +1441,7 @@ const Inventaires = (() => {
     const blocs = descendants(c.id).map((x) => {
       const niveau = chemin(x.id).length - profondeur;
       return el('section', { classe: 'imp-niveau', style: `margin-left:${niveau * 1.2}em` },
-        el(niveau ? 'h2' : 'h1', { texte: x.nom }),
+        el(niveau ? 'h2' : 'h1', { texte: `${x.nom}${x.scellable ? ' (scellable)' : ''}` }),
         x.articles.length ? el('ul', {}, ...x.articles.map((a) => (a.separateur ? el('li', { classe: 'imp-separation', texte: a.nom }) : el('li', {},
           el('span', { classe: 'imp-case', 'aria-hidden': 'true' }),
           el('span', { classe: 'imp-nom', texte: `${nomArticle(a)}${a.quantite ? ` × ${a.quantite}` : ''}` }),

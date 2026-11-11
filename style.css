@@ -1225,3 +1225,11 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .inv-usages { margin: 0.5rem 0 0; font-size: 0.9rem; }
 .inv-usages a { color: var(--bleu); font-weight: 700; }
 @media (min-width: 640px) { .inv-refs { grid-template-columns: 1fr 1fr; } }
+
+/* Contenant scellable (plombé une fois vérifié) */
+.inv-tag-scellable {
+  display: inline-block; margin-left: 0.5rem; padding: 0 0.5rem; vertical-align: 0.2em;
+  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--bleu); background: var(--ciel); border: 1.5px solid var(--bleu); border-radius: 999px;
+}
+h1 .inv-tag-scellable { font-size: 0.8rem; vertical-align: 0.35em; }
