@@ -374,7 +374,11 @@ const Infos = (() => {
   }
 
   // ---------- Publication ----------
-  function formulaire() {
+  /**
+   * Formulaire de publication. `prerempli` (facultatif, depuis un autre module) :
+   * { types: [ids de type préférés, dans l'ordre], importance, titre, texte, surPublie() }.
+   */
+  function formulaire(prerempli = {}) {
     const actifs = typesActifs();
     const ids = { titre: nouvelId(), texte: nouvelId(), debut: nouvelId(), fin: nouvelId(), titreFen: nouvelId() };
     let typeChoisi = '';
@@ -466,6 +470,7 @@ const Infos = (() => {
         return;
       }
       fermerFenetre();
+      if (prerempli.surPublie) { prerempli.surPublie(); return; }
       filtre.type = '';
       avis = { texte: navigator.onLine ? 'Information publiée.' : 'Information enregistrée sur cet appareil : elle sera publiée au retour du réseau.', classe: 'succes' };
       rendre();
@@ -473,6 +478,25 @@ const Infos = (() => {
 
     majNote();
     ouvrirFenetre('Nouvelle information', ids.titreFen, formulaireEl);
+    // Pré-remplissage : type (le premier disponible parmi ceux proposés), importance, titre, détails.
+    const typePrefere = (prerempli.types || []).find((id) => actifs.some((t) => t.id === id));
+    if (typePrefere) {
+      const radio = formulaireEl.querySelector(`input[name="info-type"][value="${typePrefere}"]`);
+      radio.checked = true;
+      radio.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (prerempli.importance) {
+      const imp = formulaireEl.querySelector(`input[name="info-importance"][value="${prerempli.importance}"]`);
+      if (imp) imp.checked = true;
+    }
+    if (prerempli.titre) formulaireEl.querySelector(`#${ids.titre}`).value = prerempli.titre.slice(0, 120);
+    if (prerempli.texte) {
+      const zoneTexte = formulaireEl.querySelector(`#${ids.texte}`);
+      zoneTexte.value = prerempli.texte;
+      // Le curseur à la fin des détails : l'agent ajoute son commentaire.
+      zoneTexte.focus();
+      zoneTexte.setSelectionRange(zoneTexte.value.length, zoneTexte.value.length);
+    }
   }
 
   // Fenêtre (mêmes classes que les fenêtres d'actions des véhicules).
@@ -663,6 +687,8 @@ const Infos = (() => {
 
   // ---------- API ----------
   return {
+    /** Publication depuis un autre module (ex. contenant mobile à retrouver) : formulaire pré-rempli. */
+    publier(prerempli) { formulaire(prerempli); },
     initialiser(fonctions) {
       App = fonctions;
       zone = document.getElementById('zone-infos');

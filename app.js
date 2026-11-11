@@ -705,6 +705,8 @@ Infos.initialiser({
 Ambulancier.initialiser();
 Inventaires.initialiser({
   appeler,
+  // Publier sur le mur d'accueil (formulaire du mur, pré-rempli).
+  publierSurMur: (prerempli) => Infos.publier(prerempli),
   // « Voir en check-list » depuis la gestion des inventaires : même inventaire, vu comme les agents.
   quitterGestion: () => { gestionInventaires = false; ouvrirVue('inventaires'); },
   mettreEnFile,

@@ -1284,6 +1284,18 @@ const Inventaires = (() => {
   const aRetrouver = () => Object.values(structure.contenants)
     .filter((c) => !c.supprime && c.desaffecte && !c.parent && !dansUnModele(c.id))
     .sort((a, b) => String(a.desaffecte.depuis).localeCompare(String(b.desaffecte.depuis)));
+  /** Publie sur le mur d'accueil un contenant mobile à retrouver, avec le commentaire libre de l'agent. */
+  function publierARetrouver(c) {
+    const d = c.desaffecte || {};
+    const quand = d.depuis ? `le ${new Date(d.depuis).toLocaleDateString('fr-FR')} à ${heure(d.depuis)}` : '';
+    App.publierSurMur({
+      types: ['materiel-recuperer', 'accident', 'information'],
+      importance: 'importante',
+      titre: `${c.nom} à retrouver`,
+      texte: `« ${c.nom} » n'est plus à sa place : il était dans ${d.deNom || '?'} (constaté ${quand}${d.par ? ` par ${d.par}` : ''}).\n`,
+      surPublie: () => { avis = navigator.onLine ? 'Alerte publiée sur le mur.' : 'Alerte enregistrée : elle sera publiée sur le mur au retour du réseau.'; rendre({ garderPosition: true }); },
+    });
+  }
   function encadreARetrouver() {
     const liste = aRetrouver();
     if (!liste.length) return null;
@@ -1294,7 +1306,8 @@ const Inventaires = (() => {
         const d = c.desaffecte;
         const quand = d.depuis ? new Date(d.depuis) : null;
         return el('li', {}, el('a', { href: lien(c.id) }, el('strong', { texte: c.nom })),
-          el('span', { texte: ` — était dans ${d.deNom || '?'}${quand ? `, désaffecté le ${quand.toLocaleDateString('fr-FR')} à ${heure(d.depuis)}` : ''}${d.par ? ` (${d.par})` : ''}` }));
+          el('span', { texte: ` — était dans ${d.deNom || '?'}${quand ? `, désaffecté le ${quand.toLocaleDateString('fr-FR')} à ${heure(d.depuis)}` : ''}${d.par ? ` (${d.par})` : ''}` }),
+          el('button', { type: 'button', classe: 'lien inv-publier-mur', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) }));
       })));
   }
   /** Le contenant `x`, identifié par l'agent, est celui qui se trouve à la place de `y`. */
@@ -2114,7 +2127,8 @@ const Inventaires = (() => {
       ligneSynchro(), ligneAvis(),
       blocModele(c), blocExemplaire(c),
       c.desaffecte && !c.parent ? el('p', { classe: 'note-parc anomalie' }, el('strong', { texte: 'Désaffecté — à retrouver. ' }),
-        `Était dans ${c.desaffecte.deNom || '?'}. Pour le réaffecter, identifiez-le depuis le contenant où il se trouve (sa gommette ou sa carte).`) : null,
+        `Était dans ${c.desaffecte.deNom || '?'}. Pour le réaffecter, identifiez-le depuis le contenant où il se trouve (« Un contenant mobile se trouve ici »). `,
+        el('button', { type: 'button', classe: 'lien', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) })) : null,
       edition || modele ? null : el('p', { classe: `inv-statut ${b.classe}` },
         el('strong', { texte: `${b.complet ? '✓ ' : ''}${b.texte}` }),
         v ? ` — cet inventaire à ${heure(v.date)} par ${v.agent}` : '',

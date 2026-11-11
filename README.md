@@ -119,6 +119,7 @@ En check-list, ouvrir un contenant **mobile** depuis son contenant (gommette ou 
 
 - **Ce n'est pas celui prévu** : le contenant identifié prend la place (gommette comprise) et quitte son ancien contenant, où sa gommette reste comme **place libre**. Celui qui était prévu est **désaffecté** : il n'est plus rangé nulle part.
 - **À retrouver** : tant qu'un contenant est désaffecté (perte possible), un encadré rouge « contenant mobile à retrouver » s'affiche en tête de la page des inventaires, avec où il était, depuis quand et qui l'a constaté.
+- **Prévenir l'équipe** : « Publier une alerte sur le mur » (dans l'encadré ou sur la page du contenant) ouvre le formulaire du mur d'accueil pré-rempli (type « Matériel à récupérer », importance « Importante », titre et détails) ; l'agent ajoute son commentaire libre avant de publier.
 - **Le retrouver** : dans la check-list du contenant où il se trouve, « **＋ Un contenant mobile se trouve ici** », puis l'identifier (les désaffectés sont proposés d'emblée). Il y est rangé et reprend la place libre (gommette).
 
 Fonctionne hors ligne (file d'attente) ; chaque mouvement est noté dans l'onglet `Mouvements`. En gestion des inventaires, pas d'identification : on modifie la structure.
