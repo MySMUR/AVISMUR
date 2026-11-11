@@ -40,7 +40,8 @@ body {
   background: var(--bleu);
   overflow: hidden;
 }
-.marque { position: relative; z-index: 1; display: flex; align-items: center; gap: 0.9rem; }
+.bandeau-haut { position: relative; z-index: 1; display: flex; align-items: center; gap: 0.75rem; }
+.marque { position: relative; z-index: 1; display: flex; align-items: center; gap: 0.9rem; min-width: 0; }
 .logo-smur { width: 64px; height: 64px; flex-shrink: 0; filter: drop-shadow(0 2px 6px rgb(0 0 0 / 0.25)); }
 .app-nom { margin: 0; font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
 .app-lieu { margin: 0.15rem 0 0; font-size: 0.95rem; opacity: 0.85; }
@@ -67,14 +68,11 @@ body {
 
 /* Indicateur hors ligne : visible quand le réseau (Wi-Fi ou GSM) n'est pas disponible. */
 .hors-ligne {
-  position: absolute;
-  top: max(0.75rem, env(safe-area-inset-top));
-  right: 1rem;
-  z-index: 2;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  margin: 0;
+  flex: none;
+  margin: 0 0 0 auto;
   padding: 0.3rem 0.75rem;
   border-radius: 999px;
   color: #fff;
@@ -82,18 +80,53 @@ body {
   font-size: 0.85rem;
   font-weight: 700;
 }
-
 .hors-ligne svg { width: 1.1rem; height: 1.1rem; flex: none; }
 
+/* Bouton du menu (burger), en haut à droite une fois connecté. */
+.bouton-menu {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 3rem;
+  height: 3rem;
+  margin-left: auto;
+  padding: 0;
+  color: #fff;
+  background: rgb(255 255 255 / 0.12);
+  border: 2px solid rgb(255 255 255 / 0.35);
+  border-radius: var(--rayon);
+}
+.bouton-menu svg { width: 1.6rem; height: 1.6rem; }
+.bouton-menu:hover { background: rgb(255 255 255 / 0.22); }
+.bouton-menu[aria-expanded="true"] { background: #fff; color: var(--bleu); }
+.hors-ligne:not([hidden]) + .bouton-menu { margin-left: 0; }
+
+/* Agent connecté : nom prénom, puis fonction. */
 .utilisateur {
   position: relative;
   z-index: 1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem 1rem;
-  margin-top: 0.9rem;
+  margin-top: 0.85rem;
+}
+.utilisateur-nom { margin: 0; font-size: 1.15rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.utilisateur-fonction {
+  display: inline-block;
+  margin: 0.3rem 0 0;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.85rem;
   font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--bleu);
+  background: #fff;
+  border-radius: 999px;
+}
+.utilisateur-fonction:empty { display: none; }
+
+/* Petit téléphone : le logo rétrécit et l'indicateur hors ligne ne garde que son icône. */
+@media (max-width: 26rem) {
+  body.connecte .logo-smur { width: 48px; height: 48px; }
+  body.connecte .app-nom { font-size: 1.15rem; }
+  body.connecte .hors-ligne { padding: 0.4rem; }
+  body.connecte .hors-ligne-texte { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 }
 
 /* ---------- Feuille de contenu ---------- */
@@ -527,6 +560,7 @@ body.connecte .envoi {
     justify-content: center;
     padding: 3rem;
   }
+  body:not(.connecte) .bandeau-haut { align-items: flex-start; }
   body:not(.connecte) .marque { flex-direction: column; align-items: flex-start; gap: 1.5rem; }
   body:not(.connecte) .logo-smur { width: 160px; height: 160px; }
   body:not(.connecte) .app-nom { font-size: 2.4rem; }
@@ -630,33 +664,83 @@ body.camera-ouverte { overflow: hidden; }
 .cfg-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 1.5rem; }
 .cfg-actions .principal { width: auto; flex: 1 1 16rem; margin: 0; }
 
-/* ---------- Menu principal (une fois connecté) ---------- */
-.menu-principal {
-  position: sticky; bottom: 0; z-index: 5;
-  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; /* autant de colonnes que d'entrées visibles */
-  padding-bottom: env(safe-area-inset-bottom);
-  background: #fff; border-top: 1px solid var(--trait);
-  box-shadow: 0 -4px 14px rgb(19 41 75 / 0.08);
+/* ---------- Menu principal : tiroir à droite (burger) ---------- */
+.tiroir {
+  width: min(22rem, 88vw);
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0 0 0 auto;
+  padding: 0;
+  color: var(--encre);
+  background: #fff;
+  border: 0;
+  box-shadow: -10px 0 40px rgb(19 41 75 / 0.25);
 }
-.menu-principal button {
-  min-height: 3.6rem; padding: 0.4rem 0.3rem;
-  font: inherit; font-weight: 700; color: var(--gris);
-  background: none; border: 0; border-top: 4px solid transparent; cursor: pointer;
-}
-.menu-principal button[aria-current="page"] { color: var(--bleu); border-top-color: var(--bleu); }
-.menu-principal button:focus-visible { outline: 3px solid var(--orange); outline-offset: -4px; }
+.tiroir::backdrop { background: rgb(19 41 75 / 0.45); }
+.tiroir[open] { animation: tiroir-entree 0.22s ease-out; }
+@keyframes tiroir-entree { from { transform: translateX(100%); } }
+body:has(.tiroir[open]) { overflow: hidden; }
 
-/* ---------- Vue « Plus » ---------- */
-.vue-plus h1 { margin-bottom: 1rem; }
-.liens-menu { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
-.lien-menu {
-  display: block; width: 100%; min-height: 3.2rem; padding: 0.7rem 0.9rem;
-  text-align: left; font: inherit; font-weight: 700; color: var(--bleu);
-  background: #fff; border: 2px solid var(--trait); border-radius: var(--rayon); cursor: pointer;
+.tiroir-cadre { display: flex; flex-direction: column; height: 100%; }
+.tiroir-entete {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem;
+  padding: max(1rem, env(safe-area-inset-top)) 1rem 1rem 1.25rem;
+  color: #fff; background: var(--bleu);
 }
-.lien-menu small { display: block; margin-top: 0.15rem; font-size: 0.9rem; font-weight: 400; color: var(--gris); }
-.lien-menu:hover { border-color: var(--bleu); }
-.lien-menu:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
+.tiroir-nom { margin: 0; font-size: 1.1rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.tiroir-fonction { margin: 0.15rem 0 0; font-size: 0.9rem; opacity: 0.9; }
+.tiroir-fonction:empty { display: none; }
+.tiroir-fermer {
+  display: inline-grid; place-items: center; flex: none;
+  width: 2.75rem; height: 2.75rem; padding: 0;
+  color: #fff; background: rgb(255 255 255 / 0.12); border: 0; border-radius: 10px;
+}
+.tiroir-fermer svg { width: 1.4rem; height: 1.4rem; }
+.tiroir-fermer:hover { background: rgb(255 255 255 / 0.24); }
+
+.tiroir-corps { flex: 1; overflow-y: auto; padding: 0.75rem 0.75rem 1rem; }
+.rubrique { margin-top: 1rem; }
+.rubrique h2 {
+  display: flex; align-items: center; gap: 0.5rem;
+  margin: 0 0 0.35rem; padding: 0 0.5rem;
+  font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gris);
+}
+.rubrique h2 svg { width: 1.25rem; height: 1.25rem; flex: none; color: var(--bleu); }
+.rubrique ul { list-style: none; margin: 0; padding: 0; }
+.rubrique-admin h2 svg { color: var(--orange); }
+
+.tiroir-lien {
+  display: flex; flex-wrap: wrap; align-items: center; column-gap: 0.5rem;
+  width: 100%; min-height: 3rem; padding: 0.55rem 0.75rem;
+  text-align: left; font: inherit; font-weight: 700; color: var(--encre);
+  background: none; border: 0; border-left: 4px solid transparent; border-radius: 0 10px 10px 0;
+  cursor: pointer;
+}
+.tiroir-lien small { flex-basis: 100%; font-size: 0.85rem; font-weight: 400; color: var(--gris); }
+.tiroir-lien:hover { background: var(--ciel); }
+.tiroir-lien[aria-current="page"] { color: var(--bleu); background: var(--ciel); border-left-color: var(--bleu); }
+.tiroir-lien:focus-visible { outline: 3px solid var(--orange); outline-offset: -3px; }
+.tiroir-accueil { border-bottom: 1px solid #E1E8F2; border-radius: 0; }
+/* Sous-rubriques prévues mais pas encore développées. */
+.tiroir-lien.a-venir { color: #8796AE; cursor: default; }
+.tiroir-lien.a-venir:hover { background: none; }
+.etiquette {
+  padding: 0.05rem 0.5rem; font-size: 0.75rem; font-weight: 700;
+  color: var(--gris); background: #EEF1F6; border-radius: 999px;
+}
+
+.tiroir-pied { padding: 0.75rem 1rem max(0.75rem, env(safe-area-inset-bottom)); border-top: 1px solid #E1E8F2; }
+.tiroir-deconnexion {
+  width: 100%; min-height: 3rem; padding: 0.6rem 1rem;
+  font: inherit; font-weight: 700; color: var(--erreur);
+  background: #fff; border: 2px solid #F1C7C3; border-radius: var(--rayon);
+}
+.tiroir-deconnexion:hover { background: #FDF1F0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tiroir[open] { animation: none; }
+}
 
 /* ---------- Animation de chargement ---------- */
 .chargement {

@@ -58,8 +58,10 @@ function reprendreSession() {
       if (!enregistre) return 'refuse';
       const rep = await requete('reprendre', { jetonAppareil: enregistre.jetonAppareil });
       if (rep.ok) {
-        session.ecrire({ jeton: rep.jeton, identifiant: rep.identifiant, role: rep.role, debut: Date.now() });
-        appareil.ecrire({ ...enregistre, identifiant: rep.identifiant, role: rep.role });
+        session.ecrire({
+          jeton: rep.jeton, identifiant: rep.identifiant, role: rep.role, nom: rep.nom, prenom: rep.prenom, fonction: rep.fonction, debut: Date.now(),
+        });
+        appareil.ecrire({ ...enregistre, identifiant: rep.identifiant, role: rep.role, nom: rep.nom, prenom: rep.prenom, fonction: rep.fonction });
         return 'ok';
       }
       if (rep.oublierAppareil) {
@@ -94,7 +96,9 @@ async function appeler(action, charge = {}) {
 function memoriserAppareil(rep, resterConnecte) {
   try { localStorage.setItem(CLE_CHOIX_RESTER, resterConnecte ? '1' : '0'); } catch (e) { /* stockage indisponible */ }
   if (resterConnecte && rep.jetonAppareil) {
-    appareil.ecrire({ jetonAppareil: rep.jetonAppareil, identifiant: rep.identifiant, role: rep.role });
+    appareil.ecrire({
+      jetonAppareil: rep.jetonAppareil, identifiant: rep.identifiant, role: rep.role, nom: rep.nom, prenom: rep.prenom, fonction: rep.fonction,
+    });
     return true;
   }
   appareil.effacer();
@@ -119,7 +123,8 @@ function afficher(idEcran, erreur = '') {
   ECRANS.forEach((id) => { $(id).hidden = id !== idEcran; });
   const connecte = idEcran === 'ecran-checklist';
   $('utilisateur').hidden = !connecte;
-  $('menu').hidden = !connecte;
+  $('bouton-menu').hidden = !connecte;
+  if (!connecte) fermerMenu();
   document.body.classList.toggle('connecte', connecte);
   if (!connecte) Inventaires.masquer(); // au prochain agent connecté, les inventaires seront relus sur le serveur
   const zone = $(idEcran).querySelector('.erreur');
@@ -136,23 +141,38 @@ function afficherApplication(infos) {
   const precedente = session.lire() || {};
   const jeton = infos.jeton || precedente.jeton;
   const debut = (jeton === precedente.jeton && precedente.debut) || Date.now();
-  if (jeton) session.ecrire({ jeton, identifiant: infos.identifiant, role: infos.role, debut });
+  if (jeton) {
+    session.ecrire({
+      jeton, identifiant: infos.identifiant, role: infos.role, nom: infos.nom, prenom: infos.prenom, fonction: infos.fonction, debut,
+    });
+  }
   afficher('ecran-checklist');
-  $('nom-utilisateur').textContent = `${infos.identifiant} (${infos.role})`;
   roleCourant = infos.role;
-  // Véhicules : réservé aux ambulanciers et à l'encadrement (l'IADE n'a pas de véhicule).
-  $('menu-vehicules').hidden = infos.role === 'iade';
-  // Inventaires : pour l'IADE c'est « Aujourd'hui » ; entrée à part pour l'encadrement et les administrateurs.
-  $('menu-inventaires').hidden = infos.role === 'iade' || infos.role === 'ambulancier';
-  // Écran de configuration des véhicules et des check-lists : administrateurs seulement.
-  $('option-config').hidden = infos.role !== 'admin';
-  $('option-config').disabled = infos.role !== 'admin';
-  if ($('liste').value === 'config' && infos.role !== 'admin') $('liste').value = 'ambulancier';
+  afficherAgent(infos);
+  // Rubriques du menu selon le rôle : l'IADE n'a pas de véhicule, l'ambulancier pas d'inventaire,
+  // l'administration est réservée aux administrateurs.
+  $('rubrique-vehicules').hidden = !accesVehicules();
+  $('rubrique-inventaires').hidden = !accesInventaires();
+  $('rubrique-admin').hidden = roleCourant !== 'admin';
   // Arrivée par un QR code ou une puce NFC (« …/#inv=<id> ») : on ouvre directement l'inventaire.
-  ouvrirVue(/^#inv\b/.test(location.hash) ? 'inventaires' : 'aujourdhui');
+  ouvrirVue(/^#inv\b/.test(location.hash) ? vueDuLien() : 'aujourdhui');
   envoyerFileAttente();
   chargerConfig();
   chargerReleves();
+}
+
+/**
+ * Bandeau et en-tête du menu : nom prénom et fonction de l'agent.
+ * La fonction vient du serveur (colonne « Fonction » de DB_SMUR) ; à défaut, elle est déduite du rôle.
+ */
+const FONCTIONS = { ambulancier: 'Ambulancier', iade: 'IADE', encadrement: 'Encadrement', admin: 'Administrateur' };
+function afficherAgent(infos) {
+  const nom = [infos.nom, infos.prenom].filter(Boolean).join(' ') || infos.identifiant || '';
+  const fonction = infos.fonction || FONCTIONS[infos.role] || infos.role || '';
+  $('nom-utilisateur').textContent = nom;
+  $('fonction-utilisateur').textContent = fonction;
+  $('menu-nom').textContent = nom || 'Menu';
+  $('menu-fonction').textContent = fonction;
 }
 
 /** Configuration des véhicules et des questions, si un administrateur l'a modifiée. */
@@ -175,7 +195,7 @@ function majConfig(config) {
     else localStorage.removeItem(CLE_CONFIG);
   } catch (e) { /* stockage plein : la configuration s'applique quand même pour cette session */ }
   appliquerConfig(config);
-  if ($('liste').value === 'ambulancier') Ambulancier.afficher();
+  if (!$('zone-ambulancier').hidden) Ambulancier.afficher();
 }
 
 /** Derniers kilométrages et état du parc du jour, gardés sur l'appareil pour le hors ligne. */
@@ -427,24 +447,14 @@ $('deconnexion').addEventListener('click', async () => {
 
 // ---------- Check-lists ----------
 
-function afficherListe(liste) {
-  const config = liste === 'config';
-  $('zone-ambulancier').hidden = liste !== 'ambulancier';
-  $('zone-config').hidden = !config;
-  majBarreEnvoi();
-  if (config) ConfigAdmin.ouvrir();
-  else Ambulancier.afficher();
-  annulerConfirmation();
-}
-
 /**
  * Barre « Enregistrer la check-list » : seulement quand la check-list d'un véhicule est ouverte.
- * Jamais sur l'écran de configuration ni dans les inventaires (chaque inventaire a son bouton « Valider »).
+ * Jamais sur l'écran de configuration, ni dans les inventaires (chaque inventaire a son bouton « Valider »),
+ * ni en Carburant / Carrosserie / Suivi mécanique (chaque écran a son bouton).
  */
 function majBarreEnvoi() {
-  const liste = $('liste').value;
-  const visible = !$('ecran-checklist').hidden && liste === 'ambulancier' && $('vue-plus').hidden && $('vue-parc').hidden
-    && $('zone-inventaires').hidden && Boolean(Ambulancier.vehiculeChoisi());
+  const visible = !$('ecran-checklist').hidden && !$('zone-ambulancier').hidden && !Ambulancier.mode()
+    && Boolean(Ambulancier.vehiculeChoisi());
   document.querySelector('.envoi').hidden = !visible;
 }
 
@@ -512,31 +522,55 @@ function enregistrerAmbulancier() {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// ---------- Menu principal ----------
-// Une vue par entrée du menu. « Aujourd'hui » : check-list du jour (liste choisie selon le rôle).
-// « Véhicules » : sur ordinateur, tableau de bord du parc (parc.js) ; sinon l'écran de check-list avec le choix de véhicule en tête.
-// « Inventaires » : inventaires emboîtés (inventaires.js) ; pour l'IADE, c'est la vue « Aujourd'hui ».
-// « Plus » : configuration (admin) et déconnexion. Pour une nouvelle fonctionnalité, voir README.md.
+// ---------- Menu principal (burger) ----------
+// Une vue par lien du menu (data-vue). Pour une nouvelle fonctionnalité, voir README.md.
+// « aujourdhui » (Accueil) : check-list du jour selon le métier (véhicules pour l'ambulancier, inventaires pour l'IADE).
+// Véhicules : « checklist-ambulancier » (tableau de bord du parc sur ordinateur, cases sinon),
+//   « carburant », « carrosserie », « mecanique » (mêmes cases ; toucher un véhicule ouvre directement l'écran voulu).
+// Inventaires : « inventaires » (inventaires.js). Administration : « configuration », « base-articles ».
 let roleCourant = '';
 let vueCourante = 'aujourdhui';
-// Sur ordinateur, « Véhicules » ouvre le tableau de bord du parc (parc.js) au lieu de la liste de cases.
+// Sur ordinateur, la check-list ambulancier ouvre le tableau de bord du parc (parc.js) au lieu de la liste de cases.
 const GRAND_ECRAN = window.matchMedia('(min-width: 1100px)');
 
-function ouvrirVue(vue) {
-  if ((vue === 'vehicules' || vue === 'inventaires') && roleCourant === 'iade') vue = 'aujourdhui';
+// Vues de la rubrique Véhicules et action ouverte en touchant une case (null : menu d'actions du véhicule).
+const VUES_VEHICULES = {
+  'checklist-ambulancier': { mode: null, titre: 'Vérification du véhicule', consigne: 'Touchez un véhicule pour ses actions' },
+  carburant: { mode: 'plein', titre: 'Carburant', consigne: 'Touchez le véhicule dont vous avez fait le plein' },
+  carrosserie: { mode: 'exterieur', titre: 'Carrosserie', consigne: 'Touchez un véhicule pour sa vérification extérieure' },
+  mecanique: { mode: 'garage', titre: 'Suivi mécanique', consigne: 'Touchez un véhicule pour noter un passage au garage' },
+};
+
+const accesVehicules = () => roleCourant !== 'iade';
+const accesInventaires = () => roleCourant !== 'ambulancier';
+
+/** Vue correspondant au lien « #inv… » de l'adresse. */
+const vueDuLien = () => (location.hash === '#inv-base' ? 'base-articles' : 'inventaires');
+
+function vueAutorisee(vue) {
+  if (VUES_VEHICULES[vue] && !accesVehicules()) return 'aujourdhui';
+  if ((vue === 'inventaires' || vue === 'base-articles') && !accesInventaires()) return 'aujourdhui';
+  if (vue === 'configuration' && roleCourant !== 'admin') return 'aujourdhui';
+  return vue;
+}
+
+function ouvrirVue(demandee) {
+  const precedente = vueCourante;
+  const vue = vueAutorisee(demandee);
   vueCourante = vue;
-  document.querySelectorAll('[data-vue]').forEach((bouton) => {
-    if (bouton.dataset.vue === vue) bouton.setAttribute('aria-current', 'page');
-    else bouton.removeAttribute('aria-current');
+  // Lien actif dans le menu ; l'Accueil de l'IADE, ce sont ses inventaires.
+  const active = vue === 'aujourdhui' && roleCourant === 'iade' ? 'inventaires' : vue;
+  document.querySelectorAll('#menu [data-vue]').forEach((lien) => {
+    if (lien.dataset.vue === active) lien.setAttribute('aria-current', 'page');
+    else lien.removeAttribute('aria-current');
   });
-  const metier = roleCourant === 'ambulancier' || roleCourant === 'iade';
-  const plus = vue === 'plus';
-  const parc = vue === 'vehicules' && GRAND_ECRAN.matches;
+
+  const parc = vue === 'checklist-ambulancier' && GRAND_ECRAN.matches;
   document.body.classList.toggle('parc-ouvert', parc);
   if (parc) Parc.afficher();
   else Parc.masquer();
-  $('vue-plus').hidden = !plus;
-  const inventaires = vue === 'inventaires' || (vue === 'aujourdhui' && roleCourant === 'iade');
+
+  const inventaires = vue === 'inventaires' || vue === 'base-articles' || (vue === 'aujourdhui' && roleCourant === 'iade');
   if (inventaires) {
     Inventaires.afficher();
   } else {
@@ -544,46 +578,75 @@ function ouvrirVue(vue) {
     // Le lien « #inv=… » ne doit pas rester dans l'adresse une fois sorti des inventaires.
     if (/^#inv\b/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
   }
-  if (plus || parc || inventaires) {
-    $('lien-configuration').hidden = roleCourant !== 'admin';
-    ['zone-ambulancier', 'zone-config', 'choix-liste'].forEach((id) => { $(id).hidden = true; });
-    document.querySelector('.envoi').hidden = true;
-    return;
+
+  const config = vue === 'configuration';
+  $('zone-config').hidden = !config;
+  if (config) ConfigAdmin.ouvrir();
+
+  const vehicules = !parc && !inventaires && !config;
+  $('zone-ambulancier').hidden = !vehicules;
+  if (vehicules) {
+    const def = VUES_VEHICULES[vue] || VUES_VEHICULES['checklist-ambulancier'];
+    $('titre-vehicules').textContent = def.titre;
+    $('consigne-vehicules').textContent = def.consigne;
+    Ambulancier.choisirMode(def.mode);
   }
-  // Le choix de liste ne sert plus qu'aux administrateurs (check-list ou configuration).
-  $('choix-liste').hidden = roleCourant !== 'admin' || vue === 'vehicules';
-  if (vue === 'vehicules' || $('liste').value !== 'config') $('liste').value = 'ambulancier';
-  afficherListe($('liste').value);
-  if (vue === 'vehicules') $('vehicules').scrollIntoView({ block: 'start' });
+  annulerConfirmation();
+  majBarreEnvoi();
+  // Nouvelle vue : on revient en haut (pas en naviguant d'un inventaire à l'autre, géré par inventaires.js).
+  if (vue !== precedente) window.scrollTo({ top: 0 });
 }
 
-// Changement de taille de fenêtre (ou rotation) pendant que « Véhicules » est ouvert.
+// Changement de taille de fenêtre (ou rotation) pendant que la check-list ambulancier est ouverte.
 GRAND_ECRAN.addEventListener('change', () => {
-  if (vueCourante === 'vehicules' && !$('ecran-checklist').hidden) ouvrirVue('vehicules');
+  if (vueCourante === 'checklist-ambulancier' && !$('ecran-checklist').hidden) ouvrirVue('checklist-ambulancier');
 });
 
-/** Ouvre la check-list d'un véhicule, y compris depuis le tableau de bord du parc. */
+/** Ouvre la check-list d'un véhicule, y compris depuis le tableau de bord du parc ou l'écran Carburant. */
 function ouvrirChecklist(id) {
-  if (!$('vue-parc').hidden) ouvrirVue('aujourdhui');
+  if (!$('vue-parc').hidden || Ambulancier.mode()) ouvrirVue('aujourdhui');
   Ambulancier.ouvrirChecklist(id);
 }
 
-document.querySelectorAll('[data-vue]').forEach((bouton) => {
-  bouton.addEventListener('click', () => ouvrirVue(bouton.dataset.vue));
-});
+// ----- Ouverture et fermeture du menu (<dialog> : focus gardé dans le menu, Échap pour fermer) -----
+const menu = $('menu');
+function ouvrirMenu() {
+  if (menu.open) return;
+  menu.showModal();
+  $('bouton-menu').setAttribute('aria-expanded', 'true');
+  const actif = menu.querySelector('[aria-current="page"]');
+  (actif || $('fermer-menu')).focus();
+}
+function fermerMenu() {
+  if (menu.open) menu.close();
+}
+menu.addEventListener('close', () => $('bouton-menu').setAttribute('aria-expanded', 'false'));
+$('bouton-menu').addEventListener('click', ouvrirMenu);
+$('fermer-menu').addEventListener('click', fermerMenu);
 
-$('vue-plus').addEventListener('click', (e) => {
-  const action = e.target.closest('[data-action]');
-  if (!action) return;
-  if (action.dataset.action === 'configuration') {
-    ouvrirVue('aujourdhui');
-    $('liste').value = 'config';
-    afficherListe('config');
+menu.addEventListener('click', (e) => {
+  // Toucher le fond grisé, à côté du menu, le ferme.
+  if (e.target === menu) {
+    fermerMenu();
+    return;
   }
-  if (action.dataset.action === 'deconnexion') $('deconnexion').click();
+  const lien = e.target.closest('[data-vue]');
+  if (!lien) return;
+  const vue = lien.dataset.vue;
+  fermerMenu();
+  // Inventaires : on repart de la liste des inventaires (ou de la base des articles) ;
+  // le changement de lien « #inv… » rouvre la vue (voir « hashchange » plus bas).
+  if (vue === 'inventaires' && accesInventaires() && location.hash && location.hash !== '#inv') {
+    location.hash = '#inv';
+    return;
+  }
+  if (vue === 'base-articles' && accesInventaires() && location.hash !== '#inv-base') {
+    location.hash = '#inv-base';
+    return;
+  }
+  ouvrirVue(vue);
 });
 
-$('liste').addEventListener('change', (e) => afficherListe(e.target.value));
 $('zone-ambulancier').addEventListener('reponse', () => { annulerConfirmation(); majBarreEnvoi(); });
 // Accès pour les écrans d'actions (actions.js).
 window.App = { appeler, envoyerEvenement, ouvrirChecklist };
@@ -600,7 +663,7 @@ Inventaires.initialiser({
 // (le bouton Retour du téléphone remonte ainsi d'un niveau).
 window.addEventListener('hashchange', () => {
   if ($('ecran-checklist').hidden) return;
-  if (/^#inv\b/.test(location.hash)) ouvrirVue('inventaires');
+  if (/^#inv\b/.test(location.hash)) ouvrirVue(vueDuLien());
   else if (!$('zone-inventaires').hidden) Inventaires.afficher();
 });
 Parc.initialiser({ appeler });

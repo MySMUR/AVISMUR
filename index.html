@@ -11,32 +11,42 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=35">
+  <link rel="stylesheet" href="style.css?v=36">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
   <header class="bandeau">
-    <p id="hors-ligne" class="hors-ligne" role="status" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false">
-        <path d="M1 1l22 22"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/>
-      </svg>
-      Hors ligne
-    </p>
-    <div class="marque">
-      <img class="logo-smur" src="img/logo-smur.png" alt="SAMU 84 / SMUR Avignon" width="160" height="160">
-      <div class="titres">
-        <p class="app-nom">MySMUR</p>
-        <p class="app-lieu">AVIGNON</p>
+    <div class="bandeau-haut">
+      <div class="marque">
+        <img class="logo-smur" src="img/logo-smur.png" alt="SAMU 84 / SMUR Avignon" width="160" height="160">
+        <div class="titres">
+          <p class="app-nom">MySMUR</p>
+          <p class="app-lieu">AVIGNON</p>
+        </div>
       </div>
+      <p id="hors-ligne" class="hors-ligne" role="status" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false">
+          <path d="M1 1l22 22"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/>
+        </svg>
+        <span class="hors-ligne-texte">Hors ligne</span>
+      </p>
+      <!-- Menu burger : visible une fois connecté -->
+      <button id="bouton-menu" class="bouton-menu" type="button" aria-haspopup="dialog" aria-controls="menu" aria-expanded="false" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true" focusable="false">
+          <path d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+        <span class="invisible">Menu</span>
+      </button>
     </div>
 
     <svg class="ecg" viewBox="0 0 600 60" preserveAspectRatio="none" aria-hidden="true" focusable="false">
       <path d="M0 38 H250 l8 -6 l8 6 h10 l6 6 l10 -40 l10 52 l8 -18 h16 q10 -14 20 0 H600" />
     </svg>
 
+    <!-- Agent connecté : nom prénom et fonction -->
     <div id="utilisateur" class="utilisateur" hidden>
-      <span id="nom-utilisateur"></span>
-      <button id="deconnexion" type="button" class="lien lien-clair">Se déconnecter</button>
+      <p id="nom-utilisateur" class="utilisateur-nom"></p>
+      <p id="fonction-utilisateur" class="utilisateur-fonction"></p>
     </div>
   </header>
 
@@ -145,45 +155,18 @@
         </svg>
         <span id="chargement-texte">Chargement…</span>
       </div>
-      <div id="choix-liste" class="champ">
-        <label for="liste">Check-list</label>
-        <select id="liste">
-          <option value="ambulancier">Ambulancier</option>
-          <option id="option-config" value="config" hidden disabled>Configuration (administrateurs)</option>
-        </select>
-      </div>
-
-      <!-- Vue « Plus » : configuration (administrateurs), déconnexion -->
-      <div id="vue-plus" class="vue-plus" hidden>
-        <h1>Plus</h1>
-        <ul class="liens-menu">
-          <li id="lien-configuration" hidden>
-            <button type="button" class="lien-menu" data-action="configuration">
-              Configuration
-              <small>Véhicules et questions des check-lists (administrateurs)</small>
-            </button>
-          </li>
-          <li>
-            <button type="button" class="lien-menu" data-action="deconnexion">
-              Se déconnecter
-              <small>Retour à l'écran de connexion</small>
-            </button>
-          </li>
-        </ul>
-      </div>
-
-      <!-- Tableau de bord du parc (ordinateur, menu « Véhicules ») : cases à gauche, tableau ou fiche au centre -->
+      <!-- Tableau de bord du parc (ordinateur, menu Véhicules > Check-list ambulancier) : cases à gauche, tableau ou fiche au centre -->
       <div id="vue-parc" class="vue-parc" hidden>
         <h1 class="invisible">Tableau de bord du parc</h1>
         <div id="parc-liste" class="parc-liste" role="group" aria-label="Véhicules"></div>
         <div id="parc-centre" class="parc-centre" tabindex="-1"></div>
       </div>
 
-      <!-- Check-list ambulancier : véhicules -->
+      <!-- Véhicules : check-list ambulancier, ou carburant / carrosserie / suivi mécanique (même liste de cases) -->
       <div id="zone-ambulancier" hidden>
-        <h1>Vérification du véhicule</h1>
+        <h1 id="titre-vehicules">Vérification du véhicule</h1>
         <fieldset class="question">
-          <legend>Touchez un véhicule pour ses actions</legend>
+          <legend id="consigne-vehicules">Touchez un véhicule pour ses actions</legend>
           <p id="avis-parc" class="avis-parc" hidden></p>
           <div id="vehicules" class="cartes-vehicules"></div>
         </fieldset>
@@ -204,13 +187,55 @@
     </section>
   </main>
 
-  <!-- Menu principal : visible une fois connecté. Chaque entrée correspond à une vue (data-vue). -->
-  <nav id="menu" class="menu-principal" aria-label="Menu principal" hidden>
-    <button type="button" data-vue="aujourdhui" aria-current="page">Aujourd'hui</button>
-    <button type="button" data-vue="vehicules" id="menu-vehicules">Véhicules</button>
-    <button type="button" data-vue="inventaires" id="menu-inventaires" hidden>Inventaires</button>
-    <button type="button" data-vue="plus">Plus</button>
-  </nav>
+  <!-- Menu principal (burger, en haut à droite) : rubriques et sous-rubriques. Chaque lien ouvre une vue (data-vue, voir ouvrirVue() dans app.js). -->
+  <dialog id="menu" class="tiroir" aria-labelledby="menu-nom">
+    <div class="tiroir-cadre">
+      <div class="tiroir-entete">
+        <div>
+          <p id="menu-nom" class="tiroir-nom">Menu</p>
+          <p id="menu-fonction" class="tiroir-fonction"></p>
+        </div>
+        <button id="fermer-menu" type="button" class="tiroir-fermer" aria-label="Fermer le menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <nav class="tiroir-corps" aria-label="Menu principal">
+        <button type="button" class="tiroir-lien tiroir-accueil" data-vue="aujourdhui">Accueil<small>Ce que j'ai à faire aujourd'hui</small></button>
+
+        <section id="rubrique-vehicules" class="rubrique" aria-labelledby="titre-rubrique-vehicules">
+          <h2 id="titre-rubrique-vehicules"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 16V8a1 1 0 0 1 1-1h10l4 4h2a1 1 0 0 1 1 1v4"/><path d="M3 16h2m4 0h6m4 0h2"/><circle cx="7" cy="16.5" r="2"/><circle cx="17" cy="16.5" r="2"/><path d="M8 10.5h3M9.5 9v3"/></svg>Véhicules</h2>
+          <ul>
+          <li><button type="button" class="tiroir-lien" data-vue="checklist-ambulancier">Check-list ambulancier<small>Vérification du matin</small></button></li>
+          <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true">Commande d'oxygène<span class="etiquette">À venir</span></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="carburant">Carburant<small>Signaler un plein</small></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="carrosserie">Carrosserie<small>Rayures, impacts, réparations</small></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="mecanique">Suivi mécanique<small>Passages au garage</small></button></li>
+          </ul>
+        </section>
+
+        <section id="rubrique-inventaires" class="rubrique" aria-labelledby="titre-rubrique-inventaires">
+          <h2 id="titre-rubrique-inventaires"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M8 5H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M9 11l1.5 1.5L13 10M9 16h6"/></svg>Inventaires</h2>
+          <ul>
+          <li><button type="button" class="tiroir-lien" data-vue="inventaires">Check-list<small>Sacs, tiroirs, péremptions</small></button></li>
+          <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true">Suivi matériel<span class="etiquette">À venir</span></button></li>
+          <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true">Stupéfiants<span class="etiquette">À venir</span></button></li>
+          <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true">Stérilisation<span class="etiquette">À venir</span></button></li>
+          </ul>
+        </section>
+
+        <section id="rubrique-admin" class="rubrique rubrique-admin" aria-labelledby="titre-rubrique-admin" hidden>
+          <h2 id="titre-rubrique-admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/></svg>Administration</h2>
+          <ul>
+          <li><button type="button" class="tiroir-lien" data-vue="configuration">Configuration<small>Véhicules et questions des check-lists</small></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="base-articles">Base des articles<small>Fiches des articles des inventaires</small></button></li>
+          </ul>
+        </section>
+      </nav>
+      <div class="tiroir-pied">
+        <button id="deconnexion" type="button" class="tiroir-deconnexion">Se déconnecter</button>
+      </div>
+    </div>
+  </dialog>
 
   <footer class="pied">
     <img class="logo-cha" src="img/logo-cha.png" alt="Centre hospitalier d'Avignon" width="29" height="40">
@@ -220,12 +245,12 @@
   <script src="config.js?v=6"></script>
   <script src="checklists.js?v=13"></script>
   <script src="compteur.js?v=5"></script>
-  <script src="ambulancier.js?v=24"></script>
-  <script src="actions.js?v=10"></script>
+  <script src="ambulancier.js?v=25"></script>
+  <script src="actions.js?v=11"></script>
   <script src="config-admin.js?v=6"></script>
-  <script src="parc.js?v=6"></script>
+  <script src="parc.js?v=7"></script>
   <script src="lib/qrcode.js?v=1"></script>
   <script src="inventaires.js?v=10"></script>
-  <script src="app.js?v=23"></script>
+  <script src="app.js?v=24"></script>
 </body>
 </html>

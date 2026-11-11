@@ -435,5 +435,12 @@ const Actions = (() => {
   }
 
   // silhouette, FACES et afficherPhotoServeur sont aussi utilisés par le tableau de bord du parc (parc.js).
-  return { ouvrir, fermer, silhouette, FACES, afficherPhotoServeur };
+  /** Ouvre directement un écran d'action (menu Véhicules > Carburant, Carrosserie, Suivi mécanique). */
+  function ouvrirAction(type, v, info, etatV) {
+    const ecrans = { plein, exterieur, garage };
+    if (ecrans[type]) ecrans[type](v, info, etatV);
+    else ouvrir(v, info, etatV);
+  }
+
+  return { ouvrir, ouvrirAction, fermer, silhouette, FACES, afficherPhotoServeur };
 })();

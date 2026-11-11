@@ -1,5 +1,5 @@
 /*
- * Tableau de bord du parc, sur ordinateur (menu « Véhicules », écran large).
+ * Tableau de bord du parc, sur ordinateur (menu Véhicules > Check-list ambulancier, écran large).
  *  - à gauche : les cases véhicules empilées (mêmes couleurs et pictogrammes que la check-list) ;
  *  - au centre, par défaut : le tableau de tous les éléments des check-lists du jour, un véhicule
  *    disponible par colonne (comme le Sheet « Check-list journalière véhicules SMUR ») ;
@@ -151,8 +151,7 @@ const Parc = (() => {
   /** Donne au bloc marqué data-hauteur toute la hauteur visible, sans faire défiler la page. */
   function ajusterHauteur() {
     if (!racine || racine.hidden) return;
-    const menu = document.getElementById('menu');
-    const basMenu = menu && !menu.hidden ? menu.offsetHeight : 0;
+    const basMenu = 0; // plus de barre de menu en bas : le menu est dans le bandeau
     colonne.style.maxHeight = `${Math.max(300, window.innerHeight - basMenu - 24)}px`;
     const cible = centre.querySelector('[data-hauteur]');
     if (!cible) return;

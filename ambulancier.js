@@ -18,6 +18,9 @@ const Ambulancier = (() => {
   const aujourdhui = () => new Date().toLocaleDateString('fr-CA'); // AAAA-MM-JJ, heure locale
   const km = (n) => `${Number(n).toLocaleString('fr-FR')} km`;
 
+  // Action ouverte en touchant une case : null = menu d'actions (check-list) ; 'plein', 'exterieur' ou 'garage'.
+  let modeAction = null;
+
   function lireStockage(cle) {
     try { return JSON.parse(localStorage.getItem(cle)) || {}; } catch (e) { return {}; }
   }
@@ -441,7 +444,10 @@ const Ambulancier = (() => {
       'data-vehicule': v.id,
       ...(surClic ? { 'aria-pressed': String(estChoisi) } : { 'aria-haspopup': 'dialog' }),
     });
-    bouton.addEventListener('click', surClic || (() => Actions.ouvrir(v, info, etatV)));
+    // Menu Véhicules > Carburant, Carrosserie, Suivi mécanique : la case ouvre directement l'écran voulu.
+    bouton.addEventListener('click', surClic || (() => (modeAction
+      ? Actions.ouvrirAction(modeAction, v, info, etatV)
+      : Actions.ouvrir(v, info, etatV))));
 
     // En-tête : indicatif, type, icône, position du jour
     const position = el('span', { classe: 'position' });
@@ -532,8 +538,10 @@ const Ambulancier = (() => {
         ? `État du parc du jour pas encore reçu (dernier reçu : ${parc.date.split('-').reverse().join('/')}). Disponibilités et positions non affichées.`
         : 'État du parc non reçu : disponibilités et positions non affichées.';
     }
-    // Un véhicule désactivé par un administrateur n'apparaît plus.
-    VEHICULES.filter((v) => !v.inactif).forEach((v) => zoneVehicules.append(carte(v)));
+    // Un véhicule désactivé par un administrateur n'apparaît plus, ni ceux que l'action ne concerne pas
+    // (pas de plein ni de garage pour la couveuse, par exemple).
+    const exclu = { plein: 'sansPlein', exterieur: 'sansExterieur', garage: 'sansGarage' }[modeAction];
+    VEHICULES.filter((v) => !v.inactif && !(exclu && v[exclu])).forEach((v) => zoneVehicules.append(carte(v)));
     // Prévient le tableau de bord du parc (ordinateur) que les données ont changé.
     document.dispatchEvent(new CustomEvent('parc-maj'));
   }
@@ -542,7 +550,7 @@ const Ambulancier = (() => {
   function rendreQuestions() {
     zoneQuestions.innerHTML = '';
     const v = vehicule();
-    if (!v) {
+    if (!v || modeAction) {
       titre.textContent = '';
       return;
     }
@@ -797,5 +805,8 @@ const Ambulancier = (() => {
   return {
     initialiser, finChargement, infosVehicule, etatVehicule, estDZ, helico, cadran, carburantActuel, creerCarte: carte, noterEvenement,
     ouvrirChecklist: (id) => choisirVehicule(id),
-    vehiculeChoisi: () => etat.vehicule, afficher: () => { rendreVehicules(); rendreQuestions(); }, lire, terminer, majReleves };
+    vehiculeChoisi: () => etat.vehicule,
+    mode: () => modeAction,
+    choisirMode: (mode) => { modeAction = mode || null; rendreVehicules(); rendreQuestions(); },
+    afficher: () => { rendreVehicules(); rendreQuestions(); }, lire, terminer, majReleves };
 })();
