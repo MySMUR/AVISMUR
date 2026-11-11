@@ -44,39 +44,75 @@ async function requete(action, charge) {
   return r.json();
 }
 
-/** Ouvre une nouvelle session à partir du jeton d'appareil. Lève une erreur si le réseau manque. */
-async function reprendreSession() {
-  const enregistre = appareil.lire();
-  if (!enregistre) return false;
-  const rep = await requete('reprendre', { jetonAppareil: enregistre.jetonAppareil });
-  if (rep.ok) {
-    session.ecrire({ jeton: rep.jeton, identifiant: rep.identifiant, role: rep.role });
-    appareil.ecrire({ ...enregistre, identifiant: rep.identifiant, role: rep.role });
-    return true;
+/**
+ * Ouvre une nouvelle session à partir du jeton d'appareil.
+ * Renvoie 'ok', 'refuse' (appareil plus reconnu : il faut se reconnecter) ou 'indisponible'
+ * (serveur en erreur : on garde l'appareil et on réessaiera). Lève une erreur si le réseau manque.
+ * Une seule reprise à la fois : au réveil de l'application, plusieurs requêtes partent ensemble.
+ */
+let repriseEnCours = null;
+function reprendreSession() {
+  if (!repriseEnCours) {
+    repriseEnCours = (async () => {
+      const enregistre = appareil.lire();
+      if (!enregistre) return 'refuse';
+      const rep = await requete('reprendre', { jetonAppareil: enregistre.jetonAppareil });
+      if (rep.ok) {
+        session.ecrire({ jeton: rep.jeton, identifiant: rep.identifiant, role: rep.role, debut: Date.now() });
+        appareil.ecrire({ ...enregistre, identifiant: rep.identifiant, role: rep.role });
+        return 'ok';
+      }
+      if (rep.oublierAppareil) {
+        appareil.effacer();
+        return 'refuse';
+      }
+      return 'indisponible';
+    })().finally(() => { repriseEnCours = null; });
   }
-  if (rep.oublierAppareil) appareil.effacer();
-  return false;
+  return repriseEnCours;
 }
 
 async function appeler(action, charge = {}) {
   let rep = await requete(action, charge);
+  if (!rep.reconnecter) return rep;
   // Session courte expirée : on la renouvelle avec le jeton d'appareil, puis on rejoue la requête.
-  if (rep.reconnecter && await reprendreSession()) rep = await requete(action, charge);
-  if (rep.reconnecter) {
-    session.effacer();
-    afficher('ecran-connexion', 'Session expirée, reconnectez-vous.');
+  const reprise = await reprendreSession();
+  if (reprise === 'ok') return requete(action, charge);
+  if (reprise === 'indisponible') {
+    // Appareil toujours mémorisé : on ne renvoie pas l'agent à l'écran de connexion.
+    return { ...rep, erreur: 'Serveur momentanément indisponible, réessayez dans un instant.' };
   }
+  session.effacer();
+  afficher('ecran-connexion', 'Session expirée, reconnectez-vous.');
   return rep;
 }
 
-/** Après une connexion réussie : garde ou oublie l'appareil selon la case cochée. */
+/**
+ * Après une connexion réussie : garde ou oublie l'appareil selon la case cochée.
+ * Renvoie false si la case était cochée mais que le serveur n'a pas fourni de jeton d'appareil.
+ */
 function memoriserAppareil(rep, resterConnecte) {
+  try { localStorage.setItem(CLE_CHOIX_RESTER, resterConnecte ? '1' : '0'); } catch (e) { /* stockage indisponible */ }
   if (resterConnecte && rep.jetonAppareil) {
     appareil.ecrire({ jetonAppareil: rep.jetonAppareil, identifiant: rep.identifiant, role: rep.role });
-  } else {
-    appareil.effacer();
+    return true;
   }
+  appareil.effacer();
+  return !resterConnecte;
 }
+
+function avertirSansAppareil() {
+  $('statut').textContent = '« Rester connecté » n\'a pas pu être activé : le serveur ne l\'a pas accepté. Prévenez l\'administrateur.';
+  $('statut').className = 'message erreur';
+}
+
+// La case « Rester connecté » reste cochée d'une connexion à l'autre si l'agent l'avait choisie.
+const CLE_CHOIX_RESTER = 'avismur_rester_connecte';
+(function preCocherResterConnecte() {
+  let choix = null;
+  try { choix = localStorage.getItem(CLE_CHOIX_RESTER); } catch (e) { /* stockage indisponible */ }
+  if (choix === '1') ['rester-connecte', 'rester-connecte-mdp'].forEach((id) => { $(id).checked = true; });
+})();
 
 /** Affiche un écran et, éventuellement, un message d'erreur dans cet écran. */
 function afficher(idEcran, erreur = '') {
@@ -97,8 +133,10 @@ function message(idEcran, texte) {
 }
 
 function afficherApplication(infos) {
-  const jeton = infos.jeton || (session.lire() || {}).jeton;
-  if (jeton) session.ecrire({ jeton, identifiant: infos.identifiant, role: infos.role });
+  const precedente = session.lire() || {};
+  const jeton = infos.jeton || precedente.jeton;
+  const debut = (jeton === precedente.jeton && precedente.debut) || Date.now();
+  if (jeton) session.ecrire({ jeton, identifiant: infos.identifiant, role: infos.role, debut });
   afficher('ecran-checklist');
   $('nom-utilisateur').textContent = `${infos.identifiant} (${infos.role})`;
   roleCourant = infos.role;
@@ -302,8 +340,9 @@ $('ecran-connexion').addEventListener('submit', async (e) => {
   const rep = await soumettre('ecran-connexion', 'login', { cri: $('cri').value.trim(), motDePasse: $('mdp').value, resterConnecte });
   $('mdp').value = '';
   if (!rep.ok) return;
-  memoriserAppareil(rep, resterConnecte);
+  const memorise = memoriserAppareil(rep, resterConnecte);
   afficherApplication(rep);
+  if (!memorise) avertirSansAppareil();
 });
 
 // Étape 1 : demande du SMS.
@@ -346,8 +385,9 @@ $('ecran-mdp').addEventListener('submit', async (e) => {
   $('confirmation-mdp').value = '';
   parcours.cri = '';
   parcours.jetonCreation = '';
-  memoriserAppareil(rep, resterConnecte);
+  const memorise = memoriserAppareil(rep, resterConnecte);
   afficherApplication(rep);
+  if (!memorise) avertirSansAppareil();
 });
 
 // Champs numériques : on ne garde que les chiffres.
@@ -592,6 +632,8 @@ if ('serviceWorker' in navigator) {
     const rep = await appeler('ping');
     marquerReseau(true);
     if (rep.ok) afficherApplication(rep);
+    // Serveur en erreur mais appareil mémorisé : on ouvre quand même l'application.
+    else if (!rep.reconnecter || appareil.lire()) afficherApplication(actuelle);
   } catch (err) {
     marquerReseau(false);
     afficherApplication(actuelle);
@@ -599,3 +641,19 @@ if ('serviceWorker' in navigator) {
     $('statut').className = 'message';
   }
 })();
+
+// « Rester connecté » : l'application reste souvent ouverte en arrière-plan sur le téléphone.
+// À son retour au premier plan, si la session courte (6 h côté serveur) arrive à échéance,
+// on la renouvelle tout de suite avec le jeton d'appareil, avant la première action de l'agent.
+const RENOUVELER_APRES_MS = 5 * 3600 * 1000;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !navigator.onLine || !appareil.lire()) return;
+  const actuelle = session.lire();
+  if (actuelle && actuelle.debut && Date.now() - actuelle.debut < RENOUVELER_APRES_MS) return;
+  reprendreSession().then((resultat) => {
+    if (resultat === 'refuse') {
+      session.effacer();
+      afficher('ecran-connexion', 'Connexion expirée sur cet appareil. Reconnectez-vous.');
+    }
+  }).catch(() => { /* hors ligne : on réessaiera à la prochaine requête */ });
+});
