@@ -52,3 +52,15 @@ Un inventaire est un arbre de contenants : sac > sacoche > pochette, intercalair
 **Hors ligne** : la structure et le dernier état connu sont gardés sur l'appareil (`localStorage`), les photos dans IndexedDB (téléchargées à la première ouverture en ligne). Une vérification validée hors ligne part par la file d'attente au retour du réseau ; les modifications d'un administrateur aussi.
 
 Backend : `Inventaires.gs` (dépôt `AVISMUR-backend`). Tant qu'il n'est pas installé, l'appli l'indique et garde les modifications sur l'appareil.
+
+### Inventaires types (sacs identiques)
+
+Case **« Inventaire type »** (mode Modifier, sur un inventaire de premier niveau) : l'inventaire devient le modèle d'une série de contenants identiques, par exemple les 7 sacs d'intervention. Il ne se vérifie pas et n'est visible que des administrateurs (section « Inventaires types »).
+
+- **Créer des exemplaires** : en bas du bloc « Inventaire type », nombre puis « Créer ». Chaque exemplaire est une copie complète (photos, points, sous-inventaires, articles), avec son propre nom, son QR code et ses vérifications.
+- **Répercuter** : après avoir modifié le type (ou un de ses sous-inventaires), « Répercuter sur les exemplaires cochés ». Rien ne part tout seul.
+- **Personnaliser un sac** : on modifie l'exemplaire directement (quantité, article ajouté ou retiré, photo…). Cela ne touche pas les autres sacs, et la répercussion conserve ces personnalisations : un champ modifié dans le sac garde sa valeur ; ce qui n'a pas été modifié suit le type. En mode Modifier, un exemplaire indique ce qui est personnalisé, avec « Revenir au modèle ».
+
+Données : un contenant d'exemplaire porte `source` (le contenant du type qu'il copie) et `base` (l'état du type lors de la dernière répercussion), dans la colonne « données » de l'onglet `Inventaires`.
+
+**Photos des articles** : chaque fiche de la base peut avoir une photo (fiche > Photo). Dans la liste à cocher, une vignette apparaît devant l'article ; la toucher affiche la photo en grand et les informations de la fiche.

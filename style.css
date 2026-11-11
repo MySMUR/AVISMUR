@@ -1262,3 +1262,22 @@ h1 .inv-tag-scellable { font-size: 0.8rem; vertical-align: 0.35em; }
 .inv-liste-triable > li.inv-ligne-triable { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 0.2rem; }
 .inv-liste-triable > li.inv-ligne-triable > .inv-outils { grid-column: 2; }
 .inv-repere-date, .inv-poignee, .inv-plus { -webkit-tap-highlight-color: transparent; }
+
+/* Photos des articles de la base */
+.inv-fiche-photo { display: block; max-width: 12rem; max-height: 10rem; margin-top: 0.4rem; border-radius: 8px; border: 1px solid var(--trait); }
+.inv-vignette { width: 2.4rem; height: 2.4rem; flex-shrink: 0; padding: 0; overflow: hidden; background: var(--ciel); border: 1px solid var(--trait); border-radius: 6px; -webkit-tap-highlight-color: transparent; }
+.inv-vignette img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.inv-fiche-grande { display: block; width: 100%; max-height: 60vh; object-fit: contain; margin-bottom: 0.6rem; background: var(--ciel); border-radius: 10px; }
+.inv-pastille-photo { font-size: 0.85em; }
+/* Inventaires types */
+.inv-titre-modeles { margin: 1.4rem 0 0.2rem; font-size: 1.1rem; }
+.inv-tag-modele { color: #6B3FA0; border-color: #6B3FA0; background: #F4EEFB; }
+.inv-note-modele { background: #F4EEFB; border-left: 6px solid #6B3FA0; }
+.inv-note-modele p { margin: 0.2rem 0; }
+.inv-bloc-modele { border-top-color: #6B3FA0; }
+.inv-exemplaires { display: grid; gap: 0.1rem; margin: 0.4rem 0; }
+.inv-exemplaires a { color: var(--bleu); font-weight: 700; }
+.inv-creer-exemplaires { margin-top: 1rem; }
+.inv-creer-exemplaires label { font-weight: 700; }
+.inv-liste-modele { list-style: none; margin: 0; padding: 0; }
+.inv-liste-modele li:not(.inv-separation) { padding: 0.35rem 0; border-bottom: 1px solid #E1E8F2; }

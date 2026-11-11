@@ -138,6 +138,9 @@ const Inventaires = (() => {
       id: c.id, parent: c.parent || '', nom: c.nom || '', ordre: Number(c.ordre) || 0, photo: c.photo || '',
       points: Array.isArray(c.points) ? c.points : [], articles: Array.isArray(c.articles) ? c.articles : [],
       scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
+      ...(c.modele ? { modele: true } : {}), // inventaire type : sert de structure à ses exemplaires
+      ...(c.source ? { source: c.source } : {}), // exemplaire : contenant du modèle dont il est la copie
+      ...(c.base ? { base: c.base } : {}), // exemplaire : état du modèle lors de la dernière répercussion
       ...(c.supprime ? { supprime: true } : {}),
     };
   }
@@ -150,6 +153,7 @@ const Inventaires = (() => {
       id: f.id, denomination: String(f.denomination || ''), categorie: CATEGORIES.includes(f.categorie) ? f.categorie : '',
       horsStock: f.horsStock === true, refInterne: String(f.refInterne || ''), refFournisseur: String(f.refFournisseur || ''),
       consommable: f.consommable === true, perissable: f.perissable === true, archive: f.archive === true,
+      photo: String(f.photo || ''),
     };
   }
   /** Fiche de la base d'un article d'inventaire (null pour un article ancien, saisi sans la base). */
@@ -231,6 +235,7 @@ const Inventaires = (() => {
   function bilan(id) {
     const b = { total: 0, faits: 0, manquants: 0, perimes: 0, proches: 0, sansDate: 0 };
     descendants(id).forEach((c) => {
+      if (dansUnModele(c.id)) return; // un inventaire type ne se vérifie pas
       if (aCocher(c).length) {
         b.total += 1;
         const v = verifDuJour(c.id);
@@ -329,12 +334,12 @@ const Inventaires = (() => {
   }
 
   /** Photo réduite à 1280 px et compressée (JPEG) : légère pour l'envoi et le stockage. */
-  function reduirePhoto(fichier) {
+  function reduirePhoto(fichier, cote = 1280) {
     return new Promise((ok, ko) => {
       const url = URL.createObjectURL(fichier);
       const img = new Image();
       img.onload = () => {
-        const ratio = Math.min(1, 1280 / Math.max(img.width, img.height));
+        const ratio = Math.min(1, cote / Math.max(img.width, img.height));
         const c = document.createElement('canvas');
         c.width = Math.round(img.width * ratio);
         c.height = Math.round(img.height * ratio);
@@ -377,6 +382,25 @@ const Inventaires = (() => {
   /** Envoie les modifications de l'administrateur : d'abord les fiches de la base, puis les photos, puis les contenants. */
   async function pousser() {
     etatSynchro('Envoi des modifications…');
+    // Photos des fiches de la base prises sur cet appareil : envoyées avant les fiches.
+    for (const id of Object.keys(modifs.fiches)) {
+      const f = structure.catalogue[id];
+      if (!f || !f.photo.startsWith('local-')) continue;
+      const locale = f.photo;
+      const donnees = await Photos.lire(locale);
+      let distante = '';
+      if (donnees) {
+        const repPhoto = await App.appeler('envoyerPhotoInventaire', { photo: donnees });
+        if (!repPhoto.ok) throw new RefusServeur(repPhoto.erreur || 'photo refusée');
+        distante = repPhoto.id;
+        await Photos.ecrire(distante, donnees);
+      }
+      f.photo = distante;
+      modifs.fiches[id] += 1;
+      await Photos.supprimer(locale);
+      sauverStructure();
+      sauverModifs();
+    }
     const fichesEnvoyees = { ...modifs.fiches };
     if (Object.keys(fichesEnvoyees).length) {
       const repFiches = await App.appeler('enregistrerCatalogue', { fiches: Object.keys(fichesEnvoyees).map((id) => structure.catalogue[id]).filter(Boolean) });
@@ -471,7 +495,11 @@ const Inventaires = (() => {
 
   /** Télécharge les photos manquantes pour le hors ligne, puis oublie celles qui ne servent plus. */
   async function prechargerPhotos() {
-    const utiles = new Set(Object.values(structure.contenants).filter((c) => !c.supprime && c.photo).map((c) => c.photo));
+    const vivants = Object.values(structure.contenants).filter((c) => !c.supprime);
+    const utiles = new Set(vivants.filter((c) => c.photo).map((c) => c.photo));
+    // Photos des articles : seulement ceux présents dans un inventaire (inutile de tout télécharger).
+    vivants.forEach((c) => c.articles.forEach((a) => { const f = fiche(a); if (f && f.photo) utiles.add(f.photo); }));
+    Object.values(structure.catalogue).forEach((f) => { if (f.photo && f.photo.startsWith('local-')) utiles.add(f.photo); });
     const presentes = new Set(await Photos.cles());
     const manquantes = [...utiles].filter((id) => !presentes.has(id) && !id.startsWith('local-'));
     let recues = 0;
@@ -642,7 +670,8 @@ const Inventaires = (() => {
     const sous = enfants(c.id).length;
     return el('a', { classe: `inv-carte ${b.classe}`, href: lien(c.id) }, repere,
       el('span', { classe: 'inv-carte-texte' },
-        el('strong', {}, c.nom, c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null),
+        el('strong', {}, c.nom, c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null,
+          c.modele ? el('span', { classe: 'inv-tag-scellable inv-tag-modele', texte: `Type · ${pluriel(exemplairesDe(c.id).length, 'exemplaire')}` }) : null),
         el('span', { classe: 'inv-carte-etat' }, b.complet ? '✓ ' : '', b.texte,
           sous ? ` · ${pluriel(sous, 'sous-inventaire')}` : ''),
         el('span', { classe: 'inv-badges' }, ...badges(b))),
@@ -695,7 +724,7 @@ const Inventaires = (() => {
   // ----- Premier niveau -----
   function vueRacine() {
     const racines = enfants('');
-    const tous = Object.values(structure.contenants).filter((c) => !c.supprime);
+    const tous = Object.values(structure.contenants).filter((c) => !c.supprime && (estAdmin() || !dansUnModele(c.id)));
     const noeuds = [
       el('div', { classe: 'inv-entete' }, el('h1', { tabindex: '-1', texte: 'Inventaires' }), boutonEdition()),
       ligneSynchro(), ligneAvis(),
@@ -740,6 +769,7 @@ const Inventaires = (() => {
     tous.forEach((c) => aCocher(c).filter(suiviPeremption).forEach((a) => {
       const date = datePeremption(c.id, a.id);
       const p = etatPeremption(date);
+      if (dansUnModele(c.id)) return;
       if (p.niveau === 'perime' || p.niveau === 'proche') alertes.push({ c, a, date, p, jours: joursRestants(date) });
     }));
     if (alertes.length) {
@@ -752,7 +782,14 @@ const Inventaires = (() => {
           el('span', { texte: `${afficherDate(x.date)} · ${x.p.texte}` }))))));
     }
 
-    noeuds.push(el('ul', { classe: 'inv-liste' }, ...racines.map((c) => el('li', {}, carte(c)))));
+    noeuds.push(el('ul', { classe: 'inv-liste' }, ...racines.filter((c) => !c.modele).map((c) => el('li', {}, carte(c)))));
+    // Inventaires types : visibles des administrateurs seulement.
+    const modeles = racines.filter((c) => c.modele);
+    if (modeles.length && estAdmin()) {
+      noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Inventaires types' }),
+        el('p', { classe: 'aide-question', texte: 'Ils servent de structure à leurs exemplaires et ne se vérifient pas.' }),
+        el('ul', { classe: 'inv-liste' }, ...modeles.map((c) => el('li', {}, carte(c)))));
+    }
 
     if (edition) {
       const champ = idChamp();
@@ -943,6 +980,14 @@ const Inventaires = (() => {
       const coche = el('input', { type: 'checkbox', id: champCase, 'data-article': a.id, checked: Boolean(b.coches[a.id]), surchange: (e) => { b.coches[a.id] = e.target.checked; modifie(); } });
       const li = el('li', { classe: 'inv-article' });
       const ligne = el('div', { classe: 'inv-ligne' }, coche, el('label', { for: champCase, classe: 'inv-nom', texte: nomArticle(a) }));
+      const ficheA = fiche(a);
+      if (ficheA && ficheA.photo) {
+        // Vignette de l'article : la toucher ouvre la photo en grand et les informations de la fiche.
+        const vignette = el('button', { type: 'button', classe: 'inv-vignette', 'aria-label': `Photo et informations : ${nomArticle(a)}`, surclick: () => voirFiche(ficheA) });
+        const poser = (d) => { if (d) vignette.append(el('img', { src: d, alt: '' })); };
+        if (Photos.enMemoire(ficheA.photo)) poser(Photos.enMemoire(ficheA.photo)); else obtenirPhoto(ficheA.photo).then(poser);
+        ligne.insertBefore(vignette, ligne.children[1]);
+      }
       const att = attendue(a);
       if (att !== null) {
         const champQte = el('input', {
@@ -1029,6 +1074,27 @@ const Inventaires = (() => {
         el('textarea', { id: champRemarque, rows: '2', maxlength: '500', 'aria-label': 'Remarque', valeur: b.remarque, surinput: (e) => { b.remarque = e.target.value; sauverBrouillons(); } })),
       el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
       el('button', { type: 'button', classe: 'principal inv-valider', texte: 'Valider cet inventaire', surclick: () => valider(c) }));
+  }
+
+  /** Fenêtre d'un article de la base : photo en grand et informations (vérification). */
+  function voirFiche(f) {
+    const fond = el('div', { classe: 'fenetre-fond', surclick: (e) => { if (e.target === fond) fermer(); } });
+    const retour = document.activeElement;
+    const fermer = () => { fond.remove(); document.body.classList.remove('fenetre-ouverte'); if (retour) retour.focus(); };
+    const img = el('img', { classe: 'inv-fiche-grande', alt: f.denomination });
+    obtenirPhoto(f.photo).then((d) => { if (d) img.src = d; });
+    const lignes = [['Catégorie', f.categorie], ['Réf. interne', f.refInterne], ['Réf. fournisseur', f.refFournisseur],
+      ['Consommable', f.consommable ? 'Oui' : 'Non'], ['Périssable', f.perissable ? 'Oui' : 'Non'], ['Dotation hors stock', f.horsStock ? 'Oui' : 'Non']];
+    const titre = idChamp();
+    fond.append(el('div', { classe: 'fenetre', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
+      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: f.denomination }),
+        el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
+      el('div', { classe: 'fenetre-corps' }, f.photo ? img : null,
+        el('dl', { classe: 'reponses' }, ...lignes.filter(([, v]) => v).map(([k, v]) => el('div', { classe: 'reponse' }, el('dt', { texte: k }), el('dd', { texte: v })))))));
+    fond.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
+    document.body.append(fond);
+    document.body.classList.add('fenetre-ouverte');
+    fond.querySelector('.fenetre-fermer').focus();
   }
 
   // ---------- Glisser-déposer ----------
@@ -1138,6 +1204,36 @@ const Inventaires = (() => {
         } }), el('span', {}, texte, aide ? el('small', { texte: aide }) : null));
     };
     const casePerissable = caseFiche('perissable', 'Périssable', 'date de péremption suivie dans les inventaires');
+    // Photo de l'article : gardée sur l'appareil, envoyée avec la fiche.
+    const apercu = el('img', { classe: 'inv-fiche-photo', alt: 'Photo de l\'article', hidden: !f.photo });
+    const montrerPhoto = () => {
+      apercu.hidden = !f.photo;
+      retirerPhoto.hidden = !f.photo;
+      if (f.photo) obtenirPhoto(f.photo).then((d) => { if (d) apercu.src = d; });
+    };
+    const recevoirPhoto = async (e) => {
+      const fichier = e.target.files[0];
+      if (!fichier) return;
+      try {
+        const donnees = await reduirePhoto(fichier, 900);
+        const id = `local-${nouvelId()}`;
+        await Photos.ecrire(id, donnees);
+        f.photo = id;
+        montrerPhoto();
+      } catch (err) { erreur.textContent = 'Photo illisible ou trop lourde : réessayez.'; erreur.hidden = false; }
+    };
+    const idPrendre = idChamp();
+    const idChoisir = idChamp();
+    const retirerPhoto = el('button', { type: 'button', classe: 'lien danger', texte: 'Retirer la photo', hidden: !f.photo, surclick: () => { f.photo = ''; montrerPhoto(); } });
+    const blocPhotoFiche = el('div', { classe: 'champ' }, el('span', { classe: 'inv-libelle', texte: 'Photo' }),
+      el('div', { classe: 'champ-photo' },
+        el('label', { for: idPrendre, classe: 'bouton-photo', texte: '📷 Prendre' }),
+        el('input', { type: 'file', id: idPrendre, accept: 'image/*', capture: 'environment', classe: 'invisible', surchange: recevoirPhoto }),
+        el('label', { for: idChoisir, classe: 'bouton-photo', texte: 'Choisir une image' }),
+        el('input', { type: 'file', id: idChoisir, accept: 'image/*', classe: 'invisible', surchange: recevoirPhoto }),
+        retirerPhoto),
+      apercu);
+    setTimeout(montrerPhoto);
     const categories = el('div', { classe: 'puces', role: 'radiogroup', 'aria-labelledby': ids.cat });
     CATEGORIES.forEach((cat) => {
       const i = idChamp();
@@ -1178,6 +1274,7 @@ const Inventaires = (() => {
         caseFiche('consommable', 'Consommable', 'usage unique, à remplacer après utilisation'),
         casePerissable,
         caseFiche('horsStock', 'Dotation hors stock', 'ne fait pas partie du stock de la pharmacie')),
+      blocPhotoFiche,
       erreur,
       el('div', { classe: 'cfg-actions' },
         el('button', { type: 'submit', classe: 'cfg-bouton inv-actif', texte: 'Enregistrer la fiche' }),
@@ -1209,7 +1306,7 @@ const Inventaires = (() => {
       });
       liste.append(el('div', { classe: `inv-edition-article inv-edition-fiche${rattacher === a.id ? ' inv-rattache' : ''}`, 'data-cle': a.id }, poignee(nom),
         el('div', { classe: 'inv-edition-nom' },
-          el('strong', { texte: nom }),
+          el('strong', {}, f && f.photo ? el('span', { classe: 'inv-pastille-photo', title: 'Photo', 'aria-label': 'avec photo', texte: '📷 ' }) : null, nom),
           f ? el('small', { texte: resumeFiche(f) })
             : el('small', { classe: 'inv-hors-base' }, a.ref ? 'Fiche supprimée de la base des articles. ' : 'Pas dans la base des articles. ',
               el('button', { type: 'button', classe: 'lien', texte: rattacher === a.id ? 'Annuler' : 'Rattacher', surclick: () => {
@@ -1443,6 +1540,235 @@ const Inventaires = (() => {
         supprimer));
   }
 
+  // ---------- Inventaires types (modèles) et exemplaires ----------
+  /*
+   * Un inventaire type (`modele: true`) sert de structure à ses exemplaires (ex. les 7 sacs d'intervention).
+   * Chaque contenant d'un exemplaire garde `source` (le contenant du modèle qu'il copie) et `base`
+   * (l'état du modèle lors de la dernière répercussion). Répercuter compare, champ par champ :
+   *   - l'exemplaire n'a pas été modifié depuis (égal à `base`) : il prend la nouvelle valeur du modèle ;
+   *   - il a été modifié localement : on garde sa valeur (personnalisation propre à ce sac).
+   * Les articles sont comparés un par un (même identifiant dans le modèle et ses exemplaires),
+   * les sous-inventaires aussi (ajoutés, retirés, modifiés).
+   */
+  const dansUnModele = (id) => chemin(id).some((x) => x.modele);
+  const racineModele = (id) => chemin(id).find((x) => x.modele) || null;
+  /** Racines des exemplaires d'un modèle (contenants dont la source est la racine du modèle). */
+  const exemplairesDe = (idModele) => Object.values(structure.contenants).filter((x) => !x.supprime && x.source === idModele);
+  /** Racine de l'exemplaire auquel appartient ce contenant (null s'il n'en fait pas partie). */
+  function racineExemplaire(id) {
+    const ch = chemin(id);
+    for (let i = ch.length - 1; i >= 0; i--) {
+      const src = contenant(ch[i].source);
+      if (src && src.modele) return ch[i];
+    }
+    return null;
+  }
+  const egal = (a, b) => canonique(a === undefined ? null : a) === canonique(b === undefined ? null : b);
+  const copieProfonde = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+  /** Article réduit à ce qui se répercute (le nom des articles de la base vient de la fiche). */
+  const sigArticle = (a) => (a.separateur ? { separateur: true, nom: a.nom } : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || '') });
+  /** Instantané d'un contenant du modèle : ce que ses exemplaires doivent reproduire. */
+  function instantane(m) {
+    return {
+      nom: m.nom, ordre: m.ordre, photo: m.photo, scellable: m.scellable,
+      points: m.points.map((p) => ({ cible: p.cible, x: p.x, y: p.y })),
+      articles: m.articles.map((a) => ({ id: a.id, ...sigArticle(a), ...(a.ref ? { refNom: a.nom } : {}) })),
+      enfants: enfants(m.id).map((x) => x.id),
+    };
+  }
+  /** Le même instantané, vu depuis un contenant d'exemplaire (identifiants traduits vers ceux du modèle). */
+  function vueExemplaire(e) {
+    const versModele = (id) => (contenant(id) || {}).source || id;
+    return {
+      nom: e.nom, ordre: e.ordre, photo: e.photo, scellable: e.scellable,
+      points: e.points.map((p) => ({ cible: versModele(p.cible), x: p.x, y: p.y })),
+      articles: e.articles.map((a) => ({ id: a.id, ...sigArticle(a) })),
+      enfants: enfants(e.id).map((x) => x.source).filter(Boolean),
+    };
+  }
+  const sansNoms = (articles) => (articles || []).map(({ refNom, ...a }) => a);
+  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', scellable: 'scellable', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
+  /** Champs d'un contenant d'exemplaire modifiés localement depuis la dernière répercussion. */
+  function personnalisations(e) {
+    if (!e.base) return [];
+    const v = vueExemplaire(e);
+    const racine = !contenant(e.parent) || !contenant(e.parent).source;
+    return Object.keys(CHAMPS_LIBELLES).filter((k) => !(racine && (k === 'nom' || k === 'ordre')))
+      .filter((k) => !egal(k === 'articles' ? v.articles : v[k], k === 'articles' ? sansNoms(e.base.articles) : e.base[k]));
+  }
+  const estPersonnalise = (e) => personnalisations(e).length > 0;
+  const toutPersonnalise = (e) => estPersonnalise(e) || enfants(e.id).some(toutPersonnalise);
+
+  /** Copie d'un contenant du modèle (et de tout ce qu'il contient) dans un exemplaire. */
+  function copierDepuisModele(m, parent, ordre) {
+    const copie = normaliser({ ...copieProfonde(m), id: nouvelId(), parent, ordre, source: m.id, base: instantane(m) });
+    delete copie.modele;
+    copie.points = [];
+    structure.contenants[copie.id] = copie;
+    const fils = enfants(m.id).map((f) => copierDepuisModele(f, copie.id, f.ordre));
+    copie.points = m.points.map((p) => { const f = fils.find((x) => x.source === p.cible); return f ? { ...p, cible: f.id } : null; }).filter(Boolean);
+    marquer(copie.id);
+    return copie;
+  }
+
+  /** Fusion des articles : modèle (nouveau), base (ancien modèle), exemplaire. Renvoie [articles, nb conservés]. */
+  function fusionnerArticles(e, base, m, forcer) {
+    const parId = (l) => Object.fromEntries((l || []).map((a) => [a.id, a]));
+    const I = parId(e.articles); const B = parId(base); const M = parId(m.articles);
+    let conserves = 0;
+    const idsI = e.articles.map((a) => a.id);
+    const ordreInchange = egal(idsI, (base || []).map((a) => a.id));
+    const ordre = forcer || ordreInchange
+      ? [...m.articles.map((a) => a.id), ...idsI.filter((id) => !M[id])]
+      : [...idsI, ...m.articles.map((a) => a.id).filter((id) => !I[id] && !B[id])];
+    if (!forcer && !ordreInchange) conserves += 1;
+    const resultat = [];
+    ordre.forEach((id) => {
+      const i = I[id]; const b = B[id]; const mm = M[id];
+      const depuisModele = () => { const a = copieProfonde(mm); return a; };
+      if (i && mm) {
+        if (forcer || (b && egal(sigArticle(i), sigArticle(b)))) resultat.push({ ...i, ...depuisModele() });
+        else { resultat.push(i); if (!egal(sigArticle(i), sigArticle(mm))) conserves += 1; }
+      } else if (i && !mm) {
+        if (b && (forcer || egal(sigArticle(i), sigArticle(b)))) return; // retiré du modèle
+        if (forcer && !b) return; // ajouté localement : « Revenir au modèle » le retire
+        resultat.push(i);
+        if (b) conserves += 1;
+      } else if (!i && mm) {
+        if (!b || forcer) resultat.push(depuisModele()); // nouveau dans le modèle
+        else conserves += 1; // retiré localement : on respecte ce choix
+      }
+    });
+    return [resultat, conserves];
+  }
+
+  /**
+   * Répercute le contenant `m` du modèle sur le contenant `e` de l'exemplaire, et récursivement.
+   * `forcer` : « Revenir au modèle » (ce contenant seulement : ses sous-inventaires gardent leurs personnalisations).
+   * Renvoie { modifies, conserves }.
+   */
+  function repercuter(e, m, forcer = false, racine = false) {
+    const bilanR = { modifies: 0, conserves: 0 };
+    const base = e.base || instantane(m); // exemplaire ancien sans base : tout est considéré comme non modifié
+    const v = vueExemplaire(e);
+    const nm = instantane(m);
+    const avant = canonique(e);
+    ['nom', 'ordre', 'photo', 'scellable'].forEach((k) => {
+      if (racine && (k === 'nom' || k === 'ordre')) return; // le sac garde son nom et sa place
+      if (forcer || egal(v[k], base[k])) e[k] = copieProfonde(m[k]);
+      else if (!egal(v[k], nm[k])) bilanR.conserves += 1;
+    });
+    // Sous-inventaires
+    enfants(m.id).forEach((mf) => {
+      const ef = enfants(e.id).find((x) => x.source === mf.id);
+      if (ef) {
+        const r = repercuter(ef, mf);
+        bilanR.modifies += r.modifies; bilanR.conserves += r.conserves;
+      } else if (forcer || !base.enfants.includes(mf.id)) {
+        copierDepuisModele(mf, e.id, mf.ordre);
+        bilanR.modifies += 1;
+      } else bilanR.conserves += 1; // retiré de ce sac : on respecte ce choix
+    });
+    enfants(e.id).forEach((ef) => {
+      if (!ef.source || nm.enfants.includes(ef.source)) return;
+      if (base.enfants.includes(ef.source) && (forcer || !toutPersonnalise(ef))) {
+        descendants(ef.id).forEach((x) => { x.supprime = true; marquer(x.id); });
+        e.points = e.points.filter((p) => p.cible !== ef.id);
+        bilanR.modifies += 1;
+      } else if (base.enfants.includes(ef.source)) bilanR.conserves += 1;
+    });
+    // Points : traduits vers les sous-inventaires de cet exemplaire
+    if (forcer || egal(vueExemplaire(e).points, base.points)) {
+      e.points = m.points.map((p) => { const f = enfants(e.id).find((x) => x.source === p.cible); return f ? { ...p, cible: f.id } : null; }).filter(Boolean);
+    } else if (!egal(vueExemplaire(e).points, nm.points)) bilanR.conserves += 1;
+    // Articles
+    const [articles, conserves] = fusionnerArticles(e, sansNoms(base.articles), m, forcer);
+    e.articles = articles;
+    bilanR.conserves += conserves;
+    e.base = nm;
+    if (canonique(e) !== avant) { bilanR.modifies += 1; marquer(e.id); }
+    return bilanR;
+  }
+
+  /** Crée `noms.length` exemplaires du modèle, au premier niveau. */
+  function creerExemplaires(m, noms) {
+    const fratrie = enfants('');
+    let ordre = fratrie.length ? fratrie[fratrie.length - 1].ordre + 1 : 0;
+    const crees = noms.map((nom) => {
+      const e = copierDepuisModele(m, '', ordre++);
+      e.nom = nom.slice(0, 80);
+      delete e.modele;
+      marquer(e.id);
+      return e;
+    });
+    return crees;
+  }
+
+  /** Bloc affiché en tête d'un inventaire type (racine ou sous-inventaire). */
+  function blocModele(c) {
+    const m = racineModele(c.id);
+    if (!m) return null;
+    const exemplaires = exemplairesDe(m.id);
+    if (!edition) {
+      return el('p', { classe: 'note-parc inv-note-modele' }, el('strong', { texte: 'Inventaire type. ' }),
+        `Il ne se vérifie pas : il sert de structure à ${pluriel(exemplaires.length, 'exemplaire')}. Modifiez-le puis répercutez les changements.`);
+    }
+    const resultat = el('p', { classe: 'message', role: 'status' });
+    const liste = el('div', { classe: 'inv-exemplaires' });
+    exemplaires.forEach((e) => {
+      const i = idChamp();
+      liste.append(el('label', { classe: 'cfg-case', for: i }, el('input', { type: 'checkbox', id: i, checked: true, value: e.id }),
+        el('span', {}, el('a', { href: lien(e.id), texte: e.nom }), toutPersonnalise(e) ? el('small', { texte: ' · personnalisé' }) : null)));
+    });
+    const boutonRepercuter = el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: `Répercuter sur les exemplaires cochés`, surclick: () => {
+      const choisis = [...liste.querySelectorAll('input:checked')].map((x) => contenant(x.value)).filter(Boolean);
+      if (!choisis.length) { resultat.textContent = 'Cochez au moins un exemplaire.'; return; }
+      let modifies = 0; let conserves = 0;
+      choisis.forEach((e) => { const r = repercuter(e, m, false, true); modifies += r.modifies; conserves += r.conserves; });
+      avis = `${pluriel(choisis.length, 'exemplaire')} mis à jour (${pluriel(modifies, 'contenant')} modifié${modifies > 1 ? 's' : ''})`
+        + `${conserves ? ` ; ${pluriel(conserves, 'personnalisation')} propre${conserves > 1 ? 's' : ''} à un sac conservée${conserves > 1 ? 's' : ''}` : ''}.`;
+      rendre({ garderPosition: true });
+    } });
+    // Création d'exemplaires
+    const champNb = idChamp();
+    const nb = el('input', { id: champNb, type: 'number', min: '1', max: '30', valeur: '1', inputmode: 'numeric', classe: 'inv-court' });
+    const creer = el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Créer', surclick: () => {
+      const n = Math.min(30, Math.max(1, Math.round(Number(nb.value)) || 1));
+      const depart = exemplaires.length;
+      const crees = creerExemplaires(m, Array.from({ length: n }, (x, k) => `${m.nom} n°${depart + k + 1}`));
+      avis = `${pluriel(crees.length, 'exemplaire')} créé${crees.length > 1 ? 's' : ''} : renommez-les si besoin, puis imprimez leurs étiquettes QR.`;
+      rendre({ garderPosition: true });
+    } });
+    return el('section', { classe: 'cfg-section inv-bloc-modele' },
+      el('h2', { texte: 'Inventaire type' }),
+      c.id !== m.id ? el('p', { classe: 'aide-question' }, 'Ce sous-inventaire fait partie de l\'inventaire type ', el('a', { href: lien(m.id), texte: m.nom }), '.') : null,
+      el('p', { classe: 'aide-question', texte: 'Les modifications du type ne partent pas toutes seules : appuyez sur « Répercuter ». Ce qu\'un sac a de propre (article ajouté, quantité changée, photo…) est conservé.' }),
+      exemplaires.length ? liste : el('p', { texte: 'Aucun exemplaire pour l\'instant.' }),
+      exemplaires.length ? el('div', { classe: 'cfg-actions' }, boutonRepercuter) : null,
+      resultat,
+      c.id === m.id ? el('div', { classe: 'cfg-ligne inv-creer-exemplaires' }, el('label', { for: champNb, texte: 'Créer des exemplaires :' }), nb, creer) : null);
+  }
+
+  /** Bloc affiché dans un contenant d'exemplaire (mode Modifier) : lien vers le modèle, personnalisations. */
+  function blocExemplaire(c) {
+    const r = racineExemplaire(c.id);
+    if (!r || !edition) return null;
+    const m = contenant(r.source);
+    const src = contenant(c.source);
+    const perso = personnalisations(c);
+    return el('div', { classe: 'note-parc inv-note-modele' },
+      el('p', {}, 'Exemplaire de l\'inventaire type ', el('a', { href: lien(src ? src.id : m.id), texte: src ? (src.id === m.id ? m.nom : `${m.nom} › ${src.nom}`) : m.nom }),
+        '. Une modification ici ne concerne que ce sac.'),
+      perso.length ? el('p', {}, el('strong', { texte: 'Personnalisé : ' }), perso.map((k) => CHAMPS_LIBELLES[k]).join(', '), '. ',
+        src ? el('button', { type: 'button', classe: 'lien', texte: confirmer === `revenir-${c.id}` ? 'Confirmer : revenir au modèle' : 'Revenir au modèle', surclick: () => {
+          if (confirmer !== `revenir-${c.id}`) { confirmer = `revenir-${c.id}`; rendre({ garderPosition: true }); return; }
+          confirmer = '';
+          repercuter(c, src, true, c.id === r.id);
+          avis = 'Ce contenant reprend le contenu de l\'inventaire type.';
+          rendre({ garderPosition: true });
+        } }) : null) : null);
+  }
+
   function dupliquer(c) {
     const correspondance = {};
     const copies = descendants(c.id).map((x) => {
@@ -1467,6 +1793,15 @@ const Inventaires = (() => {
     aller(copies[0].id);
   }
 
+  /** Contenu d'un inventaire type, hors mode Modifier : simple liste, rien à cocher. */
+  function blocContenuModele(c) {
+    if (!c.articles.length) return null;
+    return el('section', { classe: 'inv-section' }, el('h2', { texte: 'Contenu' }),
+      el('ul', { classe: 'inv-liste-modele' }, ...c.articles.map((a) => (a.separateur
+        ? el('li', { classe: 'inv-separation', texte: a.nom })
+        : el('li', {}, nomArticle(a), a.quantite ? el('span', { classe: 'inv-qte-attendue', texte: ` × ${a.quantite}` }) : null)))));
+  }
+
   function vueContenant(c) {
     const fils = enfants(c.id);
     const b = bilan(c.id);
@@ -1477,6 +1812,8 @@ const Inventaires = (() => {
         el('input', { id: 'inv-nom', maxlength: '80', valeur: c.nom, surchange: (e) => { const t = e.target.value.trim(); if (t) { c.nom = t; marquer(c.id); } else e.target.value = c.nom; } }))
       : el('h1', { tabindex: '-1' }, c.nom, c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null);
     const caseScellable = idChamp();
+    const caseModele = idChamp();
+    const modele = dansUnModele(c.id);
     return [
       el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' },
         el('a', { href: lien(''), texte: 'Inventaires' }),
@@ -1485,14 +1822,22 @@ const Inventaires = (() => {
       edition ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseScellable },
         el('input', { type: 'checkbox', id: caseScellable, checked: c.scellable, surchange: (e) => { c.scellable = e.target.checked; marquer(c.id); } }),
         el('span', {}, 'Contenant scellable', el('small', { texte: 'fermé par un scellé (plomb) une fois vérifié' }))) : null,
+      edition && !c.parent && !racineExemplaire(c.id) ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseModele },
+        el('input', { type: 'checkbox', id: caseModele, checked: c.modele === true, surchange: (e) => {
+          if (e.target.checked) c.modele = true; else delete c.modele;
+          marquer(c.id);
+          rendre({ garderPosition: true });
+        } }),
+        el('span', {}, 'Inventaire type', el('small', { texte: 'sert de structure à des exemplaires identiques (ex. les sacs d\'intervention) ; il ne se vérifie pas' }))) : null,
       ligneSynchro(), ligneAvis(),
-      edition ? null : el('p', { classe: `inv-statut ${b.classe}` },
+      blocModele(c), blocExemplaire(c),
+      edition || modele ? null : el('p', { classe: `inv-statut ${b.classe}` },
         el('strong', { texte: `${b.complet ? '✓ ' : ''}${b.texte}` }),
         v ? ` — cet inventaire à ${heure(v.date)} par ${v.agent}` : '',
         el('span', { classe: 'inv-badges' }, ...badges(b))),
       blocPhoto(c, fils),
       blocEnfants(c, fils),
-      edition ? blocArticles(c) : blocVerification(c),
+      edition ? blocArticles(c) : (modele ? blocContenuModele(c) : blocVerification(c)),
       !edition && !aCocher(c).length && !fils.length ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : appuyez sur « Modifier » pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
       !edition && !aCocher(c).length ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
       edition ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
