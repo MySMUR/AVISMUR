@@ -1591,3 +1591,4 @@ textarea:focus { border-color: var(--bleu); }
 .inv-nom-vue { margin: 0.5rem 0 0.2rem; }
 .inv-nom-vue label { font-weight: 700; }
 .inv-nom-vue input { flex: 1 1 12rem; }
+.inv-libelle-identif { margin-top: 0.8rem; }

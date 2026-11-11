@@ -281,6 +281,10 @@ async function envoyerFileAttente() {
         if (suivante.donnees) { // mur d'informations : creerInfo, terminerInfo
           rep = await appeler(suivante.action, { ...suivante.donnees, idSaisie: suivante.id, dateSaisie: suivante.date });
           infosEnvoyees = true;
+        } else if (suivante.action === 'deplacerContenant') {
+          rep = await appeler('deplacerContenant', {
+            contenant: suivante.contenant, place: suivante.place, idSaisie: suivante.id, dateSaisie: suivante.date,
+          });
         } else if (suivante.action === 'verifierInventaire') {
           rep = await appeler('verifierInventaire', {
             contenant: suivante.contenant, detail: suivante.detail, idSaisie: suivante.id, dateSaisie: suivante.date,

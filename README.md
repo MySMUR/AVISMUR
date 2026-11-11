@@ -112,3 +112,9 @@ Tous les autres s'atteignent par l'encadré **« Trouver un inventaire »** en t
 ### Plusieurs vues d'un contenant primaire
 
 Un contenant **primaire** (pièce, cellule sanitaire…) peut avoir plusieurs photos, sous plusieurs angles. En gestion des inventaires, « **＋ Vue** » ajoute une vue ; chaque vue a un nom (ex. « Côté gauche »), sa photo et ses propres gommettes. Un sous-inventaire peut être placé sur plusieurs vues (« aussi sur : … »). En check-list, les vues s'affichent en onglets au-dessus de la photo, avec le nombre de gommettes de chacune.
+
+### Contenant mobile dans un autre (ex. ampoulier dans un sac)
+
+En check-list, ouvrir un contenant **mobile** depuis son contenant (gommette ou liste) affiche d'abord « **Quel … se trouve ici ?** » : l'agent identifie celui qui est réellement là (QR code, puce NFC ou liste ; ceux du même type sont proposés d'emblée). Puis l'inventaire continue sur ce contenant, avec ses propres articles et péremptions.
+
+Si ce n'est pas celui prévu, les deux **échangent leur place** (parent, rang, gommettes) : l'ampoulier n°5 identifié dans le sac n°3 y prend la place du n°3, qui part dans le sac n°5. L'échange est appliqué tout de suite sur l'appareil, envoyé par la file d'attente (fonctionne hors ligne) et noté dans l'onglet `Mouvements` du Sheet. En gestion des inventaires, pas d'identification : on modifie la structure.

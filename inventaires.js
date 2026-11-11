@@ -36,7 +36,8 @@ const Inventaires = (() => {
   let baseOuverte = ''; // fiche dépliée dans la base des articles ('nouvelle' : création)
   let baseFiltre = { texte: '', categorie: '', archives: false };
   let edition = false;
-  let gestion = false; // ouvert depuis Administration > Gestion des inventaires (modification)
+  let gestion = false;
+  let identification = ''; // contenant mobile prévu à cette place, dont on demande lequel est réellement là // ouvert depuis Administration > Gestion des inventaires (modification)
   let placement = ''; // sous-inventaire dont on place le point sur la photo
   let avis = ''; // message affiché une fois en haut de la vue
   let confirmer = ''; // action en attente d'une deuxième pression (valider avec manquants, supprimer)
@@ -541,6 +542,7 @@ const Inventaires = (() => {
       if (peremptions[cle] ? (p.maj || '') > (peremptions[cle].maj || '') : new Date(p.maj || 0).getTime() > recent) peremptions[cle] = p;
     });
     etat = { verifs, peremptions };
+    reappliquerDeplacements();
     sauverStructure();
     sauverEtat();
   }
@@ -1237,6 +1239,88 @@ const Inventaires = (() => {
       boutons, aide, resultats);
     filtrer();
     return encadre;
+  }
+
+  // ---------- Contenants mobiles : identification et échange ----------
+  /**
+   * Échange local (le serveur fait le même, action « deplacerContenant ») : `x` (identifié) prend la place
+   * de `y` (prévu) — parent, rang, gommettes — et `y` part là où était `x`.
+   */
+  function echangerLocal(x, y) {
+    const deX = x.parent;
+    const versY = y.parent;
+    const ordreX = x.ordre;
+    x.parent = versY; x.ordre = y.ordre;
+    y.parent = deX; y.ordre = ordreX;
+    const traduire = (idParent) => {
+      const p = contenant(idParent);
+      if (p) traduireCibles(p, (cible) => (cible === y.id ? x.id : (cible === x.id ? y.id : cible)));
+    };
+    if (versY) traduire(versY);
+    if (deX && deX !== versY) traduire(deX);
+    sauverStructure();
+  }
+  /** Après un rechargement : les échanges encore en file d'attente restent appliqués sur l'appareil. */
+  function reappliquerDeplacements() {
+    App.fileAttente().filter((e) => e.action === 'deplacerContenant').forEach((e) => {
+      const x = contenant(e.contenant); const y = contenant(e.place);
+      if (x && y && x.parent !== e.vers) echangerLocal(x, y);
+    });
+  }
+  /** Le contenant `x`, identifié par l'agent, est celui qui se trouve à la place de `y`. */
+  function confirmerIdentification(y, idX) {
+    const x = contenant(idX);
+    if (!x) { messageVue('Inventaire inconnu : vérifiez l\'étiquette ou la saisie.', 'erreur'); return; }
+    if (x.id === y.id) { identification = ''; aller(y.id); return; }
+    if (x.categorie !== 'mobile' || dansUnModele(x.id)) { messageVue(`« ${x.nom} » n'est pas un contenant mobile : choisissez celui qui se trouve réellement ici.`, 'erreur'); return; }
+    if (chemin(y.id).some((c) => c.id === x.id)) { messageVue('Un contenant ne peut pas être rangé dans lui-même.', 'erreur'); return; }
+    const parent = contenant(y.parent);
+    const ancien = contenant(x.parent);
+    const ok = App.mettreEnFile({ action: 'deplacerContenant', contenant: x.id, place: y.id, vers: y.parent });
+    if (!ok) { messageVue('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur'); return; }
+    echangerLocal(x, y);
+    identification = '';
+    avis = `« ${x.nom} » est maintenant dans « ${parent ? parent.nom : '?'} ». « ${y.nom} » a pris sa place ${ancien ? `dans « ${ancien.nom} »` : 'hors contenant'} (échange).`;
+    aller(x.id);
+  }
+  /** Écran « Quel … se trouve ici ? » : QR code, NFC ou saisie, avant l'inventaire d'un contenant mobile. */
+  function vueIdentification(y) {
+    const parent = contenant(y.parent);
+    const champ = idChamp();
+    const resultats = el('ul', { classe: 'inv-liste inv-resultats-recherche' });
+    const mobiles = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'mobile' && !dansUnModele(c.id));
+    // Même type d'abord : exemplaires du même contenant d'inventaire type, puis noms proches.
+    const memeType = (c) => (y.source && c.source === y.source) || cle(c.nom).replace(/\d+|n°/g, '').trim() === cle(y.nom).replace(/\d+|n°/g, '').trim();
+    const filtrer = (texte) => {
+      resultats.innerHTML = '';
+      const mots = cle(texte).split(' ').filter(Boolean);
+      const trouves = mobiles.filter((c) => mots.every((m) => cle(c.nom).includes(m)))
+        .sort((a, b) => (memeType(b) - memeType(a)) || a.nom.localeCompare(b.nom, 'fr'));
+      if (!mots.length && !trouves.some(memeType)) return;
+      (mots.length ? trouves : trouves.filter(memeType)).slice(0, 12).forEach((c) => {
+        const ou = contenant(c.parent);
+        resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => confirmerIdentification(y, c.id) },
+          el('strong', { texte: c.nom }), el('small', { texte: ou ? `actuellement dans ${chemin(ou.id).map((z) => z.nom).join(' › ')}` : 'hors contenant' }))));
+      });
+    };
+    const saisie = el('input', { id: champ, type: 'search', autocomplete: 'off', placeholder: `ex. ${y.nom}`, surinput: (e) => filtrer(e.target.value) });
+    filtrer('');
+    const qr = 'BarcodeDetector' in window;
+    const nfc = 'NDEFReader' in window;
+    return [
+      el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' }, el('a', { href: lien(''), texte: 'Inventaires' }),
+        ...chemin(y.parent).flatMap((p) => [el('span', { 'aria-hidden': 'true', texte: ' › ' }), el('a', { href: lien(p.id), texte: p.nom })])),
+      el('h1', { tabindex: '-1', texte: `Quel « ${y.nom.replace(/\s*n°\s*\d+$/i, '')} » se trouve ici ?` }),
+      el('p', { classe: 'consigne' }, `Avant de vérifier son contenu et ses péremptions, identifiez le contenant réellement présent dans « ${parent ? parent.nom : ''} » : scannez son QR code, lisez sa puce NFC ou choisissez-le dans la liste.`),
+      el('section', { classe: 'inv-encadre-recherche' },
+        el('div', { classe: 'inv-boutons-scan' },
+          el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !qr, surclick: () => scanner({ qr: true, nfc: false }, (id) => confirmerIdentification(y, id)) }, logoQr(), el('span', { texte: 'Scanner son QR code' })),
+          el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !nfc, surclick: () => scanner({ qr: false, nfc: true }, (id) => confirmerIdentification(y, id)) }, logoNfc(), el('span', { texte: 'Lire sa puce NFC' }))),
+        el('label', { for: champ, classe: 'inv-libelle-recherche inv-libelle-identif', texte: 'Ou choisissez-le :' }), saisie, resultats),
+      el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
+      el('p', { classe: 'aide-question', texte: `Prévu ici : « ${y.nom} ». Si c'est un autre, les deux échangent leur place ; l'échange est noté.` }),
+      el('div', { classe: 'inv-pied' }, el('button', { type: 'button', classe: 'lien', texte: `← Retour à ${parent ? parent.nom : 'l\'inventaire'}`, surclick: () => { identification = ''; rendre(); } })),
+    ];
   }
 
   // ---------- Glisser-déposer ----------
@@ -2017,6 +2101,7 @@ const Inventaires = (() => {
     const nouveau = dernierAffiche !== id;
     dernierAffiche = id;
     if (nouveau) {
+      identification = '';
       placement = '';
       confirmer = '';
       if (pile.length > 1 && pile[pile.length - 2] === id) pile.pop();
@@ -2027,7 +2112,10 @@ const Inventaires = (() => {
       ajoutSousOuvert = false;
     }
     zone.innerHTML = '';
-    if (id === BASE) {
+    if (identification && contenant(identification) && contenant(identification).parent === id) {
+      zone.append(...vueIdentification(contenant(identification)).filter(Boolean));
+    } else if (id === BASE) {
+      identification = '';
       zone.append(...vueBase().filter(Boolean));
     } else if (id && !c) {
       zone.append(el('h1', { tabindex: '-1', texte: 'Inventaire introuvable' }), ligneSynchro(),
@@ -2114,7 +2202,7 @@ const Inventaires = (() => {
 
   // ---------- Scanner (QR code par la caméra, puce NFC) ----------
 
-  function scanner(choix = { qr: true, nfc: true }) {
+  function scanner(choix = { qr: true, nfc: true }, surTrouve = aller) {
     const qr = choix.qr && 'BarcodeDetector' in window;
     const nfc = choix.nfc && 'NDEFReader' in window;
     const video = el('video', { playsinline: '', muted: '', autoplay: '' });
@@ -2144,7 +2232,7 @@ const Inventaires = (() => {
       const m = /#inv=([a-z0-9]{6,16})$/.exec(String(texte || ''));
       if (!m) { lecture.textContent = 'Ce code n\'est pas celui d\'un inventaire.'; return; }
       fermer();
-      aller(m[1]);
+      surTrouve(m[1]);
     };
     annuler.addEventListener('click', fermer);
     ecran.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
@@ -2201,6 +2289,13 @@ const Inventaires = (() => {
       if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
       e.preventDefault();
       const m = /^#inv=([a-z0-9]{6,16})$/.exec(a.getAttribute('href'));
+      const cible = m && contenant(m[1]);
+      // Check-list : ouvrir un contenant mobile depuis son contenant demande d'abord lequel est réellement là.
+      if (cible && !gestion && cible.categorie === 'mobile' && cible.parent && cible.parent === idCourant()) {
+        identification = cible.id;
+        rendre();
+        return;
+      }
       aller(a.getAttribute('href') === '#inv-base' ? BASE : (m ? m[1] : ''));
     });
   }
