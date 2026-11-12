@@ -1888,3 +1888,7 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .mat-type-libre input { width: 100%; min-height: 2.75rem; margin-top: 0.4rem; padding: 0.45rem 0.6rem; border: 2px solid var(--trait); border-radius: 10px; font: inherit; }
 .mat-apercu { margin: 0; padding: 0.6rem 0.8rem; border-radius: 10px; background: var(--ciel); font-size: 0.85rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mat-nfc { display: flex; flex-direction: column; gap: 0.7rem; }
+.mat-vignette { width: 2.6rem; height: 2.6rem; flex-shrink: 0; object-fit: cover; border-radius: 8px; border: 1px solid var(--trait); background: #fff; }
+.mat-photo { display: block; max-width: 100%; max-height: 18rem; object-fit: contain; border-radius: 10px; border: 1px solid var(--trait); background: #fff; }
+.mat-photo-bloc { display: flex; flex-direction: column; gap: 0.5rem; }
+.mat-libelle { margin: 0; font-weight: 700; }

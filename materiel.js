@@ -21,7 +21,7 @@ const Materiel = (() => {
   // Champs communs à plusieurs appareils, que l'on peut répercuter (jamais les numéros propres à chacun).
   const REPERCUTABLES = {
     type: 'Type', modele: 'Modèle', revision: 'Révision prévue', periodicite: 'Périodicité (mois)',
-    statut: 'Statut', traceur: 'Traceur GeoTraceSMUR', remarques: 'Remarques',
+    statut: 'Statut', traceur: 'Traceur GeoTraceSMUR', remarques: 'Remarques', photo: 'Photo',
   };
   const ALERTE_JOURS = 30; // révision « à prévoir » dans les 30 jours
 
@@ -76,6 +76,80 @@ const Materiel = (() => {
   const statuts = () => (donnees && donnees.statuts) || STATUTS_DEFAUT;
   const typesIntervention = () => (donnees && donnees.typesIntervention) || INTERVENTIONS_DEFAUT;
   const nomAppareil = (f) => `${f.type || 'Matériel'}${f.numInterne ? ` n° ${f.numInterne}` : ''}`;
+
+  // ---------- Photos ----------
+  // Gardées sur l'appareil (IndexedDB) pour l'affichage hors ligne ; téléchargées une fois depuis le serveur.
+  const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
+  const base = (() => {
+    let ouverture = null;
+    return () => {
+      if (!ouverture) {
+        ouverture = new Promise((ok, ko) => {
+          const r = indexedDB.open('avismur-materiel', 1);
+          r.onupgradeneeded = () => r.result.createObjectStore('photos');
+          r.onsuccess = () => ok(r.result);
+          r.onerror = () => ko(r.error);
+        });
+      }
+      return ouverture;
+    };
+  })();
+  async function photoLocale(cle, valeur) {
+    try {
+      const db = await base();
+      return await new Promise((ok) => {
+        const t = db.transaction('photos', valeur === undefined ? 'readonly' : 'readwrite').objectStore('photos');
+        const r = valeur === undefined ? t.get(cle) : t.put(valeur, cle);
+        r.onsuccess = () => ok(valeur === undefined ? r.result || '' : valeur);
+        r.onerror = () => ok('');
+      });
+    } catch (e) { return ''; }
+  }
+  const telechargements = new Map();
+  /** Image d'un appareil : photo en attente d'envoi, sinon copie locale, sinon téléchargée. */
+  async function imageDe(f) {
+    if (f.photoDonnees) return f.photoDonnees;
+    if (!f.photo) return '';
+    const locale = await photoLocale(f.photo);
+    if (locale) return locale;
+    if (!telechargements.has(f.photo)) {
+      telechargements.set(f.photo, (async () => {
+        try {
+          const rep = await outils.appeler('photo', { id: f.photo });
+          if (!rep.ok || !rep.photo) return '';
+          await photoLocale(f.photo, rep.photo);
+          return rep.photo;
+        } catch (e) { return ''; } finally { telechargements.delete(f.photo); }
+      })());
+    }
+    return telechargements.get(f.photo);
+  }
+  /** <img> rempli dès que la photo est disponible (vide et masqué sinon). */
+  function vignette(f, classe) {
+    const img = el('img', { classe, alt: `Photo : ${nomAppareil(f)}`, hidden: true, loading: 'lazy' });
+    imageDe(f).then((src) => { if (src) { img.src = src; img.hidden = false; } });
+    return img;
+  }
+  /** Photo réduite à 1024 px et compressée (JPEG) : légère pour l'envoi, la file d'attente et le stockage. */
+  function reduirePhoto(fichier, cote = 1024) {
+    return new Promise((ok, ko) => {
+      const url = URL.createObjectURL(fichier);
+      const img = new Image();
+      img.onload = () => {
+        const ratio = Math.min(1, cote / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * ratio);
+        c.height = Math.round(img.height * ratio);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        let donnees = c.toDataURL('image/jpeg', 0.7);
+        if (donnees.length > PHOTO_MAX) donnees = c.toDataURL('image/jpeg', 0.45);
+        if (donnees.length > PHOTO_MAX) ko(new Error('photo trop lourde')); else ok(donnees);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); ko(new Error('image illisible')); };
+      img.src = url;
+    });
+  }
 
   // ---------- Données : cache + modifications en attente ----------
   function lireCache() {
@@ -277,6 +351,7 @@ const Materiel = (() => {
       }) : null,
       el('button', { type: 'button', classe: 'mat-ouvrir', surclick: () => ouvrirFiche(f.id) },
         el('span', { classe: 'mat-num', texte: f.numInterne || '?' }),
+        (f.photo || f.photoDonnees) ? vignette(f, 'mat-vignette') : null,
         el('span', { classe: 'mat-corps' },
           el('span', { classe: 'mat-nom' }, el('strong', { texte: nomAppareil(f) }), f.modele ? el('span', { texte: ` · ${f.modele}` }) : null,
             f.traceur ? el('span', { classe: 'mat-traceur', title: `Traceur GeoTraceSMUR${f.nomTraceur ? ` : ${f.nomTraceur}` : ''}`, texte: '📡' }) : null),
@@ -344,6 +419,7 @@ const Materiel = (() => {
     const ligneInfo = (t, v) => [el('dt', { texte: t }), el('dd', { texte: v || '—' })];
     let d;
     const contenu = el('div', { classe: 'mat-fiche' },
+      (f.photo || f.photoDonnees) ? vignette(f, 'mat-photo') : null,
       el('dl', { classe: 'mat-infos' },
         ligneInfo('Type', f.type), ligneInfo('Modèle', f.modele), ligneInfo('N° interne SMUR', f.numInterne),
         ligneInfo('N° biomed', f.numBiomed), ligneInfo('N° de série', f.numSerie), ligneInfo('Statut', f.statut),
@@ -382,7 +458,9 @@ const Materiel = (() => {
       id: idFiche(), type: (modele && modele.type) || filtre.type || TYPES_DEFAUT[0], modele: (modele && modele.modele) || '',
       numInterne: '', numBiomed: '', numSerie: '', revision: (modele && modele.revision) || '', periodicite: (modele && modele.periodicite) || 12,
       statut: 'En service', traceur: false, nomTraceur: '', remarques: '', archive: false,
+      photo: (modele && modele.photo) || '', photoDonnees: (modele && modele.photoDonnees) || '',
     };
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
     const listeModeles = el('datalist', { id: nouvelId() }, [...new Set(fiches().map((x) => x.modele).filter(Boolean))].map((m) => el('option', { value: m })));
     const e = {
       type: champType(base.type),
@@ -397,11 +475,31 @@ const Materiel = (() => {
       nomTraceur: el('input', { valeur: base.nomTraceur, placeholder: 'Nom du traceur dans GeoTraceSMUR' }),
       remarques: el('textarea', { rows: '3', valeur: base.remarques }),
     };
+    // Photo : une nouvelle photo (prise ou choisie) remplace l'ancienne ; « Retirer » la supprime de la fiche.
+    let photo = { id: base.photo || '', donnees: base.photoDonnees || '' };
+    const apercu = el('img', { classe: 'mat-photo', alt: 'Photo du matériel', hidden: true });
+    const afficherApercu = async () => {
+      const src = photo.donnees || (photo.id ? await imageDe({ photo: photo.id }) : '');
+      apercu.hidden = !src;
+      if (src) apercu.src = src;
+      boutonRetirer.hidden = !src;
+    };
+    const fichierPhoto = el('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
+    const boutonRetirer = el('button', { type: 'button', classe: 'cfg-bouton danger', texte: 'Retirer la photo', hidden: true, surclick: () => { photo = { id: '', donnees: '' }; afficherApercu(); } });
+    fichierPhoto.addEventListener('change', async () => {
+      const fichier = fichierPhoto.files[0];
+      fichierPhoto.value = '';
+      if (!fichier) return;
+      try { photo = { id: '', donnees: await reduirePhoto(fichier) }; message.textContent = ''; } catch (err) { message.textContent = 'Photo illisible ou trop lourde.'; }
+      afficherApercu();
+    });
+    const blocPhoto = el('div', { classe: 'mat-photo-bloc' }, el('p', { classe: 'mat-libelle', texte: 'Photo du matériel' }), apercu,
+      el('div', { classe: 'mat-boutons' },
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Prendre ou choisir une photo', surclick: () => fichierPhoto.click() }), boutonRetirer, fichierPhoto));
     const blocTraceur = champ('Nom du traceur', e.nomTraceur);
     const majTraceur = () => { blocTraceur.hidden = !e.traceur.checked; };
     e.traceur.addEventListener('change', majTraceur);
     majTraceur();
-    const message = el('p', { classe: 'message erreur', role: 'alert' });
     let d;
 
     const lire = () => ({
@@ -409,13 +507,16 @@ const Materiel = (() => {
       type: e.type.valeur(), modele: e.modele.value.trim(), numInterne: e.numInterne.value.trim(), numBiomed: e.numBiomed.value.trim(),
       numSerie: e.numSerie.value.trim(), revision: e.revision.value, periodicite: Number(e.periodicite.value) || '',
       statut: e.statut.value, traceur: e.traceur.checked, nomTraceur: e.traceur.checked ? e.nomTraceur.value.trim() : '', remarques: e.remarques.value.trim(),
+      photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
     });
 
     function enregistrer(fiche) {
       const conflit = verifierDoublons([fiche]);
       if (conflit) { message.textContent = conflit; return; }
       if (!fiche.type) { message.textContent = 'Le type est obligatoire.'; return; }
-      const changes = f ? Object.keys(REPERCUTABLES).filter((k) => String(f[k] ?? '') !== String(fiche[k] ?? '')) : [];
+      const changes = f ? Object.keys(REPERCUTABLES).filter((k) => (k === 'photo'
+        ? `${f.photo || ''}|${f.photoDonnees || ''}` !== `${fiche.photo || ''}|${fiche.photoDonnees || ''}`
+        : (k === 'traceur' ? Boolean(f[k]) !== Boolean(fiche[k]) : String(f[k] ?? '') !== String(fiche[k] ?? '')))) : [];
       d.close();
       const autres = fiches().filter((x) => x.id !== fiche.id && !x.archive && (x.type === (f ? f.type : fiche.type) || (fiche.modele && x.modele === fiche.modele)));
       if (changes.length && autres.length) proposerRepercussion(fiche, f, changes, autres);
@@ -439,6 +540,7 @@ const Materiel = (() => {
       champ('Périodicité des révisions (mois)', e.periodicite)),
     el('label', { classe: 'mat-case-libelle' }, e.traceur, el('span', { texte: 'Muni d\'un traceur GeoTraceSMUR' })),
     blocTraceur,
+    blocPhoto,
     champ('Remarques', e.remarques),
     message,
     el('div', { classe: 'mat-boutons' },
@@ -449,6 +551,7 @@ const Materiel = (() => {
         surclick: () => { if (f.archive || window.confirm(`Archiver ${nomAppareil(f)} ?`)) { d.close(); enfiler('enregistrerMateriel', { fiches: [{ ...f, archive: !f.archive }] }); } },
       }) : null));
     d = fenetre(f ? `Modifier ${nomAppareil(f)}` : 'Nouveau matériel', contenu, { large: true });
+    afficherApercu();
   }
 
   /** Même contrôle que le serveur, pour prévenir tout de suite (y compris hors ligne). */
@@ -472,7 +575,7 @@ const Materiel = (() => {
 
   /** Après modification d'une fiche : appliquer les mêmes changements à d'autres appareils ? */
   function proposerRepercussion(fiche, ancienne, changes, autres) {
-    const valeur = (k, x) => (k === 'traceur' ? (x[k] ? 'Oui' : 'Non') : (k === 'revision' ? dateFr(x[k]) : String(x[k] || '—')));
+    const valeur = (k, x) => (k === 'photo' ? ((x.photo || x.photoDonnees) ? (x.photoDonnees ? 'nouvelle photo' : 'photo') : 'aucune') : k === 'traceur' ? (x[k] ? 'Oui' : 'Non') : (k === 'revision' ? dateFr(x[k]) : String(x[k] || '—')));
     const champsCoches = new Set(changes);
     const cibles = new Set(autres.filter((x) => (ancienne.modele && x.modele === ancienne.modele && x.type === ancienne.type)).map((x) => x.id));
     let d;
@@ -495,7 +598,11 @@ const Materiel = (() => {
           surclick: () => {
             const lot = [fiche, ...autres.filter((x) => cibles.has(x.id)).map((x) => {
               const copie = { ...x };
-              champsCoches.forEach((k) => { copie[k] = fiche[k]; if (k === 'traceur' && !fiche.traceur) copie.nomTraceur = ''; });
+              champsCoches.forEach((k) => {
+                copie[k] = fiche[k];
+                if (k === 'photo') copie.photoDonnees = fiche.photoDonnees;
+                if (k === 'traceur' && !fiche.traceur) copie.nomTraceur = '';
+              });
               return copie;
             })];
             const conflit = verifierDoublons(lot);
@@ -528,7 +635,7 @@ const Materiel = (() => {
     const contenu = el('div', { classe: 'mat-groupee' },
       el('p', { texte: `${cibles.length} appareil(s) : ${cibles.sort(tri).map(nomAppareil).join(', ')}.` }),
       el('p', { classe: 'aide-question', texte: 'Cochez les champs à modifier : seuls ceux-là seront appliqués à tous les appareils sélectionnés. Les numéros (interne, biomed, série) restent propres à chaque appareil.' }),
-      Object.keys(REPERCUTABLES).map((k) => {
+      Object.keys(REPERCUTABLES).filter((k) => k !== 'photo').map((k) => {
         const ch = entrees[k];
         const entree = k === 'type' ? ch.select : ch;
         entree.id = nouvelId();
@@ -651,13 +758,12 @@ const Materiel = (() => {
    * Écrit sur une puce NFC (Chrome sur Android) :
    *  1. un lien qui ouvre la fiche de l'appareil dans MySMUR ;
    *  2. un texte avec les informations invariables, lisible par n'importe quel téléphone, même sans l'appli.
-   * Verrouillage facultatif (définitif) pour que personne ne réécrive la puce.
+   * La puce est d'abord effacée (formatée en NDEF vide), puis écrite, sans qu'il faille la retirer.
    */
   function ouvrirNfc(f) {
     const disponible = 'NDEFReader' in window;
     const champs = new Set(Object.keys(INVARIABLES).filter((k) => f[k]));
     let avecLien = true;
-    let verrouiller = false;
     const apercu = el('pre', { classe: 'mat-apercu' });
     const majApercu = () => { apercu.textContent = `${avecLien ? `${adresse(f.id)}\n\n` : ''}${texteFiche(f, [...champs])}`; };
     majApercu();
@@ -665,7 +771,6 @@ const Materiel = (() => {
     const bouton = el('button', { type: 'button', classe: 'principal', texte: 'Écrire sur la puce', disabled: !disponible });
     bouton.addEventListener('click', async () => {
       if (!champs.size && !avecLien) { sortie.textContent = 'Choisissez au moins une information.'; sortie.className = 'message erreur'; return; }
-      if (verrouiller && !window.confirm('Le verrouillage est définitif : la puce ne pourra plus jamais être modifiée. Continuer ?')) return;
       const records = [];
       if (avecLien) records.push({ recordType: 'url', data: adresse(f.id) });
       if (champs.size) records.push({ recordType: 'text', lang: 'fr', data: texteFiche(f, [...champs]) });
@@ -676,9 +781,12 @@ const Materiel = (() => {
       sortie.textContent = 'Approchez la puce du dos du téléphone…';
       try {
         const nfc = new NDEFReader();
-        await nfc.write({ records }, { signal: delai.signal });
-        if (verrouiller && nfc.makeReadOnly) await nfc.makeReadOnly({ signal: delai.signal });
-        sortie.textContent = `Puce encodée pour ${nomAppareil(f)}${verrouiller ? ' et verrouillée' : ''}.`;
+        // 1. Formatage : remplace tout l'ancien contenu (lien, texte, autre appli…) par un message NDEF vide.
+        await nfc.write({ records: [{ recordType: 'empty' }] }, { signal: delai.signal, overwrite: true });
+        sortie.textContent = 'Puce formatée, écriture… Gardez-la contre le téléphone.';
+        // 2. Écriture des informations.
+        await nfc.write({ records }, { signal: delai.signal, overwrite: true });
+        sortie.textContent = `Puce formatée puis encodée pour ${nomAppareil(f)}.`;
         sortie.className = 'message succes';
       } catch (e) {
         sortie.textContent = e.name === 'AbortError' ? 'Aucune puce détectée. Réessayez en la gardant contre le téléphone.'
@@ -700,9 +808,7 @@ const Materiel = (() => {
           el('input', { type: 'checkbox', coche: champs.has(k), disabled: !f[k], surchange: (ev) => { if (ev.target.checked) champs.add(k); else champs.delete(k); majApercu(); } }),
           el('span', { texte: `${INVARIABLES[k]} : ${f[k] || '(non renseigné)'}` })))),
       el('p', { classe: 'aide-question', texte: 'Aperçu du contenu :' }), apercu,
-      el('label', { classe: 'mat-case-libelle' },
-        el('input', { type: 'checkbox', surchange: (ev) => { verrouiller = ev.target.checked; } }),
-        el('span', { texte: 'Verrouiller la puce après écriture (définitif)' })),
+      el('p', { classe: 'aide-question', texte: 'L\'ancien contenu de la puce est effacé avant l\'écriture.' }),
       el('div', { classe: 'mat-boutons' }, bouton), sortie);
     fenetre(`Puce NFC · ${nomAppareil(f)}`, contenu, { large: true });
   }
