@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 8;
+  const VERSION_SERVEUR = 9;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -41,7 +41,9 @@ const Inventaires = (() => {
   let baseFiltre = { texte: '', categorie: '', archives: false };
   let edition = false;
   let gestion = false;
-  let identification = ''; // contenant mobile prévu à cette place, dont on demande lequel est réellement là // ouvert depuis Administration > Gestion des inventaires (modification)
+  // Identification d'un contenant mobile (check-list) : '<id>' (mobile prévu à cette place),
+  // 'dans:<id>' (« un contenant mobile se trouve ici »), 'emp:<id>' (emplacement attendant un type de contenant).
+  let identification = '';
   let placement = ''; // sous-inventaire dont on place le point sur la photo
   let avis = ''; // message affiché une fois en haut de la vue
   let confirmer = ''; // action en attente d'une deuxième pression (valider avec manquants, supprimer)
@@ -150,7 +152,10 @@ const Inventaires = (() => {
       scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
       categorie: CATEGORIES_CONTENANT[c.categorie] ? c.categorie : '', // primaire, immobile ou mobile
       ...(c.modele ? { modele: true } : {}),
-      ...(c.desaffecte ? { desaffecte: c.desaffecte } : {}), // mobile dont la place a été prise : à retrouver // inventaire type : sert de structure à ses exemplaires
+      ...(c.desaffecte ? { desaffecte: c.desaffecte } : {}), // mobile dont la place a été prise : à retrouver
+      // Emplacement : attend un exemplaire d'un inventaire type (ex. un « Ampoulier A » dans chaque sac) ;
+      // l'exemplaire identifié en check-list y est rangé (enfant de l'emplacement).
+      ...(c.emplacement && c.emplacement.modele ? { emplacement: { modele: c.emplacement.modele } } : {}), // inventaire type : sert de structure à ses exemplaires
       ...(c.source ? { source: c.source } : {}), // exemplaire : contenant du modèle dont il est la copie
       ...(c.base ? { base: c.base } : {}), // exemplaire : état du modèle lors de la dernière répercussion
       ...(c.supprime ? { supprime: true } : {}),
@@ -291,6 +296,7 @@ const Inventaires = (() => {
     const b = { total: 0, faits: 0, manquants: 0, perimes: 0, proches: 0, sansDate: 0 };
     descendants(id).forEach((c) => {
       if (dansUnModele(c.id)) return; // un inventaire type ne se vérifie pas
+      if (c.emplacement && !enfants(c.id).length) { b.total += 1; b.vides = (b.vides || 0) + 1; }
       if (aCocher(c).length) {
         b.total += 1;
         const v = verifDuJour(c.id);
@@ -715,6 +721,7 @@ const Inventaires = (() => {
     if (b.perimes) liste.push(el('span', { classe: 'inv-badge alerte', texte: pluriel(b.perimes, 'périmé') }));
     if (b.proches) liste.push(el('span', { classe: 'inv-badge proche', texte: `${b.proches} bientôt périmé${b.proches > 1 ? 's' : ''}` }));
     if (b.sansDate) liste.push(el('span', { classe: 'inv-badge', texte: `${pluriel(b.sansDate, 'date')} à saisir` }));
+    if (b.vides) liste.push(el('span', { classe: 'inv-badge proche', texte: `${pluriel(b.vides, 'emplacement')} à identifier` }));
     return liste;
   }
 
@@ -727,12 +734,15 @@ const Inventaires = (() => {
       if (Photos.enMemoire(c.photo)) vignette(Photos.enMemoire(c.photo));
       else obtenirPhoto(c.photo).then(vignette);
     }
-    const sous = enfants(c.id).length;
+    const sous = c.emplacement ? 0 : enfants(c.id).length;
+    const occupant = c.emplacement ? enfants(c.id)[0] : null;
     return el('a', { classe: `inv-carte ${b.classe}`, href: lien(c.id) }, repere,
       el('span', { classe: 'inv-carte-texte' },
-        el('strong', {}, c.nom, c.categorie && c.categorie !== 'primaire' ? el('span', { classe: `inv-tag-scellable inv-tag-${c.categorie}`, texte: CATEGORIES_CONTENANT[c.categorie].nom }) : null,
+        el('strong', {}, c.nom, c.categorie && c.categorie !== 'primaire' && !c.emplacement ? el('span', { classe: `inv-tag-scellable inv-tag-${c.categorie}`, texte: CATEGORIES_CONTENANT[c.categorie].nom }) : null,
           c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null,
-          c.modele ? el('span', { classe: 'inv-tag-scellable inv-tag-modele', texte: `Type · ${pluriel(exemplairesDe(c.id).length, 'exemplaire')}` }) : null),
+          c.modele ? el('span', { classe: 'inv-tag-scellable inv-tag-modele', texte: `Type · ${pluriel(exemplairesDe(c.id).length, 'exemplaire')}` }) : null,
+          c.emplacement ? el('span', { classe: 'inv-tag-scellable inv-tag-emplacement', texte: 'Emplacement' }) : null),
+        c.emplacement ? el('span', { classe: `inv-carte-occupant${occupant ? '' : ' vide'}`, texte: occupant ? `↳ ${occupant.nom}` : '↳ à identifier (QR, NFC ou liste)' }) : null,
         el('span', { classe: 'inv-carte-etat' }, b.complet ? '✓ ' : '', b.texte,
           sous ? ` · ${pluriel(sous, 'sous-inventaire')}` : ''),
         el('span', { classe: 'inv-badges' }, ...badges(b))),
@@ -1035,10 +1045,29 @@ const Inventaires = (() => {
         if (ajoutSousOuvert) formulaire.querySelector('input').focus();
       },
     });
+    // Emplacement : « ici, on attend un exemplaire de tel inventaire type » (ex. un Ampoulier A dans le sac).
+    const types = Object.values(structure.contenants).filter((x) => !x.supprime && x.modele && x.id !== (racineModele(c.id) || {}).id)
+      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    const idType = idChamp();
+    const choixType = el('select', { id: idType }, el('option', { value: '', texte: types.length ? 'Choisir l\'inventaire type attendu…' : 'Aucun inventaire type' }),
+      ...types.map((t) => el('option', { value: t.id, texte: t.nom })));
+    const ajoutEmplacement = el('div', { classe: 'inv-ajout inv-ajout-emplacement', hidden: !ajoutSousOuvert },
+      el('label', { for: idType, texte: 'Ou ajouter un emplacement pour un contenant mobile' }),
+      el('p', { classe: 'aide-question', texte: 'En check-list, l\'agent identifiera l\'exemplaire présent (QR, NFC ou liste) ; seuls les exemplaires de ce type seront acceptés.' }),
+      el('div', { classe: 'cfg-ligne' }, choixType, el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter', disabled: !types.length, surclick: () => {
+        const type = contenant(choixType.value);
+        if (!type) return;
+        const fratrie = enfants(c.id);
+        const emp = normaliser({ id: nouvelId(), parent: c.id, nom: type.nom, categorie: 'mobile', emplacement: { modele: type.id }, ordre: fratrie.length ? fratrie[fratrie.length - 1].ordre + 1 : 0 });
+        structure.contenants[emp.id] = emp;
+        marquer(emp.id);
+        if (vueCourante(c).photo) { placement = emp.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); } else rendre({ garderPosition: true });
+      } })));
+    plus.addEventListener('click', () => { ajoutEmplacement.hidden = !ajoutSousOuvert; });
     return el('section', { classe: 'inv-section' },
       el('h2', { classe: 'inv-titre-plus' }, el('span', { texte: 'Sous-inventaires' }), plus),
-      fils.length ? null : el('p', { classe: 'aide-question', texte: 'Aucun sous-inventaire. Touchez « + » pour en ajouter un (sacoche, pochette, tiroir…).' }),
-      liste, formulaire);
+      fils.length ? null : el('p', { classe: 'aide-question', texte: 'Aucun sous-inventaire. Touchez « + » pour en ajouter un (sacoche, pochette, tiroir…) ou un emplacement de contenant mobile.' }),
+      liste, formulaire, ajoutEmplacement);
   }
 
   /**
@@ -1340,6 +1369,12 @@ const Inventaires = (() => {
     if (!y && x.parent === dans) { identification = ''; aller(x.id); return; }
     if (x.categorie !== 'mobile' || dansUnModele(x.id)) { messageVue(`« ${x.nom} » n'est pas un contenant mobile : choisissez celui qui se trouve réellement ici.`, 'erreur'); return; }
     const vers = y ? y.parent : dans;
+    const emp = contenant(vers) && contenant(vers).emplacement ? contenant(vers) : null;
+    if (emp && x.source !== emp.emplacement.modele) {
+      const type = contenant(emp.emplacement.modele);
+      messageVue(`Cet emplacement attend un exemplaire de « ${type ? type.nom : 'l\'inventaire type prévu'} » : « ${x.nom} » n'en est pas un.`, 'erreur');
+      return;
+    }
     if (chemin(vers).some((c) => c.id === x.id)) { messageVue('Un contenant ne peut pas être rangé dans lui-même.', 'erreur'); return; }
     const parent = contenant(vers);
     const ancien = contenant(x.parent);
@@ -1355,13 +1390,19 @@ const Inventaires = (() => {
   }
   /** Écran « Quel … se trouve ici ? » : QR code, NFC ou saisie, avant l'inventaire d'un contenant mobile. */
   function vueIdentification(y, dans = '') {
-    const parent = contenant(y ? y.parent : dans);
+    const lieu = contenant(y ? y.parent : dans);
+    // Pour un emplacement, l'écran s'affiche depuis le contenant de l'emplacement (le sac).
+    const parent = lieu && lieu.emplacement ? contenant(lieu.parent) : lieu;
     const choisir = (id) => confirmerIdentification(y, id, dans);
     const champ = idChamp();
     const resultats = el('ul', { classe: 'inv-liste inv-resultats-recherche' });
-    const mobiles = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'mobile' && !dansUnModele(c.id));
+    // Emplacement : seuls les exemplaires de l'inventaire type attendu sont proposés.
+    const emp = (() => { const p = contenant(y ? y.parent : dans); return p && p.emplacement ? p : null; })();
+    const typeAttendu = emp ? contenant(emp.emplacement.modele) : null;
+    const mobiles = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'mobile' && !dansUnModele(c.id)
+      && (!emp || c.source === emp.emplacement.modele));
     // Même type d'abord : exemplaires du même contenant d'inventaire type, puis noms proches.
-    const memeType = (c) => (y ? (y.source && c.source === y.source) || cle(c.nom).replace(/\d+|n°/g, '').trim() === cle(y.nom).replace(/\d+|n°/g, '').trim() : Boolean(c.desaffecte));
+    const memeType = (c) => (emp ? true : y ? (y.source && c.source === y.source) || cle(c.nom).replace(/\d+|n°/g, '').trim() === cle(y.nom).replace(/\d+|n°/g, '').trim() : Boolean(c.desaffecte));
     const filtrer = (texte) => {
       resultats.innerHTML = '';
       const mots = cle(texte).split(' ').filter(Boolean);
@@ -1381,7 +1422,7 @@ const Inventaires = (() => {
     return [
       el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' }, el('a', { href: lien(''), texte: 'Inventaires' }),
         ...chemin(parent ? parent.id : '').flatMap((p) => [el('span', { 'aria-hidden': 'true', texte: ' › ' }), el('a', { href: lien(p.id), texte: p.nom })])),
-      el('h1', { tabindex: '-1', texte: y ? `Quel « ${y.nom.replace(/\s*n°\s*\d+$/i, '')} » se trouve ici ?` : 'Quel contenant mobile se trouve ici ?' }),
+      el('h1', { tabindex: '-1', texte: typeAttendu ? `Quel « ${typeAttendu.nom} » se trouve ici ?` : (y ? `Quel « ${y.nom.replace(/\s*n°\s*\d+$/i, '')} » se trouve ici ?` : 'Quel contenant mobile se trouve ici ?') }),
       el('p', { classe: 'consigne' }, `Avant de vérifier son contenu et ses péremptions, identifiez le contenant réellement présent dans « ${parent ? parent.nom : ''} » : scannez son QR code, lisez sa puce NFC ou choisissez-le dans la liste.`),
       el('section', { classe: 'inv-encadre-recherche' },
         el('div', { classe: 'inv-boutons-scan' },
@@ -1884,7 +1925,7 @@ const Inventaires = (() => {
       nomVue: e.nomVue,
       vues: e.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map((p) => ({ cible: versModele(p.cible), x: p.x, y: p.y })) })),
       articles: e.articles.map((a) => ({ id: a.id, ...sigArticle(a) })),
-      enfants: enfants(e.id).map((x) => x.source).filter(Boolean),
+      enfants: enfants(e.id).filter((x) => !(contenant(x.source) || {}).modele).map((x) => x.source).filter(Boolean),
     };
   }
   const sansNoms = (articles) => (articles || []).map(({ refNom, ...a }) => a);
@@ -2148,6 +2189,13 @@ const Inventaires = (() => {
         el('span', {}, 'Inventaire type', el('small', { texte: 'sert de structure à des exemplaires identiques (ex. les sacs d\'intervention) ; il ne se vérifie pas' }))) : null,
       ligneSynchro(), ligneAvis(),
       blocModele(c), blocExemplaire(c),
+      c.emplacement ? (() => {
+        const type = contenant(c.emplacement.modele);
+        const occ = enfants(c.id)[0];
+        return el('p', { classe: 'note-parc inv-note-emplacement' }, el('strong', { texte: 'Emplacement. ' }),
+          'Attend un exemplaire de l\'inventaire type ', type ? el('a', { href: lien(type.id), texte: type.nom }) : '(supprimé)', '. ',
+          occ ? `Actuellement : « ${occ.nom} ».` : 'Vide pour l\'instant : l\'exemplaire sera identifié en check-list.');
+      })() : null,
       c.desaffecte && !c.parent ? el('p', { classe: 'note-parc anomalie' }, el('strong', { texte: 'Désaffecté — à retrouver. ' }),
         `Était dans ${c.desaffecte.deNom || '?'}. Pour le réaffecter, identifiez-le depuis le contenant où il se trouve (« Un contenant mobile se trouve ici »). `,
         el('button', { type: 'button', classe: 'lien', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) })) : null,
@@ -2158,7 +2206,7 @@ const Inventaires = (() => {
       blocPhoto(c, fils),
       blocEnfants(c, fils),
       !edition && !modele ? el('button', { type: 'button', classe: 'lien inv-mobile-ici', texte: '＋ Un contenant mobile se trouve ici', surclick: () => { identification = `dans:${c.id}`; rendre(); } }) : null,
-      edition ? blocArticles(c) : (modele ? blocContenuModele(c) : blocVerification(c)),
+      c.emplacement ? null : (edition ? blocArticles(c) : (modele ? blocContenuModele(c) : blocVerification(c))),
       !edition && !aCocher(c).length && !fils.length ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : menu > Administration > Gestion des inventaires pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
       !edition && !aCocher(c).length ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
       edition ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
@@ -2187,7 +2235,11 @@ const Inventaires = (() => {
       ajoutSousOuvert = false;
     }
     zone.innerHTML = '';
-    if (identification === `dans:${id}`) {
+    const empId = identification.startsWith('emp:') ? identification.slice(4) : '';
+    if (empId && contenant(empId) && contenant(empId).parent === id) {
+      const occupant = enfants(empId)[0];
+      zone.append(...vueIdentification(occupant || null, occupant ? '' : empId).filter(Boolean));
+    } else if (identification === `dans:${id}`) {
       zone.append(...vueIdentification(null, id).filter(Boolean));
     } else if (identification && contenant(identification) && contenant(identification).parent === id) {
       zone.append(...vueIdentification(contenant(identification)).filter(Boolean));
@@ -2368,6 +2420,11 @@ const Inventaires = (() => {
       const m = /^#inv=([a-z0-9]{6,16})$/.exec(a.getAttribute('href'));
       const cible = m && contenant(m[1]);
       // Check-list : ouvrir un contenant mobile depuis son contenant demande d'abord lequel est réellement là.
+      if (cible && !gestion && cible.emplacement && cible.parent === idCourant()) {
+        identification = `emp:${cible.id}`;
+        rendre();
+        return;
+      }
       if (cible && !gestion && cible.categorie === 'mobile' && cible.parent && cible.parent === idCourant()) {
         identification = cible.id;
         rendre();

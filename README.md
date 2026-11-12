@@ -123,3 +123,9 @@ En check-list, ouvrir un contenant **mobile** depuis son contenant (gommette ou 
 - **Le retrouver** : dans la check-list du contenant où il se trouve, « **＋ Un contenant mobile se trouve ici** », puis l'identifier (les désaffectés sont proposés d'emblée). Il y est rangé et reprend la place libre (gommette).
 
 Fonctionne hors ligne (file d'attente) ; chaque mouvement est noté dans l'onglet `Mouvements`. En gestion des inventaires, pas d'identification : on modifie la structure.
+
+### Emplacements (ex. un « Ampoulier A » attendu dans chaque sac)
+
+En gestion des inventaires, dans un contenant (souvent un inventaire type de sac) : « + » puis « **Ou ajouter un emplacement pour un contenant mobile** » et choisir l'inventaire type attendu (ex. Ampoulier A). L'emplacement apparaît comme un sous-inventaire (étiquette « Emplacement »), avec sa gommette ; il est recopié dans les exemplaires du sac.
+
+En check-list, l'emplacement affiche l'exemplaire qui l'occupe (« ↳ Ampoulier A n°3 ») ou « à identifier » (compté dans l'avancement du sac). Le toucher demande « Quel « Ampoulier A » se trouve ici ? » : seuls les exemplaires de ce type sont proposés et acceptés (QR code, NFC ou liste). L'exemplaire identifié est rangé dans l'emplacement et son inventaire s'ouvre. Si un autre exemplaire occupait l'emplacement, il est désaffecté (à retrouver), comme pour tout contenant mobile.

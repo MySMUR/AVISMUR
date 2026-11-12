@@ -1608,3 +1608,11 @@ textarea:focus { border-color: var(--bleu); }
 .inv-desaffecte { color: var(--erreur) !important; font-weight: 700; }
 .inv-mobile-ici { display: inline-block; margin: 0.2rem 0 0.6rem; }
 .inv-publier-mur { display: block; margin-top: 0.2rem; font-size: 0.92rem; }
+
+/* Emplacements de contenants mobiles (ex. « Ampoulier A » dans un sac) */
+.inv-tag-emplacement { color: #0E6B5C; border-color: #0E6B5C; background: #E6F4F1; }
+.inv-carte-occupant { font-size: 0.92rem; font-weight: 700; color: #0E6B5C; }
+.inv-carte-occupant.vide { color: #8A4B00; }
+.inv-note-emplacement { background: #E6F4F1; border-left: 6px solid #0E6B5C; }
+.inv-ajout-emplacement { margin-top: 1rem; padding-top: 0.8rem; border-top: 1px dashed var(--trait); }
+.inv-ajout-emplacement select { flex: 1 1 14rem; min-height: 2.8rem; padding: 0.4rem 0.6rem; font: inherit; border: 2px solid var(--trait); border-radius: var(--rayon); background: #fff; }
