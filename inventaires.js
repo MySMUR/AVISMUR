@@ -146,7 +146,7 @@ const Inventaires = (() => {
     return {
       id: c.id, parent: c.parent || '', nom: c.nom || '', ordre: Number(c.ordre) || 0, photo: c.photo || '',
       points: Array.isArray(c.points) ? c.points : [], articles: Array.isArray(c.articles) ? c.articles : [],
-      // Vues supplémentaires (contenants primaires : une pièce, une cellule sanitaire vue sous plusieurs angles).
+      // Vues supplémentaires (tout contenant : pièce, cellule sanitaire, sac vu sous plusieurs angles…).
       // La photo principale (`photo`, `points`, nom `nomVue`) est la vue 1.
       vues: Array.isArray(c.vues) ? c.vues.map((v) => ({ id: v.id, nom: v.nom || '', photo: v.photo || '', points: Array.isArray(v.points) ? v.points : [] })) : [],
       nomVue: c.nomVue || '',
@@ -905,7 +905,7 @@ const Inventaires = (() => {
     const bloc = el('div', { classe: 'inv-bloc-photo' });
     // Onglets des vues (plusieurs angles d'une pièce, d'une cellule sanitaire…)
     const plusieurs = vues.length > 1;
-    const peutAjouter = edition && c.categorie === 'primaire';
+    const peutAjouter = edition; // tout contenant peut avoir plusieurs vues (angles, tiroir fermé/ouvert…)
     if (plusieurs || peutAjouter) {
       const onglets = el('div', { classe: 'inv-onglets-vues', role: 'tablist', 'aria-label': 'Vues' },
         ...vues.map((v) => {
@@ -1013,7 +1013,7 @@ const Inventaires = (() => {
           marquer(c.id);
           rendre({ garderPosition: true });
         } }) : null));
-      if (!avecPhoto) bloc.append(el('p', { classe: 'aide-question', texte: `La photo sert de plan : chaque sous-inventaire y est repéré par un point numéroté.${c.categorie === 'primaire' ? ' « ＋ Vue » ajoute d\'autres photos (autres angles).' : ''}` }));
+      if (!avecPhoto) bloc.append(el('p', { classe: 'aide-question', texte: `La photo sert de plan : chaque sous-inventaire y est repéré par un point numéroté. « ＋ Vue » ajoute d\'autres photos (autres angles, faces, compartiments).` }));
     }
     return bloc;
   }
