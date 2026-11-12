@@ -902,6 +902,21 @@ const Inventaires = (() => {
       };
       if (Photos.enMemoire(vc.photo)) montrer(Photos.enMemoire(vc.photo));
       else obtenirPhoto(vc.photo).then(montrer);
+      img.draggable = false; // pas de « glisser l'image » du navigateur pendant le placement
+      if (placement) {
+        // Aperçu de la gommette qui suit la souris : on voit où elle sera posée, même sur une photo sombre.
+        const rang = fils.findIndex((f) => f.id === placement);
+        const apercu = el('span', { classe: 'inv-point inv-apercu', 'aria-hidden': 'true', texte: rang === -1 ? '' : String(rang + 1), hidden: true });
+        cadre.append(apercu);
+        cadre.addEventListener('pointermove', (e) => {
+          if (e.pointerType !== 'mouse') return;
+          const r = img.getBoundingClientRect();
+          apercu.hidden = false;
+          apercu.style.left = `${((e.clientX - r.left) / r.width) * 100}%`;
+          apercu.style.top = `${((e.clientY - r.top) / r.height) * 100}%`;
+        });
+        cadre.addEventListener('pointerleave', () => { apercu.hidden = true; });
+      }
       img.addEventListener('click', (e) => {
         if (!placement) return;
         const r = img.getBoundingClientRect();
