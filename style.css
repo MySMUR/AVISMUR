@@ -1886,3 +1886,5 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .mat-filtres select, .mat-filtres input[type="search"] { width: auto; }
 .mat-filtres select { flex: 0 1 auto; }
 .mat-type-libre input { width: 100%; min-height: 2.75rem; margin-top: 0.4rem; padding: 0.45rem 0.6rem; border: 2px solid var(--trait); border-radius: 10px; font: inherit; }
+.mat-apercu { margin: 0; padding: 0.6rem 0.8rem; border-radius: 10px; background: var(--ciel); font-size: 0.85rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mat-nfc { display: flex; flex-direction: column; gap: 0.7rem; }

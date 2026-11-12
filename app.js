@@ -175,6 +175,7 @@ function afficherApplication(infos) {
   // Arrivée par une notification (« …/#info=<id> ») : le mur, sur l'information concernée.
   // Sinon : la page d'accueil, le mur d'informations.
   if (/^#info=/.test(location.hash)) ouvrirInfoDuLien(location.hash);
+  else if (/^#mat=/.test(location.hash)) ouvrirAppareilDuLien(location.hash);
   else ouvrirVue(/^#inv\b/.test(location.hash) ? vueDuLien() : 'accueil');
   Infos.demarrer();
   envoyerFileAttente();
@@ -777,9 +778,17 @@ Inventaires.initialiser({
 window.addEventListener('hashchange', () => {
   if ($('ecran-checklist').hidden) return;
   if (/^#info=/.test(location.hash)) ouvrirInfoDuLien(location.hash);
+  else if (/^#mat=/.test(location.hash)) ouvrirAppareilDuLien(location.hash);
   else if (/^#inv\b/.test(location.hash)) ouvrirVue(vueDuLien());
   else if (!$('zone-inventaires').hidden) Inventaires.afficher({ gestion: gestionInventaires });
 });
+/** Lien « #mat=<id> » (puce NFC d'un appareil) : suivi du matériel, fiche ouverte, puis adresse nettoyée. */
+function ouvrirAppareilDuLien(lien) {
+  const id = lien.slice(5);
+  history.replaceState(null, '', location.pathname + location.search);
+  ouvrirVue('suivi-materiel');
+  if (vueCourante === 'suivi-materiel') Materiel.ouvrirAppareil(id);
+}
 Parc.initialiser({ appeler });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });
 Materiel.demarrer({

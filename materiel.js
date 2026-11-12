@@ -112,8 +112,13 @@ const Materiel = (() => {
   }
   const fiches = () => etat().fiches;
 
-  async function charger() {
-    if (chargementEnCours || !outils.appeler) return;
+  let chargementPromesse = null;
+  function charger() {
+    if (!chargementPromesse) chargementPromesse = chargerServeur().finally(() => { chargementPromesse = null; });
+    return chargementPromesse;
+  }
+  async function chargerServeur() {
+    if (!outils.appeler) return;
     chargementEnCours = true;
     try {
       const rep = await outils.appeler('lireMateriel');
@@ -194,7 +199,9 @@ const Materiel = (() => {
 
     const entete = el('div', { classe: 'mat-entete' },
       el('h1', { texte: 'Suivi du matériel' }),
-      estAdmin() ? el('button', { type: 'button', classe: 'principal mat-nouveau', texte: '+ Nouveau matériel', surclick: () => ouvrirFiche(null, true) }) : null);
+      el('div', { classe: 'mat-boutons' },
+        'NDEFReader' in window ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Lire une puce NFC', surclick: lireNfc }) : null,
+        estAdmin() ? el('button', { type: 'button', classe: 'principal mat-nouveau', texte: '+ Nouveau matériel', surclick: () => ouvrirFiche(null, true) }) : null));
 
     const compteurs = el('div', { classe: 'mat-compteurs' },
       compteurBouton(actives.length, 'appareils en service', 'total', () => { filtre = { texte: '', type: '', statut: 'actifs', alerte: '' }; rendre(); }, !filtre.alerte && !filtre.type && !filtre.texte),
@@ -347,6 +354,7 @@ const Materiel = (() => {
       estAdmin() ? el('div', { classe: 'mat-boutons' },
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Modifier la fiche', surclick: () => { d.close(); ouvrirEdition(f); } }),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter une intervention', surclick: () => { d.close(); ouvrirIntervention([f.id]); } }),
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Encoder une puce NFC', surclick: () => { d.close(); ouvrirNfc(f); } }),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Dupliquer', title: 'Nouvel appareil du même type et du même modèle', surclick: () => { d.close(); ouvrirEdition(null, f); } })) : null,
       el('h3', { texte: 'Historique des révisions, interventions et réparations' }),
       historique.length ? el('ol', { classe: 'mat-historique' }, historique.map((i) => el('li', { classe: i.attente ? 'attente' : '' },
@@ -629,6 +637,103 @@ const Materiel = (() => {
     d = fenetre('Révision, intervention ou réparation', contenu, { large: true });
   }
 
+
+  // ---------- Puce NFC ----------
+  // Champs invariables d'un appareil (jamais la révision, le statut ou les remarques, qui changent).
+  const INVARIABLES = { type: 'Type', modele: 'Modèle', numInterne: 'N° interne SMUR', numBiomed: 'N° biomed', numSerie: 'N° de série' };
+  /** Lien ouvrant la fiche de l'appareil dans l'appli (même principe que « #inv=… » des inventaires). */
+  const adresse = (id) => `${location.origin}${location.pathname.replace(/index\.html$/, '')}#mat=${id}`;
+  function texteFiche(f, champs) {
+    return ['SMUR Avignon', ...champs.filter((k) => f[k]).map((k) => `${INVARIABLES[k]} : ${f[k]}`)].join('\n');
+  }
+
+  /**
+   * Écrit sur une puce NFC (Chrome sur Android) :
+   *  1. un lien qui ouvre la fiche de l'appareil dans MySMUR ;
+   *  2. un texte avec les informations invariables, lisible par n'importe quel téléphone, même sans l'appli.
+   * Verrouillage facultatif (définitif) pour que personne ne réécrive la puce.
+   */
+  function ouvrirNfc(f) {
+    const disponible = 'NDEFReader' in window;
+    const champs = new Set(Object.keys(INVARIABLES).filter((k) => f[k]));
+    let avecLien = true;
+    let verrouiller = false;
+    const apercu = el('pre', { classe: 'mat-apercu' });
+    const majApercu = () => { apercu.textContent = `${avecLien ? `${adresse(f.id)}\n\n` : ''}${texteFiche(f, [...champs])}`; };
+    majApercu();
+    const sortie = el('p', { classe: 'message', role: 'status' });
+    const bouton = el('button', { type: 'button', classe: 'principal', texte: 'Écrire sur la puce', disabled: !disponible });
+    bouton.addEventListener('click', async () => {
+      if (!champs.size && !avecLien) { sortie.textContent = 'Choisissez au moins une information.'; sortie.className = 'message erreur'; return; }
+      if (verrouiller && !window.confirm('Le verrouillage est définitif : la puce ne pourra plus jamais être modifiée. Continuer ?')) return;
+      const records = [];
+      if (avecLien) records.push({ recordType: 'url', data: adresse(f.id) });
+      if (champs.size) records.push({ recordType: 'text', lang: 'fr', data: texteFiche(f, [...champs]) });
+      const delai = new AbortController();
+      const minuterie = setTimeout(() => delai.abort(), 30000);
+      bouton.disabled = true;
+      sortie.className = 'message';
+      sortie.textContent = 'Approchez la puce du dos du téléphone…';
+      try {
+        const nfc = new NDEFReader();
+        await nfc.write({ records }, { signal: delai.signal });
+        if (verrouiller && nfc.makeReadOnly) await nfc.makeReadOnly({ signal: delai.signal });
+        sortie.textContent = `Puce encodée pour ${nomAppareil(f)}${verrouiller ? ' et verrouillée' : ''}.`;
+        sortie.className = 'message succes';
+      } catch (e) {
+        sortie.textContent = e.name === 'AbortError' ? 'Aucune puce détectée. Réessayez en la gardant contre le téléphone.'
+          : (e.name === 'NotAllowedError' ? 'Autorisez le NFC pour cette application et vérifiez qu\'il est activé sur le téléphone.'
+            : 'Écriture impossible : puce verrouillée, trop petite ou non compatible (NTAG213 ou plus recommandée).');
+        sortie.className = 'message erreur';
+      } finally {
+        clearTimeout(minuterie);
+        bouton.disabled = false;
+      }
+    });
+    const contenu = el('div', { classe: 'mat-nfc' },
+      disponible ? null : el('p', { classe: 'message erreur', texte: 'Écriture NFC impossible sur cet appareil : il faut Chrome sur un téléphone Android avec le NFC activé. Vous pouvez recopier le contenu ci-dessous avec une appli NFC (enregistrements « URL » et « Texte »).' }),
+      el('fieldset', { classe: 'mat-cadre' }, el('legend', { texte: 'Informations écrites sur la puce' }),
+        el('label', { classe: 'mat-case-libelle' },
+          el('input', { type: 'checkbox', coche: true, surchange: (ev) => { avecLien = ev.target.checked; majApercu(); } }),
+          el('span', { texte: 'Lien vers la fiche dans MySMUR (ouvre l\'appli en approchant la puce)' })),
+        Object.keys(INVARIABLES).map((k) => el('label', { classe: 'mat-case-libelle' },
+          el('input', { type: 'checkbox', coche: champs.has(k), disabled: !f[k], surchange: (ev) => { if (ev.target.checked) champs.add(k); else champs.delete(k); majApercu(); } }),
+          el('span', { texte: `${INVARIABLES[k]} : ${f[k] || '(non renseigné)'}` })))),
+      el('p', { classe: 'aide-question', texte: 'Aperçu du contenu :' }), apercu,
+      el('label', { classe: 'mat-case-libelle' },
+        el('input', { type: 'checkbox', surchange: (ev) => { verrouiller = ev.target.checked; } }),
+        el('span', { texte: 'Verrouiller la puce après écriture (définitif)' })),
+      el('div', { classe: 'mat-boutons' }, bouton), sortie);
+    fenetre(`Puce NFC · ${nomAppareil(f)}`, contenu, { large: true });
+  }
+
+  /** Lit une puce : lien « #mat=… », sinon n° de série / biomed trouvé dans le texte ou n° de série de la puce. */
+  async function lireNfc() {
+    const sortie = el('p', { classe: 'message', role: 'status', texte: 'Approchez la puce du dos du téléphone…' });
+    const arret = new AbortController();
+    const d = fenetre('Lire une puce NFC', el('div', {}, sortie));
+    d.addEventListener('close', () => arret.abort());
+    try {
+      const lecteur = new NDEFReader();
+      lecteur.addEventListener('reading', ({ message, serialNumber }) => {
+        const textes = [serialNumber || ''];
+        message.records.forEach((r) => { try { textes.push(new TextDecoder(r.encoding || 'utf-8').decode(r.data)); } catch (e) { /* ignoré */ } });
+        const tout = textes.join('\n');
+        const lien = tout.match(/#mat=([a-z0-9]{6,20})/);
+        const liste = fiches();
+        const f = (lien && liste.find((x) => x.id === lien[1]))
+          || liste.find((x) => (x.numSerie && tout.includes(`N° de série : ${x.numSerie}`)) || (x.numBiomed && tout.includes(`N° biomed : ${x.numBiomed}`)));
+        if (f) { d.close(); ouvrirFiche(f.id); return; }
+        sortie.textContent = 'Puce lue, mais aucun appareil de la base ne correspond.';
+        sortie.className = 'message erreur';
+      });
+      await lecteur.scan({ signal: arret.signal });
+    } catch (e) {
+      sortie.textContent = 'NFC refusé ou désactivé sur ce téléphone.';
+      sortie.className = 'message erreur';
+    }
+  }
+
   // ---------- Interface publique ----------
   return {
     demarrer(o) {
@@ -651,6 +756,11 @@ const Materiel = (() => {
       charger(); // même masqué : les modifications envoyées doivent rejoindre le cache local
     },
     actions: ACTIONS,
+    /** Lien « #mat=<id> » (puce NFC) : ouvre la fiche de l'appareil. */
+    ouvrirAppareil(id) {
+      if (fiches().some((f) => f.id === id)) { ouvrirFiche(id); return; }
+      charger().then(() => { if (fiches().some((f) => f.id === id)) ouvrirFiche(id); });
+    },
     oublier() {
       try { localStorage.removeItem(CLE_CACHE); } catch (e) { /* rien */ }
       donnees = null;
