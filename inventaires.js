@@ -1696,7 +1696,9 @@ const Inventaires = (() => {
   }
   const articleBiomed = (a) => Boolean(fiche(a)) && fiche(a).categorie === 'Biomédical';
   /** Contenant d'un appareil biomédical (ex. un scope et ses pochettes) : sa liste attend un article « Biomédical ». */
-  const contenantBiomed = (c) => aCocher(c).some(articleBiomed);
+  // Un contrôle « scan » (n° d'appareil scanné : puce MySMUR, étiquette biomed, n° de série) désigne aussi un appareil biomédical.
+  const appareilScanne = (a) => !a.separateur && a.controle === 'scan';
+  const contenantBiomed = (c) => aCocher(c).some((a) => articleBiomed(a) || appareilScanne(a));
   function logoCadenas() {
     return el('svg:svg', { viewBox: '0 0 24 24', classe: 'inv-tb-cadenas', role: 'img', 'aria-label': 'Scellé : non ouvert aujourd\'hui' },
       el('svg:title', { texte: 'Scellé : non ouvert, validé sur la base du dernier inventaire' }),
@@ -1725,6 +1727,16 @@ const Inventaires = (() => {
       const libelle = { afaire: 'pas encore vérifié aujourd\'hui', manquant: 'noté manquant', present: 'présent' }[etatA];
       return el('li', { classe: `inv-tb-appareil ${etatA}`, title: `${nomArticle(a)} : ${libelle}` },
         nomArticle(a), etatA === 'present' ? null : el('small', { texte: etatA === 'manquant' ? ' manquant' : ' à vérifier' }));
+    });
+    // Appareils scannés : le n° relevé aujourd'hui, ou à défaut le dernier connu (« à vérifier »).
+    const derniere = etat.verifs[c.id];
+    aCocher(c).filter(appareilScanne).forEach((a) => {
+      const val = String((v && v.valeurs && v.valeurs[a.id]) || (derniere && derniere.valeurs && derniere.valeurs[a.id]) || '').trim();
+      const nom = val ? `${nomArticle(a).replace(/\s*(n°|no|num(éro)?)\.?\s*$/i, '')} n° ${val}` : nomArticle(a);
+      const etatA = !v ? 'afaire' : (manquants.has(a.id) || !(v.valeurs && v.valeurs[a.id]) ? 'manquant' : 'present');
+      const libelle = { afaire: val ? 'dernier n° relevé, pas encore vérifié aujourd\'hui' : 'jamais relevé', manquant: 'non relevé ou différent de l\'attendu', present: 'relevé aujourd\'hui' }[etatA];
+      appareils.push(el('li', { classe: `inv-tb-appareil ${etatA}`, title: `${nom} : ${libelle}` },
+        nom, etatA === 'present' ? null : el('small', { texte: etatA === 'manquant' ? ' anomalie' : ' à vérifier' })));
     });
     const fils = enfants(c.id).map((f) => cadreTableau(f, niveau + 1, vus)).filter(Boolean);
     return el('div', { classe: `inv-tb-cadre ${b.classe}${niveau === 0 ? ' inv-tb-primaire' : ''}${scelle ? ' inv-tb-scelle' : ''}${niveau % 2 ? ' inv-tb-impair' : ''}` },
