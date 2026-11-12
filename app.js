@@ -51,6 +51,7 @@ async function requete(action, charge) {
  * Une seule reprise à la fois : au réveil de l'application, plusieurs requêtes partent ensemble.
  */
 let repriseEnCours = null;
+let motifRefus = ''; // pourquoi le serveur a refusé le jeton d'appareil (affiché sur l'écran de connexion)
 function reprendreSession() {
   if (!repriseEnCours) {
     repriseEnCours = (async () => {
@@ -65,6 +66,8 @@ function reprendreSession() {
         return 'ok';
       }
       if (rep.oublierAppareil) {
+        motifRefus = rep.erreur || '';
+        console.warn('Jeton d\'appareil refusé :', rep.motif, rep.erreur);
         appareil.effacer();
         return 'refuse';
       }
@@ -85,7 +88,7 @@ async function appeler(action, charge = {}) {
     return { ...rep, erreur: 'Serveur momentanément indisponible, réessayez dans un instant.' };
   }
   session.effacer();
-  afficher('ecran-connexion', 'Session expirée, reconnectez-vous.');
+  afficher('ecran-connexion', motifRefus || 'Session expirée, reconnectez-vous.');
   return rep;
 }
 
@@ -782,7 +785,7 @@ document.addEventListener('visibilitychange', () => {
   reprendreSession().then((resultat) => {
     if (resultat === 'refuse') {
       session.effacer();
-      afficher('ecran-connexion', 'Connexion expirée sur cet appareil. Reconnectez-vous.');
+      afficher('ecran-connexion', motifRefus || 'Connexion expirée sur cet appareil. Reconnectez-vous.');
     }
   }).catch(() => { /* hors ligne : on réessaiera à la prochaine requête */ });
 });
