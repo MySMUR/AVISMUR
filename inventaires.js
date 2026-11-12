@@ -196,7 +196,7 @@ const Inventaires = (() => {
   const photosDe = (c) => [c.photo, ...c.vues.map((v) => v.photo)].filter(Boolean);
 
   // ---------- Base des articles (catalogue) ----------
-  const CATEGORIES = ['Médicament', 'DM', 'Magasin'];
+  const CATEGORIES = ['Médicament', 'DM', 'Magasin', 'Kit', 'Biomédical', 'Autre'];
   /** Texte comparable : minuscules, sans accents, espaces simples. */
   const cle = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
   function normaliserFiche(f) {
@@ -1537,7 +1537,7 @@ const Inventaires = (() => {
       f.denomination = f.denomination.trim().replace(/\s+/g, ' ');
       f.refInterne = f.refInterne.trim();
       f.refFournisseur = f.refFournisseur.trim();
-      const probleme = !f.denomination ? 'Indiquez la dénomination.' : (!f.categorie ? 'Choisissez la catégorie : Médicament, DM ou Magasin.' : '');
+      const probleme = !f.denomination ? 'Indiquez la dénomination.' : (!f.categorie ? 'Choisissez la catégorie (Médicament, DM, Magasin, Kit, Biomédical ou Autre).' : '');
       erreur.innerHTML = '';
       if (probleme) { erreur.textContent = probleme; erreur.hidden = false; return; }
       const autre = doublon(f);
