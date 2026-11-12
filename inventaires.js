@@ -2895,6 +2895,7 @@ const Inventaires = (() => {
     const dejaOuverte = !zone.hidden;
     zone.hidden = false;
     gestion = enGestion && estAdmin();
+    document.body.classList.toggle('vue-inv-checklist', !gestion); // barre QR / NFC du bas
     edition = gestion;
     if (!dejaOuverte) { dernierAffiche = null; pile = []; }
     rendre();
@@ -2902,6 +2903,7 @@ const Inventaires = (() => {
   }
   function masquer() {
     if (zone) zone.hidden = true;
+    document.body.classList.remove('vue-inv-checklist');
   }
   /** Après un envoi de la file d'attente (app.js) : met à jour la ligne d'état. */
   function surEnvoi() {

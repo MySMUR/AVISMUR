@@ -154,4 +154,4 @@ Hors plage, « Non », valeur différente de l'attendue ou non renseigné : la l
 
 ### Barre QR code / NFC (téléphone)
 
-Sur téléphone (écran ≤ 760 px), une fois connecté, deux boutons restent fixés en bas de l'écran sur toutes les pages : **QR code** et **NFC**. Ils ouvrent directement l'inventaire scanné. La barre est masquée sur ordinateur et pendant qu'une caméra ou une fenêtre est ouverte.
+Sur téléphone (écran ≤ 760 px), une fois connecté, deux boutons restent fixés en bas de l'écran dans les inventaires (check-list uniquement, pas en gestion) : **QR code** et **NFC**. Ils ouvrent directement l'inventaire scanné. La barre est masquée sur ordinateur et pendant qu'une caméra ou une fenêtre est ouverte.

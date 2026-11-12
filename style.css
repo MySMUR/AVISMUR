@@ -1768,11 +1768,11 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 /* Barre du bas : QR code et NFC (téléphone, agent connecté) */
 .barre-scan { display: none; }
 @media (max-width: 760px) {
-  body.connecte .barre-scan {
+  body.connecte.vue-inv-checklist .barre-scan {
     display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
     padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid #d5dbe5; box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
   }
-  body.connecte { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
+  body.connecte.vue-inv-checklist { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
   body.camera-ouverte .barre-scan, body.fenetre-ouverte .barre-scan { display: none; }
   .barre-scan button {
     display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; border-radius: 0.75rem;
