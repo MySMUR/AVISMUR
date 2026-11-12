@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=52">
+  <link rel="stylesheet" href="style.css?v=53">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -187,6 +187,9 @@
         <div id="questions"></div>
       </div>
 
+      <!-- Suivi du matériel biomédical : base des appareils, révisions, interventions (materiel.js) -->
+      <div id="zone-materiel" class="materiel" hidden></div>
+
       <!-- Configuration des véhicules et des check-lists (administrateurs) -->
       <div id="zone-config" class="configuration" hidden></div>
 
@@ -231,7 +234,7 @@
           <ul id="liste-rubrique-inventaires" hidden>
           <li><button type="button" class="tiroir-lien" data-vue="inventaires">Check-list<small>Sacs, tiroirs, péremptions</small></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="tableau-inventaires">Tableau de bord<small>Contenants primaires et ce qu'ils renferment</small></button></li>
-          <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true">Suivi matériel<span class="etiquette">À venir</span></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="suivi-materiel">Suivi matériel<small>Scopes, PSE, respirateurs : révisions et réparations</small></button></li>
           <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true">Stupéfiants<span class="etiquette">À venir</span></button></li>
           <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true">Stérilisation<span class="etiquette">À venir</span></button></li>
           </ul>
@@ -243,6 +246,7 @@
           <li><button type="button" class="tiroir-lien" data-vue="configuration">Configuration<small>Véhicules et questions des check-lists</small></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="gestion-inventaires">Gestion des inventaires<small>Créer et modifier les inventaires, inventaires types</small></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="base-articles">Base des articles<small>Fiches des articles des inventaires</small></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="suivi-materiel">Base du matériel<small>Appareils biomédicaux, interventions, répercussion</small></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="types-infos">Types d'informations<small>Catégories du mur d'accueil</small></button></li>
           </ul>
         </section>
@@ -268,10 +272,11 @@
   <script src="lib/qrcode.js?v=1"></script>
   <script src="inventaires.js?v=29"></script>
   <script src="infos.js?v=2"></script>
+  <script src="materiel.js?v=1"></script>
   <nav id="barre-scan" class="barre-scan" aria-label="Accès rapide aux inventaires">
     <button type="button" data-scan="qr"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM5 5v3h3V5zM14 3h7v7h-7zm2 2v3h3V5zM3 14h7v7H3zm2 2v3h3v-3zM14 14h3v3h-3zM18 18h3v3h-3zM14 18h3v3h-3zM18 14h3v3h-3z" fill="currentColor"/></svg><span>QR code</span></button>
     <button type="button" data-scan="nfc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 4v10h2V11l4 6h2V7h-2v6l-4-6z" fill="currentColor"/></svg><span>NFC</span></button>
   </nav>
-  <script src="app.js?v=34"></script>
+  <script src="app.js?v=35"></script>
 </body>
 </html>

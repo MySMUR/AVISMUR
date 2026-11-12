@@ -273,6 +273,7 @@ async function envoyerFileAttente() {
   const fin = nb ? chargement.debut(nb > 1 ? `Envoi de ${nb} enregistrements…` : 'Envoi en cours…') : () => {};
   let envoyees = 0;
   let infosEnvoyees = false;
+  let materielEnvoye = false;
   let erreurServeur = '';
   let avertissement = '';
   const refusees = new Set();
@@ -281,9 +282,10 @@ async function envoyerFileAttente() {
     while ((suivante = fileAttente.lire().find((e) => !refusees.has(e.id)))) {
       let rep;
       try {
-        if (suivante.donnees) { // mur d'informations : creerInfo, terminerInfo
+        if (suivante.donnees) { // mur d'informations (creerInfo, terminerInfo) ; suivi du matériel (Materiel.actions)
           rep = await appeler(suivante.action, { ...suivante.donnees, idSaisie: suivante.id, dateSaisie: suivante.date });
-          infosEnvoyees = true;
+          if (Materiel.actions.includes(suivante.action)) materielEnvoye = true;
+          else infosEnvoyees = true;
         } else if (suivante.action === 'deplacerContenant') {
           rep = await appeler('deplacerContenant', {
             contenant: suivante.contenant, place: suivante.place, dans: suivante.dans, idSaisie: suivante.id, dateSaisie: suivante.date,
@@ -329,6 +331,7 @@ async function envoyerFileAttente() {
   bilanEnvoi({ envoyees, restantes: fileAttente.lire().length, erreurServeur, avertissement });
   Inventaires.surEnvoi();
   if (infosEnvoyees) Infos.surEnvoi();
+  if (materielEnvoye) Materiel.surEnvoi();
 }
 
 function bilanEnvoi({ envoyees, restantes, erreurServeur, avertissement }) {
@@ -459,6 +462,7 @@ $('deconnexion').addEventListener('click', async () => {
     await requete('logout', { jetonAppareil: enregistre && enregistre.jetonAppareil });
   } catch (err) { /* déconnexion locale quand même */ }
   Infos.oublier();
+  Materiel.oublier();
   session.effacer();
   appareil.effacer();
   afficher('ecran-connexion');
@@ -583,7 +587,7 @@ const vueDuLien = () => (location.hash === '#inv-base' ? 'base-articles' : (gest
 
 function vueAutorisee(vue) {
   if (VUES_VEHICULES[vue] && !accesVehicules()) return 'aujourdhui';
-  if ((vue === 'inventaires' || vue === 'base-articles') && !accesInventaires()) return 'aujourdhui';
+  if ((vue === 'inventaires' || vue === 'base-articles' || vue === 'suivi-materiel') && !accesInventaires()) return 'aujourdhui';
   if ((vue === 'configuration' || vue === 'types-infos' || vue === 'gestion-inventaires') && roleCourant !== 'admin') return 'accueil';
   return vue;
 }
@@ -615,6 +619,10 @@ function ouvrirVue(demandee) {
     if (/^#inv\b/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
   }
 
+  const materiel = vue === 'suivi-materiel';
+  if (materiel) Materiel.afficher();
+  else Materiel.masquer();
+
   const config = vue === 'configuration';
   $('zone-config').hidden = !config;
   if (config) ConfigAdmin.ouvrir();
@@ -625,7 +633,7 @@ function ouvrirVue(demandee) {
   else Infos.masquer();
   cibleInfo = '';
 
-  const vehicules = !parc && !inventaires && !config && !infos;
+  const vehicules = !parc && !inventaires && !config && !infos && !materiel;
   $('zone-ambulancier').hidden = !vehicules;
   if (vehicules) {
     const def = VUES_VEHICULES[vue] || VUES_VEHICULES['checklist-ambulancier'];
@@ -756,6 +764,9 @@ window.addEventListener('hashchange', () => {
 });
 Parc.initialiser({ appeler });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });
+Materiel.demarrer({
+  appeler, mettreEnFile, retirerDeFile, lireFile: () => fileAttente.lire(), estAdmin: () => roleCourant === 'admin',
+});
 
 $('enregistrer').addEventListener('click', enregistrerAmbulancier);
 

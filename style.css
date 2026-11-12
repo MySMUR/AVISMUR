@@ -1781,3 +1781,107 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
   .barre-scan svg { width: 1.6rem; height: 1.6rem; }
 }
 .barre-scan-avis { position: fixed; left: 1rem; right: 1rem; bottom: calc(5rem + env(safe-area-inset-bottom)); z-index: 60; margin: 0; padding: 0.75rem 1rem; border-radius: 0.6rem; background: #263238; color: #fff; text-align: center; }
+
+/* ---------- Suivi du matériel (materiel.js) ---------- */
+.materiel { display: flex; flex-direction: column; gap: 1rem; }
+.mat-entete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.mat-entete h1 { margin: 0; }
+.mat-nouveau { width: auto; padding-inline: 1.2rem; }
+.mat-compteurs { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.6rem; }
+.mat-compteur {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; padding: 0.7rem 0.9rem;
+  border: 2px solid var(--trait); border-radius: var(--rayon); background: #fff; color: var(--encre); font: inherit; text-align: left; cursor: pointer;
+}
+.mat-compteur strong { font-size: 1.6rem; line-height: 1; }
+.mat-compteur span { font-size: 0.85rem; color: var(--gris); }
+.mat-compteur.retard strong { color: var(--erreur); }
+.mat-compteur.bientot strong { color: #A65A00; }
+.mat-compteur.panne strong { color: #7A4BC2; }
+.mat-compteur.actif { border-color: var(--bleu); box-shadow: 0 0 0 2px var(--bleu) inset; }
+.mat-filtres { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.mat-filtres input[type="search"] { flex: 1 1 14rem; }
+.mat-filtres input, .mat-filtres select { min-height: 2.75rem; padding: 0.4rem 0.6rem; border: 2px solid var(--trait); border-radius: 10px; font: inherit; background: #fff; }
+.mat-selection {
+  position: sticky; top: 0.5rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+  padding: 0.6rem 0.8rem; border-radius: var(--rayon); background: var(--encre); color: #fff;
+}
+.mat-selection span { font-weight: 700; margin-right: auto; }
+.mat-groupe { background: #fff; border-radius: var(--rayon); padding: 0.4rem 0.8rem 0.6rem; box-shadow: 0 1px 3px rgb(19 41 75 / 0.08); }
+.mat-groupe-titre { display: flex; align-items: center; gap: 0.6rem; margin: 0.4rem 0; font-size: 1.1rem; }
+.mat-groupe-titre small { padding: 0 0.5rem; border-radius: 99px; background: var(--ciel); color: var(--gris); font-size: 0.85rem; }
+.mat-lignes { list-style: none; margin: 0; padding: 0; }
+.mat-ligne { display: flex; align-items: center; gap: 0.6rem; border-top: 1px solid var(--ciel); }
+.mat-ligne.choisie { background: #F3F7FD; }
+.mat-case, .mat-groupe-titre input, .mat-case-libelle input, .mat-ligne-groupee > input { width: 1.3rem; height: 1.3rem; flex-shrink: 0; accent-color: var(--bleu); }
+.mat-ouvrir {
+  flex: 1; display: flex; align-items: center; gap: 0.8rem; padding: 0.65rem 0.2rem; min-width: 0;
+  border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.mat-num {
+  display: grid; place-items: center; width: 2.6rem; height: 2.6rem; flex-shrink: 0; border-radius: 50%;
+  background: var(--bleu); color: #fff; font-weight: 700; font-size: 1.05rem;
+}
+.mat-corps { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.mat-ids, .mat-derniere { font-size: 0.85rem; color: var(--gris); }
+.mat-traceur { margin-left: 0.35rem; }
+.mat-etats { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; }
+.mat-pastille { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 99px; font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
+.rev-ok { background: #E3F4F1; color: #12655D; }
+.rev-bientot { background: #FFF1DE; color: #8A4B00; }
+.rev-retard { background: #FDE8E6; color: var(--erreur); }
+.rev-neutre { background: var(--ciel); color: var(--gris); }
+.mat-pastille.attente { background: #FFF6C9; color: #6B5600; }
+[class*="statut-en-panne"] { background: #FDE8E6; color: var(--erreur); }
+[class*="statut-en-maintenance"] { background: #EFE6FB; color: #5B3596; }
+[class*="statut-prete"], [class*="statut-reforme"] { background: var(--ciel); color: var(--gris); }
+.mat-vide { color: var(--gris); font-style: italic; }
+@media (max-width: 560px) {
+  .mat-ouvrir { flex-wrap: wrap; }
+  .mat-etats { flex-direction: row; flex-wrap: wrap; align-items: flex-start; width: 100%; padding-left: 3.4rem; }
+}
+
+/* Fenêtres (fiche, modification, répercussion, intervention) */
+.mat-dialogue {
+  width: min(32rem, calc(100vw - 1.5rem)); max-height: calc(100dvh - 1.5rem); padding: 0;
+  border: 0; border-radius: var(--rayon); color: var(--encre); box-shadow: 0 12px 40px rgb(19 41 75 / 0.3);
+}
+.mat-dialogue.large { width: min(46rem, calc(100vw - 1.5rem)); }
+.mat-dialogue::backdrop { background: rgb(19 41 75 / 0.45); }
+.mat-dialogue-entete {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  padding: 0.8rem 1rem; background: var(--bleu); color: #fff;
+}
+.mat-dialogue-entete h2 { margin: 0; font-size: 1.15rem; }
+.mat-dialogue-entete .tiroir-fermer { color: #fff; background: transparent; border: 0; font-size: 1.2rem; cursor: pointer; min-width: 2.5rem; min-height: 2.5rem; }
+.mat-dialogue-corps { padding: 1rem; display: flex; flex-direction: column; gap: 0.8rem; }
+.mat-dialogue-corps > * { margin: 0; }
+.mat-infos { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0; }
+.mat-infos dt { color: var(--gris); }
+.mat-infos dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.mat-rev-fiche { align-self: flex-start; font-size: 0.9rem; }
+.mat-boutons { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.mat-boutons .principal { width: auto; padding-inline: 1.2rem; }
+.mat-historique { list-style: none; margin: 0; padding: 0 0 0 1rem; border-left: 3px solid var(--trait); display: flex; flex-direction: column; gap: 0.7rem; }
+.mat-historique li { position: relative; }
+.mat-historique li::before { content: ''; position: absolute; left: -1.45rem; top: 0.4rem; width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--bleu); }
+.mat-historique li.attente::before { background: #D9B300; }
+.mat-historique p { margin: 0.1rem 0; }
+.mat-histo-note { font-size: 0.85rem; color: var(--gris); }
+.mat-form { display: flex; flex-direction: column; gap: 0.7rem; }
+.mat-grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.6rem 1rem; }
+.mat-champ { margin: 0; }
+.mat-champ input, .mat-champ select, .mat-champ textarea, .mat-ligne-groupee input:not([type="checkbox"]), .mat-ligne-groupee select, .mat-ligne-groupee textarea {
+  width: 100%; min-height: 2.75rem; padding: 0.45rem 0.6rem; border: 2px solid var(--trait); border-radius: 10px; font: inherit; background: #fff;
+}
+.mat-case-libelle { display: flex; align-items: center; gap: 0.6rem; padding: 0.3rem 0; cursor: pointer; }
+.mat-cadre { border: 2px solid var(--trait); border-radius: var(--rayon); padding: 0.6rem 0.8rem; margin: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.mat-cadre legend { font-weight: 700; padding: 0 0.3rem; }
+.mat-ligne-groupee { display: grid; grid-template-columns: auto 10rem 1fr; align-items: center; gap: 0.6rem; }
+.mat-ligne-groupee > :disabled { opacity: 0.45; }
+@media (max-width: 560px) { .mat-ligne-groupee { grid-template-columns: auto 1fr; } .mat-ligne-groupee > :last-child { grid-column: 1 / -1; } }
+.mat-cibles { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.mat-puce { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.6rem; border-radius: 99px; background: var(--ciel); font-weight: 700; font-size: 0.9rem; }
+.mat-puce button { border: 0; background: none; color: var(--gris); cursor: pointer; padding: 0 0.1rem; font: inherit; }
+.mat-cadre select { min-height: 2.75rem; border: 2px solid var(--trait); border-radius: 10px; font: inherit; padding: 0.4rem; background: #fff; }
+.mat-filtres select, .mat-filtres input[type="search"] { width: auto; }
+.mat-filtres select { flex: 0 1 auto; }
