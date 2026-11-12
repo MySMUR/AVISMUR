@@ -1648,3 +1648,11 @@ textarea:focus { border-color: var(--bleu); }
   .inv-arbre-etat.fait { background: var(--rhone); }
   .inv-arbre-legende { margin: 0.6rem 0 0; font-size: 0.8rem; }
 }
+
+/* « Ce contenant est-il scellé ? » */
+.inv-question-scelle { margin: 0.6rem 0 1.2rem; padding: 1rem; background: var(--ciel); border: 2px solid var(--bleu); border-radius: 14px; }
+.inv-question-scelle h2 { margin: 0 0 0.4rem; font-size: 1.2rem; color: var(--bleu); }
+.inv-question-scelle p { margin: 0 0 0.7rem; }
+.inv-boutons-scelle { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.inv-boutons-scelle .principal { width: auto; flex: 1 1 12rem; }
+.inv-boutons-scelle .cfg-bouton { flex: 1 1 10rem; min-height: 3rem; }

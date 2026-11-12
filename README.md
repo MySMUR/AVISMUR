@@ -107,7 +107,7 @@ Données : un contenant d'exemplaire porte `source` (le contenant du type qu'il 
 
 En gestion des inventaires, chaque contenant a une **catégorie** : **Primaire** (véhicule, réserve), **Immobile** (tiroir, placard : ne change pas de place) ou **Mobile** (sac, sacoche, ampoulier : peut changer de véhicule). La page des inventaires ne montre que les **contenants primaires** ; les inventaires de premier niveau sans catégorie apparaissent aux administrateurs dans « À classer ».
 
-Tous les autres s'atteignent par l'encadré **« Trouver un inventaire »** en tête de page : saisie du nom (cherche aussi dans le chemin, ex. « f25 tiroir »), **Scanner un QR code** (caméra, Chrome sur Android) ou **Lire une puce NFC** (Chrome sur Android). Sur les autres appareils, l'appareil photo du téléphone lit le QR code et ouvre directement l'inventaire.
+Tous les autres s'atteignent par l'encadré **« Trouver un inventaire »** en tête de page : saisie du nom (sur le nom du contenant seulement : « sac rouge » trouve les sacs rouges, pas leurs sous-inventaires), **Scanner un QR code** (caméra, Chrome sur Android) ou **Lire une puce NFC** (Chrome sur Android). Sur les autres appareils, l'appareil photo du téléphone lit le QR code et ouvre directement l'inventaire.
 
 ### Plusieurs vues d'un contenant primaire
 
@@ -133,3 +133,9 @@ En check-list, l'emplacement affiche l'exemplaire qui l'occupe (« ↳ Ampoulier
 ### Arborescence (ordinateur)
 
 Sur grand écran (à partir de 1100 px de large), la page d'un inventaire affiche à droite l'arborescence de l'inventaire type ou du contenant primaire dans lequel on travaille : le contenant affiché est en surbrillance, les branches sur son chemin sont dépliées, un clic ouvre un contenant (en gestion comme en check-list). En check-list, une pastille indique l'état (vert : vérifié, orange : à vérifier) ; le nombre à droite est celui des articles à cocher. Masquée sur téléphone et tablette.
+
+### Contenant scellable : « Ce contenant est-il scellé ? »
+
+En check-list, un contenant **scellable** pas encore vérifié aujourd'hui demande d'abord s'il est scellé :
+- **Oui, il est scellé** : son inventaire et celui de tout ce qu'il contient sont validés sur la base du dernier réalisé (mêmes articles présents ou manquants, mêmes dates de péremption connues), avec la remarque « Scellé : validé sur la base de l'inventaire du … ». Impossible si un des contenants n'a jamais été vérifié ou si un emplacement est vide : il faut alors faire l'inventaire complet.
+- **Non, il est ouvert** : l'inventaire se fait normalement.

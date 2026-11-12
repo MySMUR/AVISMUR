@@ -1265,7 +1265,8 @@ const Inventaires = (() => {
       resultats.innerHTML = '';
       const mots = cle(recherche).split(' ').filter(Boolean);
       if (!mots.length || cle(recherche).length < 2) return;
-      const trouves = tous.filter((c) => { const t = cle(`${c.nom} ${chemin(c.id).slice(0, -1).map((x) => x.nom).join(' ')}`); return mots.every((m) => t.includes(m)); });
+      // Sur le nom du contenant lui-même : « sac rouge » trouve les sacs rouges, pas tout ce qu'ils contiennent.
+      const trouves = tous.filter((c) => { const t = cle(c.nom); return mots.every((m) => t.includes(m)); });
       trouves.slice(0, 12).forEach((c) => {
         const parents = chemin(c.id).slice(0, -1).map((x) => x.nom).join(' › ');
         const ligne = carte(c);
@@ -2180,6 +2181,57 @@ const Inventaires = (() => {
         : el('li', {}, nomArticle(a), a.quantite ? el('span', { classe: 'inv-qte-attendue', texte: ` × ${a.quantite}` }) : null)))));
   }
 
+  // ---------- Contenant scellable : « est-il scellé ? » ----------
+  const reponsesScelle = new Set(); // contenants pour lesquels l'agent a répondu « non, il est ouvert » (cette visite)
+  /**
+   * Contenant scellé : son inventaire (et celui de tout ce qu'il contient) est validé sur la base du dernier
+   * réalisé — mêmes articles présents ou manquants, mêmes dates de péremption connues. Impossible si l'un
+   * des contenants n'a encore jamais été vérifié, ou si un emplacement est vide.
+   */
+  function obstaclesScelle(c) {
+    const obstacles = [];
+    descendants(c.id).forEach((d) => {
+      if (d.emplacement && !enfants(d.id).length) obstacles.push(`${d.nom} (emplacement vide)`);
+      else if (aCocher(d).length && !etat.verifs[d.id]) obstacles.push(`${d.nom} (jamais vérifié)`);
+    });
+    return obstacles;
+  }
+  function validerScelle(c) {
+    const maintenant = new Date().toISOString();
+    let n = 0;
+    for (const d of descendants(c.id)) {
+      if (!aCocher(d).length || verifDuJour(d.id)) continue;
+      const derniere = etat.verifs[d.id];
+      const manquants = new Set(derniere.manquants.map((m) => m.id));
+      const articles = aCocher(d).map((a) => {
+        const att = attendue(a);
+        return {
+          id: a.id, nom: nomArticle(a), ok: !manquants.has(a.id),
+          ...(att !== null ? { attendu: att, quantite: att } : {}),
+          ...(suiviPeremption(a) ? { peremption: datePeremption(d.id, a.id) } : {}),
+        };
+      });
+      const remarque = `Scellé : validé sur la base de l'inventaire du ${new Date(derniere.date).toLocaleDateString('fr-FR')} (${derniere.agent}).`;
+      const ok = App.mettreEnFile({ action: 'verifierInventaire', contenant: d.id, detail: { chemin: chemin(d.id).map((x) => x.nom).join(' > '), articles, remarque, scelle: true } });
+      if (!ok) { avis = 'Non enregistré : la mémoire de l\'appareil est pleine.'; rendre(); return; }
+      etat.verifs[d.id] = { date: maintenant, agent: App.agent(), manquants: derniere.manquants, remarque };
+      n += 1;
+    }
+    sauverEtat();
+    avis = `« ${c.nom} » scellé : ${pluriel(n, 'inventaire')} validé${n > 1 ? 's' : ''} sur la base du dernier réalisé.`;
+    aller(c.parent && !gestion ? c.parent : c.id);
+  }
+  function blocQuestionScelle(c) {
+    const obstacles = obstaclesScelle(c);
+    return el('section', { classe: 'inv-question-scelle' },
+      el('h2', { texte: 'Ce contenant est-il scellé ?' }),
+      el('p', { texte: 'Scellé (plomb intact) : il est complet et opérationnel, son inventaire est validé sur la base du dernier réalisé. Ouvert ou déplombé : faites l\'inventaire.' }),
+      obstacles.length ? el('p', { classe: 'message erreur', texte: `Validation par le scellé impossible : ${obstacles.join(', ')}. Faites l'inventaire complet.` }) : null,
+      el('div', { classe: 'inv-boutons-scelle' },
+        el('button', { type: 'button', classe: 'principal', disabled: obstacles.length > 0, texte: 'Oui, il est scellé', surclick: () => validerScelle(c) }),
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Non, il est ouvert', surclick: () => { reponsesScelle.add(c.id); rendre({ garderPosition: true }); } })));
+  }
+
   function vueContenant(c) {
     const fils = enfants(c.id);
     const b = bilan(c.id);
@@ -2189,6 +2241,8 @@ const Inventaires = (() => {
       ? el('div', { classe: 'champ inv-champ-nom' }, el('label', { for: 'inv-nom', texte: 'Nom' }),
         el('input', { id: 'inv-nom', maxlength: '80', valeur: c.nom, surchange: (e) => { const t = e.target.value.trim(); if (t) { c.nom = t; marquer(c.id); } else e.target.value = c.nom; } }))
       : el('h1', { tabindex: '-1' }, c.nom, c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null);
+    // Check-list d'un contenant scellable pas encore vérifié aujourd'hui : on demande d'abord s'il est scellé.
+    const questionScelle = !edition && !dansUnModele(c.id) && c.scellable && !b.complet && !reponsesScelle.has(c.id);
     const caseScellable = idChamp();
     const caseModele = idChamp();
     const groupeCategorie = idChamp();
@@ -2231,14 +2285,15 @@ const Inventaires = (() => {
       c.desaffecte && !c.parent ? el('p', { classe: 'note-parc anomalie' }, el('strong', { texte: 'Désaffecté — à retrouver. ' }),
         `Était dans ${c.desaffecte.deNom || '?'}. Pour le réaffecter, identifiez-le depuis le contenant où il se trouve (« Un contenant mobile se trouve ici »). `,
         el('button', { type: 'button', classe: 'lien', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) })) : null,
+      ...(questionScelle ? [blocQuestionScelle(c)] : []),
       edition || modele ? null : el('p', { classe: `inv-statut ${b.classe}` },
         el('strong', { texte: `${b.complet ? '✓ ' : ''}${b.texte}` }),
         v ? ` — cet inventaire à ${heure(v.date)} par ${v.agent}` : '',
         el('span', { classe: 'inv-badges' }, ...badges(b))),
-      blocPhoto(c, fils),
-      blocEnfants(c, fils),
-      !edition && !modele ? el('button', { type: 'button', classe: 'lien inv-mobile-ici', texte: '＋ Un contenant mobile se trouve ici', surclick: () => { identification = `dans:${c.id}`; rendre(); } }) : null,
-      c.emplacement ? null : (edition ? blocArticles(c) : (modele ? blocContenuModele(c) : blocVerification(c))),
+      questionScelle ? null : blocPhoto(c, fils),
+      questionScelle ? null : blocEnfants(c, fils),
+      !edition && !modele && !questionScelle ? el('button', { type: 'button', classe: 'lien inv-mobile-ici', texte: '＋ Un contenant mobile se trouve ici', surclick: () => { identification = `dans:${c.id}`; rendre(); } }) : null,
+      c.emplacement || questionScelle ? null : (edition ? blocArticles(c) : (modele ? blocContenuModele(c) : blocVerification(c))),
       !edition && !aCocher(c).length && !fils.length ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : menu > Administration > Gestion des inventaires pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
       !edition && !aCocher(c).length ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
       edition ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
