@@ -17,7 +17,7 @@ Check-lists du SMUR d'Avignon, servies par GitHub Pages. Fonctionne hors ligne :
 
 Bandeau du haut, une fois connecté : nom prénom et fonction de l'agent, et le **menu burger** en haut à droite. La fonction vient du champ `fonction` renvoyé par le serveur (colonne « Fonction » de DB_SMUR) ; tant que le backend ne l'envoie pas, elle est déduite du rôle (Ambulancier, IADE, Encadrement, Administrateur). De même, `nom` et `prenom` sont utilisés s'ils sont renvoyés, sinon l'`identifiant`.
 
-Menu (tiroir à droite, `<dialog id="menu">` dans `index.html`) :
+Menu (tiroir à droite, `<dialog id="menu">` dans `index.html`) : les titres de rubrique restent visibles et se déplient en accordéon (une seule rubrique ouverte à la fois ; à l'ouverture du menu, celle de la page en cours) :
 
 - **Accueil** : mur d'informations et rappels (page d'arrivée après la connexion). La check-list du jour reste accessible par Véhicules > Check-list ambulancier, Inventaires > Check-list, ou les liens en bas du mur.
 - **Véhicules** (ambulanciers, encadrement, admins) : Check-list ambulancier (tableau de bord du parc sur ordinateur), Commande d'oxygène *(à venir)*, Carburant, Carrosserie, Suivi mécanique. Carburant, Carrosserie et Suivi mécanique affichent les cases des véhicules ; toucher un véhicule ouvre directement l'écran du plein, de la vérification extérieure ou du passage au garage (`Ambulancier.choisirMode()`, `Actions.ouvrirAction()`).

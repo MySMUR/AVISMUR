@@ -711,15 +711,24 @@ body:has(.tiroir[open]) { overflow: hidden; }
 .tiroir-fermer:hover { background: rgb(255 255 255 / 0.24); }
 
 .tiroir-corps { flex: 1; overflow-y: auto; padding: 0.75rem 0.75rem 1rem; }
-.rubrique { margin-top: 1rem; }
-.rubrique h2 {
+.rubrique { margin-top: 0.25rem; }
+.rubrique h2 { margin: 0; }
+.rubrique-titre {
   display: flex; align-items: center; gap: 0.5rem;
-  margin: 0 0 0.35rem; padding: 0 0.5rem;
-  font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gris);
+  width: 100%; min-height: 3rem; padding: 0.5rem;
+  font: inherit; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; text-align: left;
+  color: var(--gris); background: none; border: 0; border-radius: 10px; cursor: pointer;
 }
-.rubrique h2 svg { width: 1.25rem; height: 1.25rem; flex: none; color: var(--bleu); }
+.rubrique-titre:hover { background: var(--ciel); }
+.rubrique-titre:focus-visible { outline: 3px solid var(--orange); outline-offset: -3px; }
+.rubrique-titre[aria-expanded="true"] { color: var(--encre); }
+.rubrique-titre svg { width: 1.25rem; height: 1.25rem; flex: none; color: var(--bleu); }
+.rubrique-titre .chevron { margin-left: auto; color: var(--gris); transition: transform 0.2s; }
+.rubrique-titre[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+.rubrique ul:not([hidden]) { animation: rubrique-depli 0.18s ease-out; }
+@keyframes rubrique-depli { from { opacity: 0; transform: translateY(-0.4rem); } }
 .rubrique ul { list-style: none; margin: 0; padding: 0; }
-.rubrique-admin h2 svg { color: var(--orange); }
+.rubrique-admin .rubrique-titre svg:not(.chevron) { color: var(--orange); }
 
 .tiroir-lien {
   display: flex; flex-wrap: wrap; align-items: center; column-gap: 0.5rem;
@@ -750,7 +759,8 @@ body:has(.tiroir[open]) { overflow: hidden; }
 .tiroir-deconnexion:hover { background: #FDF1F0; }
 
 @media (prefers-reduced-motion: reduce) {
-  .tiroir[open] { animation: none; }
+  .tiroir[open], .rubrique ul:not([hidden]) { animation: none; }
+  .rubrique-titre .chevron { transition: none; }
 }
 
 /* ---------- Animation de chargement ---------- */

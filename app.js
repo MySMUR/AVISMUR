@@ -652,8 +652,19 @@ function ouvrirChecklist(id) {
 
 // ----- Ouverture et fermeture du menu (<dialog> : focus gardé dans le menu, Échap pour fermer) -----
 const menu = $('menu');
+// Rubriques en accordéon : les titres restent visibles, une seule rubrique dépliée à la fois.
+function deplierRubrique(rubrique) {
+  menu.querySelectorAll('.rubrique').forEach((r) => {
+    const ouverte = r === rubrique;
+    r.querySelector('.rubrique-titre').setAttribute('aria-expanded', String(ouverte));
+    r.querySelector('ul').hidden = !ouverte;
+  });
+}
 function ouvrirMenu() {
   if (menu.open) return;
+  // À l'ouverture, seule la rubrique de la page en cours est dépliée.
+  const courant = menu.querySelector('.rubrique [aria-current="page"]');
+  deplierRubrique(courant ? courant.closest('.rubrique') : null);
   menu.showModal();
   $('bouton-menu').setAttribute('aria-expanded', 'true');
   const actif = menu.querySelector('[aria-current="page"]');
@@ -670,6 +681,12 @@ menu.addEventListener('click', (e) => {
   // Toucher le fond grisé, à côté du menu, le ferme.
   if (e.target === menu) {
     fermerMenu();
+    return;
+  }
+  const titre = e.target.closest('.rubrique-titre');
+  if (titre) {
+    // Toucher la rubrique dépliée la replie ; une autre rubrique replie la précédente.
+    deplierRubrique(titre.getAttribute('aria-expanded') === 'true' ? null : titre.closest('.rubrique'));
     return;
   }
   const lien = e.target.closest('[data-vue]');

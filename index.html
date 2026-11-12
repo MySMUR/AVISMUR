@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=47">
+  <link rel="stylesheet" href="style.css?v=48">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -216,8 +216,8 @@
         <button type="button" class="tiroir-lien tiroir-accueil" data-vue="accueil">Accueil<small>Informations et rappels</small></button>
 
         <section id="rubrique-vehicules" class="rubrique" aria-labelledby="titre-rubrique-vehicules">
-          <h2 id="titre-rubrique-vehicules"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 16V8a1 1 0 0 1 1-1h10l4 4h2a1 1 0 0 1 1 1v4"/><path d="M3 16h2m4 0h6m4 0h2"/><circle cx="7" cy="16.5" r="2"/><circle cx="17" cy="16.5" r="2"/><path d="M8 10.5h3M9.5 9v3"/></svg>Véhicules</h2>
-          <ul>
+          <h2 id="titre-rubrique-vehicules"><button type="button" class="rubrique-titre" aria-expanded="false" aria-controls="liste-rubrique-vehicules"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 16V8a1 1 0 0 1 1-1h10l4 4h2a1 1 0 0 1 1 1v4"/><path d="M3 16h2m4 0h6m4 0h2"/><circle cx="7" cy="16.5" r="2"/><circle cx="17" cy="16.5" r="2"/><path d="M8 10.5h3M9.5 9v3"/></svg>Véhicules<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg></button></h2>
+          <ul id="liste-rubrique-vehicules" hidden>
           <li><button type="button" class="tiroir-lien" data-vue="checklist-ambulancier">Check-list ambulancier<small>Vérification du matin</small></button></li>
           <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true">Commande d'oxygène<span class="etiquette">À venir</span></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="carburant">Carburant<small>Signaler un plein</small></button></li>
@@ -227,8 +227,8 @@
         </section>
 
         <section id="rubrique-inventaires" class="rubrique" aria-labelledby="titre-rubrique-inventaires">
-          <h2 id="titre-rubrique-inventaires"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M8 5H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M9 11l1.5 1.5L13 10M9 16h6"/></svg>Inventaires</h2>
-          <ul>
+          <h2 id="titre-rubrique-inventaires"><button type="button" class="rubrique-titre" aria-expanded="false" aria-controls="liste-rubrique-inventaires"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M8 5H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M9 11l1.5 1.5L13 10M9 16h6"/></svg>Inventaires<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg></button></h2>
+          <ul id="liste-rubrique-inventaires" hidden>
           <li><button type="button" class="tiroir-lien" data-vue="inventaires">Check-list<small>Sacs, tiroirs, péremptions</small></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="tableau-inventaires">Tableau de bord<small>Contenants primaires et ce qu'ils renferment</small></button></li>
           <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true">Suivi matériel<span class="etiquette">À venir</span></button></li>
@@ -238,8 +238,8 @@
         </section>
 
         <section id="rubrique-admin" class="rubrique rubrique-admin" aria-labelledby="titre-rubrique-admin" hidden>
-          <h2 id="titre-rubrique-admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/></svg>Administration</h2>
-          <ul>
+          <h2 id="titre-rubrique-admin"><button type="button" class="rubrique-titre" aria-expanded="false" aria-controls="liste-rubrique-admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/></svg>Administration<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg></button></h2>
+          <ul id="liste-rubrique-admin" hidden>
           <li><button type="button" class="tiroir-lien" data-vue="configuration">Configuration<small>Véhicules et questions des check-lists</small></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="gestion-inventaires">Gestion des inventaires<small>Créer et modifier les inventaires, inventaires types</small></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="base-articles">Base des articles<small>Fiches des articles des inventaires</small></button></li>
@@ -268,6 +268,6 @@
   <script src="lib/qrcode.js?v=1"></script>
   <script src="inventaires.js?v=25"></script>
   <script src="infos.js?v=2"></script>
-  <script src="app.js?v=32"></script>
+  <script src="app.js?v=33"></script>
 </body>
 </html>
