@@ -129,3 +129,7 @@ Fonctionne hors ligne (file d'attente) ; chaque mouvement est noté dans l'ongle
 En gestion des inventaires, dans un contenant (souvent un inventaire type de sac) : « + » puis « **Ou ajouter un emplacement pour un contenant mobile** » et choisir l'inventaire type attendu (ex. Ampoulier A). L'emplacement apparaît comme un sous-inventaire (étiquette « Emplacement »), avec sa gommette ; il est recopié dans les exemplaires du sac.
 
 En check-list, l'emplacement affiche l'exemplaire qui l'occupe (« ↳ Ampoulier A n°3 ») ou « à identifier » (compté dans l'avancement du sac). Le toucher demande « Quel « Ampoulier A » se trouve ici ? » : seuls les exemplaires de ce type sont proposés et acceptés (QR code, NFC ou liste). L'exemplaire identifié est rangé dans l'emplacement et son inventaire s'ouvre. Si un autre exemplaire occupait l'emplacement, il est désaffecté (à retrouver), comme pour tout contenant mobile.
+
+### Arborescence (ordinateur)
+
+Sur grand écran (à partir de 1100 px de large), la page d'un inventaire affiche à droite l'arborescence de l'inventaire type ou du contenant primaire dans lequel on travaille : le contenant affiché est en surbrillance, les branches sur son chemin sont dépliées, un clic ouvre un contenant (en gestion comme en check-list). En check-list, une pastille indique l'état (vert : vérifié, orange : à vérifier) ; le nombre à droite est celui des articles à cocher. Masquée sur téléphone et tablette.

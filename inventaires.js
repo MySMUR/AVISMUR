@@ -1435,6 +1435,38 @@ const Inventaires = (() => {
     ];
   }
 
+  // ---------- Arborescence (ordinateur, à droite) ----------
+  /**
+   * Arborescence de l'inventaire dans lequel on travaille : l'inventaire type, ou le contenant primaire
+   * (à défaut, le premier niveau). Le contenant affiché est mis en évidence ; un clic ouvre un contenant.
+   * Affichée seulement sur grand écran (CSS).
+   */
+  function blocArborescence(c) {
+    const ch = chemin(c.id);
+    const racine = racineModele(c.id) || ch.find((x) => x.categorie === 'primaire') || ch[0];
+    if (!racine) return null;
+    const ouverts = new Set(ch.map((x) => x.id));
+    const noeud = (x, profondeur) => {
+      const fils = enfants(x.id);
+      const b = dansUnModele(x.id) ? null : bilan(x.id);
+      const actuel = x.id === c.id;
+      const lienNoeud = el('a', { href: lien(x.id), classe: `inv-arbre-lien${actuel ? ' actuel' : ''}`, 'aria-current': actuel ? 'page' : null },
+        b && b.total ? el('span', { classe: `inv-arbre-etat ${b.classe}`, title: b.texte, 'aria-label': b.texte }) : null,
+        el('span', { classe: 'inv-arbre-nom', texte: x.nom }),
+        x.emplacement ? el('small', { texte: fils[0] ? ` ↳ ${fils[0].nom}` : ' ↳ à identifier' }) : null,
+        aCocher(x).length ? el('small', { classe: 'inv-arbre-nb', texte: ` ${aCocher(x).length}` }) : null);
+      if (!fils.length || x.emplacement) return el('li', {}, lienNoeud);
+      // Branches dépliées sur le chemin du contenant affiché et jusqu'au 2e niveau ; les autres repliées.
+      const deplie = ouverts.has(x.id) || profondeur < 1;
+      return el('li', {}, el('details', { open: deplie }, el('summary', {}, lienNoeud),
+        el('ul', {}, ...fils.map((f) => noeud(f, profondeur + 1)))));
+    };
+    return el('aside', { classe: 'inv-arbre', 'aria-label': 'Arborescence' },
+      el('h2', { texte: racine.modele ? 'Inventaire type' : 'Arborescence' }),
+      el('ul', { classe: 'inv-arbre-racine' }, noeud(racine, 0)),
+      el('p', { classe: 'aide-question inv-arbre-legende', texte: 'Le nombre indique les articles à cocher.' }));
+  }
+
   // ---------- Glisser-déposer ----------
   /**
    * Poignée « ⠿ » d'une ligne déplaçable. À la souris ou au doigt : on attrape la poignée et on glisse.
@@ -2251,7 +2283,10 @@ const Inventaires = (() => {
         el('p', { classe: 'consigne', texte: synchro.enCours ? 'Chargement des inventaires…' : 'Cet inventaire n\'existe pas ou a été supprimé. Si vous venez de scanner une étiquette, elle n\'est plus à jour.' }),
         el('a', { classe: 'lien', href: lien(''), texte: '← Tous les inventaires' }));
     } else {
-      zone.append(...(c ? vueContenant(c) : vueRacine()).filter(Boolean));
+      const contenu = (c ? vueContenant(c) : vueRacine()).filter(Boolean);
+      const arbre = c ? blocArborescence(c) : null;
+      if (arbre) zone.append(el('div', { classe: 'inv-mise-en-page' }, el('div', { classe: 'inv-corps' }, ...contenu), arbre));
+      else zone.append(...contenu);
     }
     if (focus && zone.querySelector(focus)) zone.querySelector(focus).focus();
     else if (nouveau && !garderPosition) {
