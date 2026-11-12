@@ -615,12 +615,14 @@ const Inventaires = (() => {
 
   // ---------- Navigation ----------
   const BASE = '@base'; // « #inv-base » : base des articles
+  const TABLEAU = '@tableau'; // « #inv-tableau » : tableau de bord des contenants primaires
   function idCourant() {
     if (location.hash === '#inv-base') return BASE;
+    if (location.hash === '#inv-tableau') return TABLEAU;
     const m = /^#inv=([a-z0-9]{6,16})$/.exec(location.hash);
     return m ? m[1] : '';
   }
-  const lien = (id) => (id === BASE ? '#inv-base' : (id ? `#inv=${id}` : '#inv'));
+  const lien = (id) => (id === BASE ? '#inv-base' : (id === TABLEAU ? '#inv-tableau' : (id ? `#inv=${id}` : '#inv')));
   function aller(id) {
     placement = '';
     confirmer = '';
@@ -812,6 +814,9 @@ const Inventaires = (() => {
     const nbFiches = Object.values(structure.catalogue).filter((f) => !f.archive).length;
     if (nbFiches || estAdmin()) {
       noeuds.push(el('a', { classe: 'lien inv-lien-base', href: lien(BASE), texte: `Base des articles (${nbFiches})` }));
+    }
+    if (!gestion && tous.some((c) => c.categorie === 'primaire' && !dansUnModele(c.id))) {
+      noeuds.push(el('a', { classe: 'lien inv-lien-base inv-lien-tableau', href: lien(TABLEAU), texte: 'Tableau de bord des contenants' }));
     }
     noeuds.push(encadreARetrouver());
     noeuds.push(encadreRecherche(tous));
@@ -1466,6 +1471,91 @@ const Inventaires = (() => {
       el('h2', { texte: racine.modele ? 'Inventaire type' : 'Arborescence' }),
       el('ul', { classe: 'inv-arbre-racine' }, noeud(racine, 0)),
       el('p', { classe: 'aide-question inv-arbre-legende', texte: 'Le nombre indique les articles à cocher.' }));
+  }
+
+  // ---------- Tableau de bord : un grand cadre par contenant primaire ----------
+  /**
+   * « #inv-tableau » : chaque contenant primaire est un grand cadre ; chaque contenant qu'il renferme est un
+   * cadre dans le cadre de son parent, à tous les niveaux (véhicule > tiroir > sac > sacoche > pochette…).
+   *   - couleur du cadre : état du jour du contenant et de tout ce qu'il contient (comme les cartes) ;
+   *   - cadenas : contenant scellable non ouvert aujourd'hui, validé par son scellé ;
+   *   - en gras : le matériel biomédical (respirateur, échographe, PSE, HemoCue…), c'est-à-dire les articles
+   *     dont la fiche est de catégorie « Biomédical » pointés dans la liste du contenant, et les contenants
+   *     qui portent le nom d'une de ces fiches (identifiés par QR code, puce NFC ou saisie).
+   */
+  // Vérification faite par le scellé : marquée sur l'appareil (`scelle`), reconnue à sa remarque sinon.
+  const verifScellee = (v) => Boolean(v) && (v.scelle === true || /^Scellé :/.test(v.remarque || ''));
+  /** Contenant scellable resté fermé aujourd'hui : toutes ses listes ont été validées par le scellé. */
+  function sousScelle(c) {
+    if (!c.scellable) return false;
+    const listes = descendants(c.id).filter((d) => aCocher(d).length);
+    return listes.length > 0 && listes.every((d) => verifScellee(verifDuJour(d.id)));
+  }
+  const articleBiomed = (a) => Boolean(fiche(a)) && fiche(a).categorie === 'Biomédical';
+  const nomsBiomed = () => Object.values(structure.catalogue).filter((f) => !f.archive && f.categorie === 'Biomédical').map((f) => cle(f.denomination)).filter(Boolean);
+  /** Contenant qui est lui-même un appareil biomédical (ex. un scope avec ses pochettes) : il porte le nom d'une fiche « Biomédical ». */
+  function contenantBiomed(c, noms) {
+    const candidats = [c.nom, c.source && structure.contenants[c.source] ? structure.contenants[c.source].nom : ''].map(cle).filter(Boolean);
+    return candidats.some((n) => noms.some((d) => n === d || n.startsWith(`${d} `)));
+  }
+  function logoCadenas() {
+    return el('svg:svg', { viewBox: '0 0 24 24', classe: 'inv-tb-cadenas', role: 'img', 'aria-label': 'Scellé : non ouvert aujourd\'hui' },
+      el('svg:title', { texte: 'Scellé : non ouvert, validé sur la base du dernier inventaire' }),
+      el('svg:rect', { x: '5', y: '10.5', width: '14', height: '10', rx: '2', fill: 'currentColor' }),
+      el('svg:path', { d: 'M8 10.5V7.5a4 4 0 0 1 8 0v3', fill: 'none', stroke: 'currentColor', 'stroke-width': '2.2', 'stroke-linecap': 'round' }));
+  }
+  /** Cadre d'un contenant, avec les cadres de ce qu'il contient. `place` : nom de l'emplacement qu'il occupe. */
+  function cadreTableau(c, noms, niveau = 0, vus = new Set(), place = '') {
+    if (vus.has(c.id)) return null;
+    vus.add(c.id);
+    if (c.emplacement) {
+      const occupant = enfants(c.id)[0];
+      if (occupant) return cadreTableau(occupant, noms, niveau, vus, c.nom);
+      return el('div', { classe: 'inv-tb-cadre inv-tb-avide' },
+        el('div', { classe: 'inv-tb-tete' }, el('a', { classe: 'inv-tb-nom', href: lien(c.id), texte: c.nom }),
+          el('span', { classe: 'inv-tb-etat', texte: 'à identifier' })));
+    }
+    const b = bilan(c.id);
+    const v = aCocher(c).length ? verifDuJour(c.id) : null;
+    const manquants = new Set(v ? v.manquants.map((m) => m.id) : []);
+    const scelle = sousScelle(c);
+    const biomed = contenantBiomed(c, noms);
+    const etatTexte = b.total === 0 ? '' : (b.complet ? '✓' : (b.faits ? `${b.faits}/${b.total}` : 'à vérifier'));
+    const appareils = aCocher(c).filter(articleBiomed).map((a) => {
+      const etatA = !v ? 'afaire' : (manquants.has(a.id) ? 'manquant' : 'present');
+      const libelle = { afaire: 'pas encore vérifié aujourd\'hui', manquant: 'noté manquant', present: 'présent' }[etatA];
+      return el('li', { classe: `inv-tb-appareil ${etatA}`, title: `${nomArticle(a)} : ${libelle}` },
+        nomArticle(a), etatA === 'present' ? null : el('small', { texte: etatA === 'manquant' ? ' manquant' : ' à vérifier' }));
+    });
+    const fils = enfants(c.id).map((f) => cadreTableau(f, noms, niveau + 1, vus)).filter(Boolean);
+    return el('div', { classe: `inv-tb-cadre ${b.classe}${niveau === 0 ? ' inv-tb-primaire' : ''}${scelle ? ' inv-tb-scelle' : ''}${niveau % 2 ? ' inv-tb-impair' : ''}` },
+      el('div', { classe: 'inv-tb-tete' },
+        scelle ? logoCadenas() : null,
+        el('a', { classe: `inv-tb-nom${biomed ? ' inv-tb-biomed' : ''}`, href: lien(c.id), title: place && cle(place) !== cle(c.nom) ? `Emplacement : ${place}` : null, texte: c.nom }),
+        etatTexte ? el('span', { classe: 'inv-tb-etat', title: b.texte, texte: etatTexte }) : null,
+        manquants.size ? el('span', { classe: 'inv-badge alerte', title: v.manquants.map((m) => m.nom).join(' ; '), texte: pluriel(manquants.size, 'manquant') }) : null),
+      appareils.length ? el('ul', { classe: 'inv-tb-appareils' }, ...appareils) : null,
+      fils.length ? el('div', { classe: 'inv-tb-contenu' }, ...fils) : null);
+  }
+  function vueTableau() {
+    const noms = nomsBiomed();
+    const primaires = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'primaire' && !dansUnModele(c.id))
+      .sort((x, y) => x.ordre - y.ordre || x.nom.localeCompare(y.nom, 'fr'));
+    return [
+      el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' }, el('a', { href: lien(''), texte: 'Inventaires' })),
+      el('div', { classe: 'inv-entete' }, el('h1', { tabindex: '-1', texte: 'Tableau de bord des contenants' })),
+      ligneSynchro(), ligneAvis(),
+      el('ul', { classe: 'inv-tb-legende', 'aria-label': 'Légende' },
+        el('li', {}, el('span', { classe: 'inv-tb-pastille fait' }), 'vérifié aujourd\'hui'),
+        el('li', {}, el('span', { classe: 'inv-tb-pastille afaire' }), 'à vérifier ou en cours'),
+        el('li', {}, logoCadenas(), 'scellé, non ouvert'),
+        el('li', {}, el('strong', { texte: 'En gras' }), ' : matériel biomédical'),
+        el('li', {}, el('span', { classe: 'inv-tb-pastille avide' }), 'emplacement à identifier')),
+      primaires.length
+        ? el('div', { classe: 'inv-tb' }, ...primaires.map((c) => cadreTableau(c, noms)))
+        : el('p', { classe: 'consigne', texte: 'Aucun contenant primaire pour l\'instant.' }),
+      el('div', { classe: 'inv-pied' }, el('a', { classe: 'lien', href: lien(''), texte: '← Tous les inventaires' })),
+    ];
   }
 
   // ---------- Glisser-déposer ----------
@@ -2214,7 +2304,7 @@ const Inventaires = (() => {
       const remarque = `Scellé : validé sur la base de l'inventaire du ${new Date(derniere.date).toLocaleDateString('fr-FR')} (${derniere.agent}).`;
       const ok = App.mettreEnFile({ action: 'verifierInventaire', contenant: d.id, detail: { chemin: chemin(d.id).map((x) => x.nom).join(' > '), articles, remarque, scelle: true } });
       if (!ok) { avis = 'Non enregistré : la mémoire de l\'appareil est pleine.'; rendre(); return; }
-      etat.verifs[d.id] = { date: maintenant, agent: App.agent(), manquants: derniere.manquants, remarque };
+      etat.verifs[d.id] = { date: maintenant, agent: App.agent(), manquants: derniere.manquants, remarque, scelle: true };
       n += 1;
     }
     sauverEtat();
@@ -2333,6 +2423,9 @@ const Inventaires = (() => {
     } else if (id === BASE) {
       identification = '';
       zone.append(...vueBase().filter(Boolean));
+    } else if (id === TABLEAU) {
+      identification = '';
+      zone.append(...vueTableau().filter(Boolean));
     } else if (id && !c) {
       zone.append(el('h1', { tabindex: '-1', texte: 'Inventaire introuvable' }), ligneSynchro(),
         el('p', { classe: 'consigne', texte: synchro.enCours ? 'Chargement des inventaires…' : 'Cet inventaire n\'existe pas ou a été supprimé. Si vous venez de scanner une étiquette, elle n\'est plus à jour.' }),
@@ -2520,7 +2613,7 @@ const Inventaires = (() => {
         rendre();
         return;
       }
-      aller(a.getAttribute('href') === '#inv-base' ? BASE : (m ? m[1] : ''));
+      aller(a.getAttribute('href') === '#inv-base' ? BASE : (a.getAttribute('href') === '#inv-tableau' ? TABLEAU : (m ? m[1] : '')));
     });
   }
 

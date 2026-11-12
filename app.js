@@ -579,7 +579,7 @@ function majGestion(valeur) {
   gestionInventaires = valeur;
   try { sessionStorage.setItem('avismur_gestion_inv', valeur ? '1' : ''); } catch (e) { /* stockage indisponible */ }
 }
-const vueDuLien = () => (location.hash === '#inv-base' ? 'base-articles' : (gestionInventaires ? 'gestion-inventaires' : 'inventaires'));
+const vueDuLien = () => (location.hash === '#inv-base' ? 'base-articles' : (gestionInventaires && location.hash !== '#inv-tableau' ? 'gestion-inventaires' : 'inventaires'));
 
 function vueAutorisee(vue) {
   if (VUES_VEHICULES[vue] && !accesVehicules()) return 'aujourdhui';
@@ -681,6 +681,14 @@ menu.addEventListener('click', (e) => {
   if (vue === 'inventaires' || vue === 'gestion-inventaires') majGestion(vue === 'gestion-inventaires' && roleCourant === 'admin');
   if ((vue === 'inventaires' || vue === 'gestion-inventaires') && accesInventaires() && location.hash && location.hash !== '#inv') {
     location.hash = '#inv';
+    return;
+  }
+  // Tableau de bord des contenants : une page des inventaires (lien « #inv-tableau », voir inventaires.js).
+  if (vue === 'tableau-inventaires') {
+    if (!accesInventaires()) { ouvrirVue('aujourdhui'); return; }
+    majGestion(false);
+    if (location.hash !== '#inv-tableau') location.hash = '#inv-tableau';
+    else ouvrirVue('inventaires');
     return;
   }
   if (vue === 'base-articles' && accesInventaires() && location.hash !== '#inv-base') {
