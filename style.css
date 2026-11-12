@@ -1764,3 +1764,20 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .inv-controle-scan .inv-ligne { flex-wrap: wrap; }
 .inv-controle-scan .inv-valeur-zone { flex: 1 1 100%; justify-content: flex-end; }
 .inv-controle-scan .inv-valeur-texte { flex: 1; max-width: 14rem; }
+
+/* Barre du bas : QR code et NFC (téléphone, agent connecté) */
+.barre-scan { display: none; }
+@media (max-width: 760px) {
+  body.connecte .barre-scan {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid #d5dbe5; box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+  }
+  body.connecte { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
+  body.camera-ouverte .barre-scan, body.fenetre-ouverte .barre-scan { display: none; }
+  .barre-scan button {
+    display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; border-radius: 0.75rem;
+    border: none; background: var(--bleu, #1d4e9e); color: #fff; font: inherit; font-weight: 600; font-size: 1rem;
+  }
+  .barre-scan svg { width: 1.6rem; height: 1.6rem; }
+}
+.barre-scan-avis { position: fixed; left: 1rem; right: 1rem; bottom: calc(5rem + env(safe-area-inset-bottom)); z-index: 60; margin: 0; padding: 0.75rem 1rem; border-radius: 0.6rem; background: #263238; color: #fff; text-align: center; }

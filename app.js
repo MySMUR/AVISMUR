@@ -814,3 +814,6 @@ document.addEventListener('visibilitychange', () => {
     }
   }).catch(() => { /* hors ligne : on réessaiera à la prochaine requête */ });
 });
+
+// Barre du bas (téléphone) : QR code et NFC toujours à portée de pouce.
+document.querySelectorAll('#barre-scan [data-scan]').forEach((b) => b.addEventListener('click', () => Inventaires.scanRapide(b.dataset.scan)));

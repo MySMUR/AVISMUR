@@ -2909,5 +2909,17 @@ const Inventaires = (() => {
     if (ligne) majLigneSynchro(ligne);
   }
 
-  return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate };
+  /** Barre du bas (téléphone) : scan depuis n'importe quel écran, ouvre l'inventaire trouvé. */
+  function scanRapide(type) {
+    const dispo = type === 'nfc' ? 'NDEFReader' in window : ('BarcodeDetector' in window && navigator.mediaDevices);
+    if (!dispo) { alerteBreve(type === 'nfc' ? 'NFC non disponible : Chrome sur Android requis, NFC activé.' : 'Lecture de QR code non disponible sur ce navigateur.'); return; }
+    scanner({ qr: type === 'qr', nfc: type === 'nfc' }, (id) => { location.hash = lien(id); });
+  }
+  function alerteBreve(texte) {
+    const p = el('p', { classe: 'barre-scan-avis', role: 'status', texte });
+    document.body.append(p);
+    setTimeout(() => p.remove(), 3500);
+  }
+
+  return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate, scanRapide };
 })();

@@ -151,3 +151,7 @@ En gestion, « Ajouter un contrôle » insère une ligne qui se relève au lieu 
 - **Mesure** : nombre avec unité (bar, L…) et plage.
 
 Hors plage, « Non », valeur différente de l'attendue ou non renseigné : la ligne passe en rouge et est notée en anomalie (avec sa valeur) à la validation. « Tout cocher » ne touche que les cases. Les valeurs sont enregistrées dans InventairesVerifs et reprises par un scellé.
+
+### Barre QR code / NFC (téléphone)
+
+Sur téléphone (écran ≤ 760 px), une fois connecté, deux boutons restent fixés en bas de l'écran sur toutes les pages : **QR code** et **NFC**. Ils ouvrent directement l'inventaire scanné. La barre est masquée sur ordinateur et pendant qu'une caméra ou une fenêtre est ouverte.
