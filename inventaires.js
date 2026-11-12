@@ -44,6 +44,7 @@ const Inventaires = (() => {
   // Identification d'un contenant mobile (check-list) : '<id>' (mobile prévu à cette place),
   // 'dans:<id>' (« un contenant mobile se trouve ici »), 'emp:<id>' (emplacement attendant un type de contenant).
   let identification = '';
+  let typeChoisi = ''; // emplacement à plusieurs inventaires types : modèle choisi sur photo
   let placement = ''; // sous-inventaire dont on place le point sur la photo
   let avis = ''; // message affiché une fois en haut de la vue
   let confirmer = ''; // action en attente d'une deuxième pression (valider avec manquants, supprimer)
@@ -155,7 +156,12 @@ const Inventaires = (() => {
       ...(c.desaffecte ? { desaffecte: c.desaffecte } : {}), // mobile dont la place a été prise : à retrouver
       // Emplacement : attend un exemplaire d'un inventaire type (ex. un « Ampoulier A » dans chaque sac) ;
       // l'exemplaire identifié en check-list y est rangé (enfant de l'emplacement).
-      ...(c.emplacement && c.emplacement.modele ? { emplacement: { modele: c.emplacement.modele } } : {}), // inventaire type : sert de structure à ses exemplaires
+      // Plusieurs inventaires types possibles (ex. scopes de marques différentes, Tempus à pochettes variables) :
+      // `modeles` les liste tous ; `modele` (le premier) reste pour les versions précédentes.
+      ...(c.emplacement && c.emplacement.modele ? { emplacement: (() => {
+        const modeles = [...new Set([c.emplacement.modele, ...(Array.isArray(c.emplacement.modeles) ? c.emplacement.modeles : [])].filter((x) => ID.test(String(x))))];
+        return modeles.length > 1 ? { modele: modeles[0], modeles } : { modele: modeles[0] };
+      })() } : {}),
       ...(c.source ? { source: c.source } : {}), // exemplaire : contenant du modèle dont il est la copie
       ...(c.base ? { base: c.base } : {}), // exemplaire : état du modèle lors de la dernière répercussion
       ...(c.supprime ? { supprime: true } : {}),
@@ -163,6 +169,8 @@ const Inventaires = (() => {
   }
   // ---------- Catégories de contenants ----------
   /** Seuls les contenants primaires sont listés à l'accueil ; les autres s'ouvrent par recherche, QR code ou NFC. */
+  /** Inventaires types acceptés par un emplacement. */
+  const modelesEmplacement = (e) => (e && e.emplacement ? (e.emplacement.modeles || [e.emplacement.modele]) : []);
   const CATEGORIES_CONTENANT = {
     primaire: { nom: 'Primaire', aide: 'véhicule, réserve : point de départ des inventaires' },
     immobile: { nom: 'Immobile', aide: 'tiroir, placard, armoire : ne change jamais de place' },
@@ -1376,9 +1384,9 @@ const Inventaires = (() => {
     if (x.categorie !== 'mobile' || dansUnModele(x.id)) { messageVue(`« ${x.nom} » n'est pas un contenant mobile : choisissez celui qui se trouve réellement ici.`, 'erreur'); return; }
     const vers = y ? y.parent : dans;
     const emp = contenant(vers) && contenant(vers).emplacement ? contenant(vers) : null;
-    if (emp && x.source !== emp.emplacement.modele) {
-      const type = contenant(emp.emplacement.modele);
-      messageVue(`Cet emplacement attend un exemplaire de « ${type ? type.nom : 'l\'inventaire type prévu'} » : « ${x.nom} » n'en est pas un.`, 'erreur');
+    if (emp && !modelesEmplacement(emp).includes(x.source)) {
+      const noms = modelesEmplacement(emp).map((m) => (contenant(m) || {}).nom).filter(Boolean);
+      messageVue(`Cet emplacement attend un exemplaire de ${noms.length ? noms.map((n) => `« ${n} »`).join(' ou ') : 'l\'inventaire type prévu'} : « ${x.nom} » n'en est pas un.`, 'erreur');
       return;
     }
     if (chemin(vers).some((c) => c.id === x.id)) { messageVue('Un contenant ne peut pas être rangé dans lui-même.', 'erreur'); return; }
@@ -1394,6 +1402,23 @@ const Inventaires = (() => {
       + (y ? ` « ${y.nom} » est désaffecté : à retrouver, il est signalé sur la page des inventaires.` : '');
     aller(x.id);
   }
+  /** Emplacement à plusieurs inventaires types : une photo par modèle, l'agent touche celui qu'il a sous les yeux. */
+  function choixTypeEnPhotos(types) {
+    return el('section', { classe: 'inv-choix-types', 'aria-label': 'Modèle présent' },
+      el('p', { classe: 'inv-libelle-recherche', texte: '1. Touchez le modèle présent :' }),
+      el('div', { classe: 'inv-types-grille', role: 'radiogroup' }, ...types.map((t) => {
+        const image = el('span', { classe: 'inv-type-photo', 'aria-hidden': 'true' });
+        if (t.photo) {
+          const mettre = (d) => { if (d) image.append(el('img', { src: d, alt: '' })); };
+          if (Photos.enMemoire(t.photo)) mettre(Photos.enMemoire(t.photo)); else obtenirPhoto(t.photo).then(mettre);
+        } else image.textContent = 'Pas de photo';
+        const n = exemplairesDe(t.id).length;
+        return el('button', { type: 'button', role: 'radio', 'aria-checked': String(typeChoisi === t.id), classe: `inv-type${typeChoisi === t.id ? ' choisi' : ''}`,
+          surclick: () => { typeChoisi = typeChoisi === t.id ? '' : t.id; rendre({ garderPosition: true }); } },
+          image, el('strong', { texte: t.nom }), el('small', { texte: pluriel(n, 'exemplaire') }));
+      })),
+      el('p', { classe: 'aide-question', texte: typeChoisi ? '2. Identifiez maintenant l\'exemplaire : QR code, NFC ou liste.' : 'Vous pouvez aussi scanner directement l\'étiquette : le modèle sera reconnu.' }));
+  }
   /** Écran « Quel … se trouve ici ? » : QR code, NFC ou saisie, avant l'inventaire d'un contenant mobile. */
   function vueIdentification(y, dans = '') {
     const lieu = contenant(y ? y.parent : dans);
@@ -1404,9 +1429,14 @@ const Inventaires = (() => {
     const resultats = el('ul', { classe: 'inv-liste inv-resultats-recherche' });
     // Emplacement : seuls les exemplaires de l'inventaire type attendu sont proposés.
     const emp = (() => { const p = contenant(y ? y.parent : dans); return p && p.emplacement ? p : null; })();
-    const typeAttendu = emp ? contenant(emp.emplacement.modele) : null;
+    // Plusieurs inventaires types acceptés : l'agent choisit d'abord, sur photo, le modèle présent.
+    const typesAcceptes = emp ? modelesEmplacement(emp).map(contenant).filter(Boolean) : [];
+    if (typeChoisi && !typesAcceptes.some((t) => t.id === typeChoisi)) typeChoisi = '';
+    const plusieurs = typesAcceptes.length > 1;
+    const typeAttendu = plusieurs ? (typeChoisi ? contenant(typeChoisi) : null) : (typesAcceptes[0] || null);
+    const filtreTypes = typeAttendu ? [typeAttendu.id] : typesAcceptes.map((t) => t.id);
     const mobiles = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'mobile' && !dansUnModele(c.id)
-      && (!emp || c.source === emp.emplacement.modele));
+      && (!emp || filtreTypes.includes(c.source)));
     // Même type d'abord : exemplaires du même contenant d'inventaire type, puis noms proches.
     const memeType = (c) => (emp ? true : y ? (y.source && c.source === y.source) || cle(c.nom).replace(/\d+|n°/g, '').trim() === cle(y.nom).replace(/\d+|n°/g, '').trim() : Boolean(c.desaffecte));
     const filtrer = (texte) => {
@@ -1428,7 +1458,8 @@ const Inventaires = (() => {
     return [
       el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' }, el('a', { href: lien(''), texte: 'Inventaires' }),
         ...chemin(parent ? parent.id : '').flatMap((p) => [el('span', { 'aria-hidden': 'true', texte: ' › ' }), el('a', { href: lien(p.id), texte: p.nom })])),
-      el('h1', { tabindex: '-1', texte: typeAttendu ? `Quel « ${typeAttendu.nom} » se trouve ici ?` : (y ? `Quel « ${y.nom.replace(/\s*n°\s*\d+$/i, '')} » se trouve ici ?` : 'Quel contenant mobile se trouve ici ?') }),
+      el('h1', { tabindex: '-1', texte: typeAttendu ? `Quel « ${typeAttendu.nom} » se trouve ici ?` : (plusieurs ? `Quel « ${emp.nom} » se trouve ici ?` : (y ? `Quel « ${y.nom.replace(/\s*n°\s*\d+$/i, '')} » se trouve ici ?` : 'Quel contenant mobile se trouve ici ?')) }),
+      plusieurs ? choixTypeEnPhotos(typesAcceptes) : null,
       el('p', { classe: 'consigne' }, `Avant de vérifier son contenu et ses péremptions, identifiez le contenant réellement présent dans « ${parent ? parent.nom : ''} » : scannez son QR code, lisez sa puce NFC ou choisissez-le dans la liste.`),
       el('section', { classe: 'inv-encadre-recherche' },
         el('div', { classe: 'inv-boutons-scan' },
@@ -1480,9 +1511,11 @@ const Inventaires = (() => {
    *   - couleur du cadre : état du jour du contenant et de tout ce qu'il contient (comme les cartes) ;
    *   - cadenas : contenant scellable non ouvert aujourd'hui, validé par son scellé ;
    *   - en gras : le matériel biomédical (respirateur, échographe, PSE, HemoCue…), c'est-à-dire les articles
-   *     dont la fiche est de catégorie « Biomédical » pointés dans la liste du contenant, et les contenants
-   *     qui portent le nom d'une de ces fiches (identifiés par QR code, puce NFC ou saisie).
+   *     dont la fiche est de catégorie « Biomédical » ; un contenant qui attend un tel article dans sa propre
+   *     liste (ex. « Scope Tempus n°2 » : le scope et ses pochettes) a aussi son nom en gras.
+   * Un seul contenant primaire à la fois, sur toute la largeur de l'écran ; le choix est gardé sur l'appareil.
    */
+  const CLE_TABLEAU = 'avismur_inv_tableau';
   // Vérification faite par le scellé : marquée sur l'appareil (`scelle`), reconnue à sa remarque sinon.
   const verifScellee = (v) => Boolean(v) && (v.scelle === true || /^Scellé :/.test(v.remarque || ''));
   /** Contenant scellable resté fermé aujourd'hui : toutes ses listes ont été validées par le scellé. */
@@ -1492,12 +1525,8 @@ const Inventaires = (() => {
     return listes.length > 0 && listes.every((d) => verifScellee(verifDuJour(d.id)));
   }
   const articleBiomed = (a) => Boolean(fiche(a)) && fiche(a).categorie === 'Biomédical';
-  const nomsBiomed = () => Object.values(structure.catalogue).filter((f) => !f.archive && f.categorie === 'Biomédical').map((f) => cle(f.denomination)).filter(Boolean);
-  /** Contenant qui est lui-même un appareil biomédical (ex. un scope avec ses pochettes) : il porte le nom d'une fiche « Biomédical ». */
-  function contenantBiomed(c, noms) {
-    const candidats = [c.nom, c.source && structure.contenants[c.source] ? structure.contenants[c.source].nom : ''].map(cle).filter(Boolean);
-    return candidats.some((n) => noms.some((d) => n === d || n.startsWith(`${d} `)));
-  }
+  /** Contenant d'un appareil biomédical (ex. un scope et ses pochettes) : sa liste attend un article « Biomédical ». */
+  const contenantBiomed = (c) => aCocher(c).some(articleBiomed);
   function logoCadenas() {
     return el('svg:svg', { viewBox: '0 0 24 24', classe: 'inv-tb-cadenas', role: 'img', 'aria-label': 'Scellé : non ouvert aujourd\'hui' },
       el('svg:title', { texte: 'Scellé : non ouvert, validé sur la base du dernier inventaire' }),
@@ -1505,12 +1534,12 @@ const Inventaires = (() => {
       el('svg:path', { d: 'M8 10.5V7.5a4 4 0 0 1 8 0v3', fill: 'none', stroke: 'currentColor', 'stroke-width': '2.2', 'stroke-linecap': 'round' }));
   }
   /** Cadre d'un contenant, avec les cadres de ce qu'il contient. `place` : nom de l'emplacement qu'il occupe. */
-  function cadreTableau(c, noms, niveau = 0, vus = new Set(), place = '') {
+  function cadreTableau(c, niveau = 0, vus = new Set(), place = '') {
     if (vus.has(c.id)) return null;
     vus.add(c.id);
     if (c.emplacement) {
       const occupant = enfants(c.id)[0];
-      if (occupant) return cadreTableau(occupant, noms, niveau, vus, c.nom);
+      if (occupant) return cadreTableau(occupant, niveau, vus, c.nom);
       return el('div', { classe: 'inv-tb-cadre inv-tb-avide' },
         el('div', { classe: 'inv-tb-tete' }, el('a', { classe: 'inv-tb-nom', href: lien(c.id), texte: c.nom }),
           el('span', { classe: 'inv-tb-etat', texte: 'à identifier' })));
@@ -1519,7 +1548,7 @@ const Inventaires = (() => {
     const v = aCocher(c).length ? verifDuJour(c.id) : null;
     const manquants = new Set(v ? v.manquants.map((m) => m.id) : []);
     const scelle = sousScelle(c);
-    const biomed = contenantBiomed(c, noms);
+    const biomed = contenantBiomed(c);
     const etatTexte = b.total === 0 ? '' : (b.complet ? '✓' : (b.faits ? `${b.faits}/${b.total}` : 'à vérifier'));
     const appareils = aCocher(c).filter(articleBiomed).map((a) => {
       const etatA = !v ? 'afaire' : (manquants.has(a.id) ? 'manquant' : 'present');
@@ -1527,7 +1556,7 @@ const Inventaires = (() => {
       return el('li', { classe: `inv-tb-appareil ${etatA}`, title: `${nomArticle(a)} : ${libelle}` },
         nomArticle(a), etatA === 'present' ? null : el('small', { texte: etatA === 'manquant' ? ' manquant' : ' à vérifier' }));
     });
-    const fils = enfants(c.id).map((f) => cadreTableau(f, noms, niveau + 1, vus)).filter(Boolean);
+    const fils = enfants(c.id).map((f) => cadreTableau(f, niveau + 1, vus)).filter(Boolean);
     return el('div', { classe: `inv-tb-cadre ${b.classe}${niveau === 0 ? ' inv-tb-primaire' : ''}${scelle ? ' inv-tb-scelle' : ''}${niveau % 2 ? ' inv-tb-impair' : ''}` },
       el('div', { classe: 'inv-tb-tete' },
         scelle ? logoCadenas() : null,
@@ -1538,7 +1567,6 @@ const Inventaires = (() => {
       fils.length ? el('div', { classe: 'inv-tb-contenu' }, ...fils) : null);
   }
   function vueTableau() {
-    const noms = nomsBiomed();
     const primaires = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'primaire' && !dansUnModele(c.id))
       .sort((x, y) => x.ordre - y.ordre || x.nom.localeCompare(y.nom, 'fr'));
     return [
@@ -1551,9 +1579,19 @@ const Inventaires = (() => {
         el('li', {}, logoCadenas(), 'scellé, non ouvert'),
         el('li', {}, el('strong', { texte: 'En gras' }), ' : matériel biomédical'),
         el('li', {}, el('span', { classe: 'inv-tb-pastille avide' }), 'emplacement à identifier')),
-      primaires.length
-        ? el('div', { classe: 'inv-tb' }, ...primaires.map((c) => cadreTableau(c, noms)))
-        : el('p', { classe: 'consigne', texte: 'Aucun contenant primaire pour l\'instant.' }),
+      ...(() => {
+        if (!primaires.length) return [el('p', { classe: 'consigne', texte: 'Aucun contenant primaire pour l\'instant.' })];
+        let choisi = '';
+        try { choisi = localStorage.getItem(CLE_TABLEAU) || ''; } catch (e) { /* stockage indisponible */ }
+        const actuel = primaires.find((c) => c.id === choisi) || primaires[0];
+        const onglets = el('div', { classe: 'inv-tb-onglets', role: 'tablist', 'aria-label': 'Contenant primaire' }, ...primaires.map((c) => {
+          const b = bilan(c.id);
+          return el('button', { type: 'button', role: 'tab', classe: `inv-tb-onglet ${b.classe}`, 'aria-selected': String(c.id === actuel.id), title: b.texte,
+            surclick: () => { try { localStorage.setItem(CLE_TABLEAU, c.id); } catch (e) { /* stockage indisponible */ } rendre({ garderPosition: true }); } },
+            el('span', { classe: `inv-tb-pastille ${b.classe}`, 'aria-hidden': 'true' }), c.nom);
+        }));
+        return [onglets, el('div', { classe: 'inv-tb', role: 'tabpanel' }, cadreTableau(actuel))];
+      })(),
       el('div', { classe: 'inv-pied' }, el('a', { classe: 'lien', href: lien(''), texte: '← Tous les inventaires' })),
     ];
   }
@@ -2322,6 +2360,36 @@ const Inventaires = (() => {
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Non, il est ouvert', surclick: () => { reponsesScelle.add(c.id); rendre({ garderPosition: true }); } })));
   }
 
+  /** Administration d'un emplacement : inventaires types acceptés (un ou plusieurs). */
+  function blocTypesEmplacement(c) {
+    const acceptes = modelesEmplacement(c);
+    const autres = Object.values(structure.contenants).filter((x) => !x.supprime && x.modele && !acceptes.includes(x.id))
+      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    const idSel = idChamp();
+    const sel = el('select', { id: idSel }, el('option', { value: '', texte: autres.length ? 'Choisir un autre inventaire type…' : 'Aucun autre inventaire type' }),
+      ...autres.map((t) => el('option', { value: t.id, texte: t.nom })));
+    const fixer = (liste) => {
+      c.emplacement = liste.length > 1 ? { modele: liste[0], modeles: liste } : { modele: liste[0] };
+      marquer(c.id);
+      rendre({ garderPosition: true });
+    };
+    return el('section', { classe: 'note-parc inv-note-emplacement inv-types-emplacement' },
+      el('strong', { texte: 'Emplacement — inventaires types acceptés' }),
+      el('p', { classe: 'aide-question', texte: 'Avec plusieurs modèles (ex. scopes de marques différentes, ou un même scope avec des pochettes différentes), l\'agent choisit en check-list le modèle présent d\'après sa photo : mettez une photo sur chaque inventaire type.' }),
+      el('ul', {}, ...acceptes.map((m) => {
+        const t = contenant(m);
+        return el('li', {}, t ? el('a', { href: lien(t.id), texte: t.nom }) : '(supprimé)', t && !t.photo ? el('small', { classe: 'inv-desaffecte', texte: ' sans photo' }) : null,
+          acceptes.length > 1 ? el('button', { type: 'button', classe: 'cfg-mini danger', 'aria-label': `Retirer ${t ? t.nom : 'ce modèle'}`, texte: '✕',
+            surclick: () => {
+              const occ = enfants(c.id)[0];
+              if (occ && occ.source === m) { messageVue(`« ${occ.nom} » occupe l'emplacement : ce modèle ne peut pas être retiré.`, 'erreur'); return; }
+              fixer(acceptes.filter((x) => x !== m));
+            } }) : null);
+      })),
+      el('div', { classe: 'cfg-ligne' }, sel, el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Accepter aussi', disabled: !autres.length,
+        surclick: () => { if (sel.value) fixer([...acceptes, sel.value]); } })));
+  }
+
   function vueContenant(c) {
     const fils = enfants(c.id);
     const b = bilan(c.id);
@@ -2365,9 +2433,16 @@ const Inventaires = (() => {
         el('span', {}, 'Inventaire type', el('small', { texte: 'sert de structure à des exemplaires identiques (ex. les sacs d\'intervention) ; il ne se vérifie pas' }))) : null,
       ligneSynchro(), ligneAvis(),
       blocModele(c), blocExemplaire(c),
-      c.emplacement ? (() => {
+      c.emplacement && edition ? blocTypesEmplacement(c) : null,
+      c.emplacement && !edition ? (() => {
         const type = contenant(c.emplacement.modele);
         const occ = enfants(c.id)[0];
+        const autres = modelesEmplacement(c).slice(1).map(contenant).filter(Boolean);
+        if (autres.length) {
+          return el('p', { classe: 'note-parc inv-note-emplacement' }, el('strong', { texte: 'Emplacement. ' }),
+            `Accepte : ${[type, ...autres].filter(Boolean).map((t) => t.nom).join(', ')}. `,
+            occ ? `Actuellement : « ${occ.nom} ».` : 'Vide pour l\'instant : le modèle et l\'exemplaire seront identifiés en check-list.');
+        }
         return el('p', { classe: 'note-parc inv-note-emplacement' }, el('strong', { texte: 'Emplacement. ' }),
           'Attend un exemplaire de l\'inventaire type ', type ? el('a', { href: lien(type.id), texte: type.nom }) : '(supprimé)', '. ',
           occ ? `Actuellement : « ${occ.nom} ».` : 'Vide pour l\'instant : l\'exemplaire sera identifié en check-list.');
@@ -2402,6 +2477,7 @@ const Inventaires = (() => {
     dernierAffiche = id;
     if (nouveau) {
       identification = '';
+      typeChoisi = '';
       placement = '';
       confirmer = '';
       if (pile.length > 1 && pile[pile.length - 2] === id) pile.pop();
