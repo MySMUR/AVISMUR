@@ -19,6 +19,19 @@ const session = {
   },
 };
 
+// ---------- Rafraîchissement automatique des tableaux de bord (toutes les minutes) ----------
+// Tableau de bord ambulancier (parc, sur ordinateur) et tableau de bord du matériel (contenants des
+// inventaires) : utiles affichés en continu sur un grand écran, ils relisent le serveur chaque minute.
+// Rien n'est fait si la page est cachée, hors ligne, ou pendant une saisie.
+const RAFRAICHIR_MS = 60 * 1000;
+setInterval(() => {
+  if (document.visibilityState !== 'visible' || !navigator.onLine || $('ecran-checklist').hidden) return;
+  const actif = document.activeElement;
+  if (actif && /^(INPUT|TEXTAREA|SELECT)$/.test(actif.tagName)) return;
+  if (!$('vue-parc').hidden) chargerReleves(true);
+  else if (!$('zone-inventaires').hidden && location.hash === '#inv-tableau') Inventaires.synchroniser();
+}, RAFRAICHIR_MS);
+
 // « Rester connecté » : jeton d'appareil durable, gardé sur le téléphone (30 jours sans utilisation).
 const CLE_APPAREIL = 'avismur_appareil';
 const appareil = {
@@ -207,12 +220,17 @@ function majConfig(config) {
 }
 
 /** Derniers kilométrages et état du parc du jour, gardés sur l'appareil pour le hors ligne. */
-async function chargerReleves() {
-  const fin = chargement.debut('Chargement des véhicules et des check-lists du jour…');
+// `silencieux` : rafraîchissement automatique des tableaux de bord, sans l'animation de chargement.
+let relevesEnCours = false;
+async function chargerReleves(silencieux = false) {
+  if (silencieux && relevesEnCours) return;
+  relevesEnCours = true;
+  const fin = silencieux ? () => {} : chargement.debut('Chargement des véhicules et des check-lists du jour…');
   try {
     const rep = await appeler('derniersReleves');
     if (rep.ok) Ambulancier.majReleves(rep.releves, rep.parc, rep.statuts, fileAttente.lire(), rep.infos);
   } catch (err) { /* hors ligne : on garde les derniers relevés connus */ } finally {
+    relevesEnCours = false;
     fin();
     Ambulancier.finChargement();
   }
