@@ -75,6 +75,18 @@ body {
 .ecg-complexe { flex: none; width: auto; aspect-ratio: 96 / 60; }
 .ecg-avignon { flex: none; width: auto; aspect-ratio: 260 / 60; }
 .ecg-avignon .ecg-details { stroke-width: 1.8; }
+/* Lumière qui parcourt le tracé jusqu'à la prochaine actualisation des tableaux de bord (app.js, majLumiere). */
+@property --lumiere { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+.ecg.ecg-lumiere {
+  opacity: 1;
+  filter: drop-shadow(0 0 3px #fff) drop-shadow(0 0 6px #8FD8CF);
+  -webkit-mask-image: linear-gradient(90deg, transparent calc(var(--lumiere) - 7%), rgb(0 0 0 / 0.3) calc(var(--lumiere) - 2.5%), #000 var(--lumiere), transparent calc(var(--lumiere) + 0.4%));
+  mask-image: linear-gradient(90deg, transparent calc(var(--lumiere) - 7%), rgb(0 0 0 / 0.3) calc(var(--lumiere) - 2.5%), #000 var(--lumiere), transparent calc(var(--lumiere) + 0.4%));
+  animation: balayage-lumiere 60s linear infinite;
+}
+.ecg.ecg-lumiere[hidden] { display: none; }
+.ecg-lumiere svg { stroke: #fff; }
+@keyframes balayage-lumiere { from { --lumiere: -1%; } to { --lumiere: 101%; } }
 @keyframes trace { from { clip-path: inset(-8px 100% -8px 0); } to { clip-path: inset(-8px 0 -8px 0); } }
 
 /* Indicateur hors ligne : visible quand le réseau (Wi-Fi ou GSM) n'est pas disponible. */
@@ -586,6 +598,7 @@ body.connecte .envoi {
 
 @media (prefers-reduced-motion: reduce) {
   .ecg { animation: none; }
+  .ecg.ecg-lumiere { display: none; }
 }
 
 .avis-parc { margin: 0 0 0.6rem; font-size: 0.9rem; color: var(--gris); font-style: italic; }

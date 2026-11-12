@@ -24,13 +24,44 @@ const session = {
 // inventaires) : utiles affichés en continu sur un grand écran, ils relisent le serveur chaque minute.
 // Rien n'est fait si la page est cachée, hors ligne, ou pendant une saisie.
 const RAFRAICHIR_MS = 60 * 1000;
+let dernierRafraichissement = Date.now();
+const tableauDeBordOuvert = () => !$('ecran-checklist').hidden
+  && (!$('vue-parc').hidden || (!$('zone-inventaires').hidden && location.hash === '#inv-tableau'));
+
+// Petite lumière qui parcourt le tracé ECG et la silhouette d'Avignon : arrivée au bout, les données
+// sont relues. Copie du tracé, éclairée par un masque mobile (style.css, « .ecg-lumiere »).
+const lumiere = (() => {
+  const ecg = document.querySelector('.ecg');
+  if (!ecg) return null;
+  const copie = ecg.cloneNode(true);
+  copie.classList.add('ecg-lumiere');
+  copie.hidden = true;
+  ecg.after(copie);
+  return copie;
+})();
+function majLumiere() {
+  if (!lumiere) return;
+  const active = tableauDeBordOuvert() && navigator.onLine;
+  lumiere.hidden = !active;
+  if (!active) return;
+  // Repart de la position correspondant au temps écoulé depuis la dernière actualisation.
+  lumiere.style.animation = 'none';
+  void lumiere.offsetWidth;
+  lumiere.style.animation = '';
+  lumiere.style.animationDelay = `-${Math.min(Date.now() - dernierRafraichissement, RAFRAICHIR_MS)}ms`;
+}
+
 setInterval(() => {
+  dernierRafraichissement = Date.now();
+  majLumiere();
   if (document.visibilityState !== 'visible' || !navigator.onLine || $('ecran-checklist').hidden) return;
   const actif = document.activeElement;
   if (actif && /^(INPUT|TEXTAREA|SELECT)$/.test(actif.tagName)) return;
   if (!$('vue-parc').hidden) chargerReleves(true);
   else if (!$('zone-inventaires').hidden && location.hash === '#inv-tableau') Inventaires.synchroniser();
 }, RAFRAICHIR_MS);
+window.addEventListener('online', majLumiere);
+window.addEventListener('offline', majLumiere);
 
 // « Rester connecté » : jeton d'appareil durable, gardé sur le téléphone (30 jours sans utilisation).
 const CLE_APPAREIL = 'avismur_appareil';
@@ -665,6 +696,7 @@ function ouvrirVue(demandee) {
   majBarreEnvoi();
   // Nouvelle vue : on revient en haut (pas en naviguant d'un inventaire à l'autre, géré par inventaires.js).
   if (vue !== precedente) window.scrollTo({ top: 0 });
+  if (typeof majLumiere === 'function') majLumiere();
 }
 
 // Changement de taille de fenêtre (ou rotation) pendant que la check-list ambulancier est ouverte.
