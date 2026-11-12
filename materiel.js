@@ -307,6 +307,24 @@ const Materiel = (() => {
     return el('select', {}, libre ? el('option', { value: '', texte: '—' }) : null, options.map((v) => el('option', { value: v, texte: v, selected: v === courant })));
   }
 
+  /**
+   * Type de matériel : liste déroulante de tous les types, plus « Autre (nouveau type)… »
+   * qui affiche un champ libre. (Une liste de suggestions se filtrait sur la saisie et masquait des choix.)
+   */
+  function champType(courant) {
+    const AUTRE = '__autre__';
+    const select = el('select', {},
+      types().map((t) => el('option', { value: t, texte: t, selected: t === courant })),
+      el('option', { value: AUTRE, texte: 'Autre (nouveau type)…' }));
+    if (!courant) select.value = types()[0];
+    const libre = el('input', { placeholder: 'Nom du nouveau type', 'aria-label': 'Nouveau type de matériel' });
+    const bloc = el('div', { classe: 'mat-type-libre' }, libre);
+    const maj = () => { bloc.hidden = select.value !== AUTRE; if (!bloc.hidden) libre.focus(); };
+    select.addEventListener('change', maj);
+    bloc.hidden = true;
+    return { select, libre, bloc, valeur: () => (select.value === AUTRE ? libre.value.trim() : select.value) };
+  }
+
   /** Fiche d'un appareil : consultation, puis modification (administrateurs). id null = création. */
   function ouvrirFiche(id, edition = false, modele = null) {
     const { fiches: toutes, interventions } = etat();
@@ -357,10 +375,9 @@ const Materiel = (() => {
       numInterne: '', numBiomed: '', numSerie: '', revision: (modele && modele.revision) || '', periodicite: (modele && modele.periodicite) || 12,
       statut: 'En service', traceur: false, nomTraceur: '', remarques: '', archive: false,
     };
-    const listeTypes = el('datalist', { id: nouvelId() }, types().map((t) => el('option', { value: t })));
     const listeModeles = el('datalist', { id: nouvelId() }, [...new Set(fiches().map((x) => x.modele).filter(Boolean))].map((m) => el('option', { value: m })));
     const e = {
-      type: el('input', { valeur: base.type, list: listeTypes.id, required: true }),
+      type: champType(base.type),
       modele: el('input', { valeur: base.modele, list: listeModeles.id, placeholder: 'ex. Corpuls3, Hamilton T1, Alaris GH…' }),
       numInterne: el('input', { valeur: base.numInterne, inputmode: 'numeric', placeholder: '1, 2, 3…' }),
       numBiomed: el('input', { valeur: base.numBiomed }),
@@ -381,7 +398,7 @@ const Materiel = (() => {
 
     const lire = () => ({
       ...base,
-      type: e.type.value.trim(), modele: e.modele.value.trim(), numInterne: e.numInterne.value.trim(), numBiomed: e.numBiomed.value.trim(),
+      type: e.type.valeur(), modele: e.modele.value.trim(), numInterne: e.numInterne.value.trim(), numBiomed: e.numBiomed.value.trim(),
       numSerie: e.numSerie.value.trim(), revision: e.revision.value, periodicite: Number(e.periodicite.value) || '',
       statut: e.statut.value, traceur: e.traceur.checked, nomTraceur: e.traceur.checked ? e.nomTraceur.value.trim() : '', remarques: e.remarques.value.trim(),
     });
@@ -401,9 +418,10 @@ const Materiel = (() => {
       classe: 'mat-form', novalidate: true,
       sursubmit: (ev) => { ev.preventDefault(); enregistrer(lire()); },
     },
-    listeTypes, listeModeles,
+    listeModeles,
     el('div', { classe: 'mat-grille' },
-      champ('Type de matériel', e.type, 'Choisir dans la liste ou saisir un nouveau type'),
+      champ('Type de matériel', e.type.select),
+      e.type.bloc,
       champ('Modèle', e.modele),
       champ('N° interne SMUR', e.numInterne),
       champ('N° biomed', e.numBiomed),
@@ -489,7 +507,7 @@ const Materiel = (() => {
     const premier = cibles[0];
     const commun = (k) => (cibles.every((x) => String(x[k] ?? '') === String(premier[k] ?? '')) ? premier[k] : '');
     const entrees = {
-      type: el('input', { valeur: commun('type'), list: 'mat-types-groupe' }),
+      type: champType(commun('type')),
       modele: el('input', { valeur: commun('modele') }),
       revision: el('input', { type: 'date', valeur: commun('revision') }),
       periodicite: el('input', { type: 'number', min: '1', max: '120', valeur: commun('periodicite') }),
@@ -500,19 +518,20 @@ const Materiel = (() => {
     const actifs = new Set();
     let d;
     const contenu = el('div', { classe: 'mat-groupee' },
-      el('datalist', { id: 'mat-types-groupe' }, types().map((t) => el('option', { value: t }))),
       el('p', { texte: `${cibles.length} appareil(s) : ${cibles.sort(tri).map(nomAppareil).join(', ')}.` }),
       el('p', { classe: 'aide-question', texte: 'Cochez les champs à modifier : seuls ceux-là seront appliqués à tous les appareils sélectionnés. Les numéros (interne, biomed, série) restent propres à chaque appareil.' }),
       Object.keys(REPERCUTABLES).map((k) => {
-        const entree = entrees[k];
+        const ch = entrees[k];
+        const entree = k === 'type' ? ch.select : ch;
         entree.id = nouvelId();
-        entree.disabled = true;
+        const activer = (oui) => { entree.disabled = !oui; if (k === 'type') ch.libre.disabled = !oui; };
+        activer(false);
         return el('div', { classe: 'mat-ligne-groupee' },
           el('input', {
             type: 'checkbox', 'aria-label': `Modifier : ${REPERCUTABLES[k]}`,
-            surchange: (ev) => { entree.disabled = !ev.target.checked; if (ev.target.checked) actifs.add(k); else actifs.delete(k); },
+            surchange: (ev) => { activer(ev.target.checked); if (ev.target.checked) actifs.add(k); else actifs.delete(k); },
           }),
-          el('label', { for: entree.id, texte: REPERCUTABLES[k] }), entree);
+          el('label', { for: entree.id, texte: REPERCUTABLES[k] }), k === 'type' ? el('div', {}, entree, ch.bloc) : entree);
       }),
       el('div', { classe: 'mat-boutons' },
         el('button', {
@@ -523,7 +542,7 @@ const Materiel = (() => {
               const copie = { ...x };
               actifs.forEach((k) => {
                 const ent = entrees[k];
-                copie[k] = k === 'traceur' ? ent.checked : (k === 'periodicite' ? (Number(ent.value) || '') : ent.value.trim());
+                copie[k] = k === 'type' ? ent.valeur() : k === 'traceur' ? ent.checked : (k === 'periodicite' ? (Number(ent.value) || '') : ent.value.trim());
                 if (k === 'traceur' && !ent.checked) copie.nomTraceur = '';
               });
               return copie;

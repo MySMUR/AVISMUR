@@ -1885,3 +1885,4 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .mat-cadre select { min-height: 2.75rem; border: 2px solid var(--trait); border-radius: 10px; font: inherit; padding: 0.4rem; background: #fff; }
 .mat-filtres select, .mat-filtres input[type="search"] { width: auto; }
 .mat-filtres select { flex: 0 1 auto; }
+.mat-type-libre input { width: 100%; min-height: 2.75rem; margin-top: 0.4rem; padding: 0.45rem 0.6rem; border: 2px solid var(--trait); border-radius: 10px; font: inherit; }
