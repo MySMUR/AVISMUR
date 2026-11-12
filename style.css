@@ -1759,3 +1759,8 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .inv-edition-controle .inv-edition-nom { flex: 1 1 60%; min-width: 0; }
 .inv-edition-controle .inv-edition-nom .inv-nom-article { width: 100%; }
 .inv-edition-controle .inv-edition-outils { flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-end; padding-left: 1.8rem; }
+.inv-bouton-lecture { display: inline-flex; align-items: center; justify-content: center; padding: 0.25rem; }
+.inv-bouton-lecture svg { width: 1.3rem; height: 1.3rem; }
+.inv-controle-scan .inv-ligne { flex-wrap: wrap; }
+.inv-controle-scan .inv-valeur-zone { flex: 1 1 100%; justify-content: flex-end; }
+.inv-controle-scan .inv-valeur-texte { flex: 1; max-width: 14rem; }

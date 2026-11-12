@@ -144,7 +144,7 @@ En check-list, un contenant **scellable** pas encore vérifié aujourd'hui deman
 
 En gestion, « Ajouter un contrôle » insère une ligne qui se relève au lieu de se cocher :
 
-- **À scanner / renseigner** : n° de série (matériel biomédical…), scanné (QR / code-barres) ou saisi ; valeur attendue facultative. Le dernier n° relevé est pré-rempli.
+- **À scanner / renseigner** : n° de série (matériel biomédical…), scanné (QR / code-barres), lu sur une puce NFC (texte, lien ou à défaut n° de série de la puce) ou saisi ; valeur attendue facultative. Le dernier n° relevé est pré-rempli.
 - **Température** : en °C, plage min/max (2 à 8 °C par défaut).
 - **Niveau de batterie** : en % ou de 0 à 4, avec un seuil (50 % ou 2/4 par défaut).
 - **Oui / Non** : branchement secteur, appairage réussi, test effectué…

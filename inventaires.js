@@ -1175,8 +1175,10 @@ const Inventaires = (() => {
         } })));
     } else if (a.controle === 'scan') {
       const entree = el('input', { id: champ, classe: 'inv-valeur inv-valeur-texte', autocomplete: 'off', maxlength: '120', placeholder: 'Scanner ou saisir', valeur: val(), surinput: (e) => poser(e.target.value.trim()) });
-      const bouton = el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Scanner ${nomArticle(a)}`, title: 'Scanner (QR / code-barres)', texte: '⌗', surclick: () => lireCode((t) => { entree.value = t; poser(t); }) });
-      saisie = el('span', { classe: 'inv-valeur-zone' }, entree, bouton);
+      const remplir = (t) => { entree.value = t; poser(t); };
+      const boutonQr = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Scanner le QR code ou code-barres : ${nomArticle(a)}`, title: 'QR code / code-barres', surclick: () => lireCode(remplir, { qr: true, nfc: false }) }, logoQr());
+      const boutonNfc = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Lire la puce NFC : ${nomArticle(a)}`, title: 'Puce NFC', surclick: () => lireCode(remplir, { qr: false, nfc: true }) }, logoNfc());
+      saisie = el('span', { classe: 'inv-valeur-zone' }, entree, boutonQr, boutonNfc);
     } else {
       const unite = a.controle === 'temperature' ? '°C' : (a.controle === 'batterie' ? '%' : (a.unite || ''));
       const entree = el('input', { id: champ, type: 'text', inputmode: 'decimal', classe: 'inv-valeur', autocomplete: 'off', maxlength: '8', valeur: val(), surfocus: (e) => e.target.select(),
@@ -1188,27 +1190,45 @@ const Inventaires = (() => {
     etat_();
     return li;
   }
-  /** Lit un QR code / code-barres avec la caméra (BarcodeDetector) ; sinon, saisie manuelle. */
-  async function lireCode(surLu) {
-    if (!('BarcodeDetector' in window) || !navigator.mediaDevices) { messageVue('Lecture de code non disponible sur cet appareil : saisissez la valeur.', 'erreur'); return; }
+  /** Lit une valeur : QR code / code-barres (caméra) et/ou puce NFC (texte, lien ou n° de série de la puce). */
+  async function lireCode(surLu, choix = { qr: true, nfc: true }) {
+    const qr = choix.qr && 'BarcodeDetector' in window && navigator.mediaDevices;
+    const nfc = choix.nfc && 'NDEFReader' in window;
+    if (!qr && !nfc) { messageVue(choix.nfc && !choix.qr ? 'NFC non disponible sur cet appareil (Chrome sur Android requis) : saisissez la valeur.' : 'Lecture de code non disponible sur cet appareil : saisissez la valeur.', 'erreur'); return; }
     const video = el('video', { playsinline: '', muted: '', autoplay: '' });
     video.muted = true;
-    const lecture = el('p', { classe: 'lecture', role: 'status', texte: 'Ouverture de la caméra…' });
+    const lecture = el('p', { classe: 'lecture', role: 'status', texte: qr ? 'Ouverture de la caméra…' : 'Approchez la puce NFC du dos du téléphone.' });
     let flux = null;
     let fini = false;
+    const arretNfc = new AbortController();
     const fermer = () => {
       if (fini) return;
       fini = true;
+      arretNfc.abort();
       if (flux) flux.getTracks().forEach((t) => t.stop());
       ecran.remove();
       document.body.classList.remove('camera-ouverte');
     };
-    const ecran = el('div', { classe: 'camera', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Scanner un code' },
-      el('div', { classe: 'camera-vue' }, video, el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }),
-        el('p', { classe: 'consigne-camera consigne-qr', texte: 'Visez le QR code ou le code-barres' })),
+    const lu = (t) => { const v = String(t || '').trim().slice(0, 120); if (!v || fini) return; fermer(); surLu(v); };
+    const ecran = el('div', { classe: 'camera', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Lire un code' },
+      el('div', { classe: `camera-vue${qr ? '' : ' inv-nfc-seul'}` }, qr ? video : el('div', { classe: 'inv-attente-nfc', 'aria-hidden': 'true' }, logoNfc()),
+        qr ? el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }) : null,
+        el('p', { classe: 'consigne-camera consigne-qr', texte: [qr ? 'Visez le QR code ou le code-barres' : '', nfc ? 'approchez la puce NFC' : ''].filter(Boolean).join(' ou ') })),
       lecture, el('div', { classe: 'camera-actions' }, el('button', { type: 'button', classe: 'camera-bouton secondaire', texte: 'Annuler', surclick: fermer })));
     document.body.append(ecran);
     document.body.classList.add('camera-ouverte');
+    if (nfc) {
+      const lecteur = new NDEFReader();
+      lecteur.addEventListener('reading', (e) => {
+        // Puce : premier enregistrement texte ou lien ; sinon, son n° de série (identifiant unique).
+        const r = [...e.message.records].find((x) => ['text', 'url', 'absolute-url'].includes(x.recordType));
+        let t = '';
+        if (r) { try { t = new TextDecoder(r.encoding || 'utf-8').decode(r.data); } catch (err) { t = ''; } }
+        lu(t || e.serialNumber);
+      });
+      lecteur.scan({ signal: arretNfc.signal }).catch(() => { if (!qr) lecture.textContent = 'NFC refusé ou désactivé : activez le NFC, ou annulez et saisissez la valeur.'; });
+    }
+    if (!qr) return;
     try {
       flux = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       if (fini) { flux.getTracks().forEach((t) => t.stop()); return; }
@@ -1219,11 +1239,11 @@ const Inventaires = (() => {
       const det = formats && formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
       const boucle = async () => {
         if (fini) return;
-        try { const r = await det.detect(video); if (r.length) { const t = String(r[0].rawValue).trim().slice(0, 120); fermer(); surLu(t); return; } } catch (e) { /* image suivante */ }
+        try { const r = await det.detect(video); if (r.length) { lu(r[0].rawValue); return; } } catch (e) { /* image suivante */ }
         setTimeout(boucle, 250);
       };
       boucle();
-    } catch (e) { lecture.textContent = 'Caméra indisponible : annulez et saisissez la valeur.'; }
+    } catch (e) { lecture.textContent = `Caméra inaccessible${nfc ? ' : approchez la puce NFC' : ''}, ou annulez et saisissez la valeur.`; }
   }
   function blocVerification(c) {
     const articles = aCocher(c);
