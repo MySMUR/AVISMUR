@@ -21,6 +21,10 @@ const Inventaires = (() => {
   const CLE_BROUILLONS = 'avismur_inv_brouillons';
   const CLE_MODIFS = 'avismur_inv_modifs';
   const ID = /^[a-z0-9]{6,16}$/;
+  // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
+  // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
+  const VERSION_SERVEUR = 8;
+  let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
   let App = null; // fonctions de app.js (appeler, mettreEnFile, role, agent, fileAttente)
@@ -514,6 +518,7 @@ const Inventaires = (() => {
       return;
     }
     synchro.serveurInconnu = false;
+    versionServeur = Number(rep.version) || 0;
     const contenants = {};
     rep.contenants.forEach((c) => {
       if (!c || !ID.test(c.id)) return;
@@ -742,8 +747,13 @@ const Inventaires = (() => {
   function boutonEdition() { return null; }
   function bandeauGestion() {
     if (!gestion) return null;
-    return el('p', { classe: 'inv-bandeau-gestion' }, el('strong', { texte: 'Administration · Gestion des inventaires' }),
-      ' — les modifications sont enregistrées au fur et à mesure. Pour réaliser un inventaire : menu › Inventaires.');
+    const ancien = versionServeur !== null && versionServeur < VERSION_SERVEUR
+      ? el('p', { classe: 'message erreur inv-serveur-ancien', role: 'alert' },
+        el('strong', { texte: 'Serveur pas à jour : certaines modifications ne seront pas enregistrées' }),
+        ' (catégorie des contenants, vues, inventaires types…). Recopiez Inventaires.gs, Catalogue.gs, Code.gs et Installation.gs du dépôt AVISMUR-backend dans Apps Script, puis Déployer › Gérer les déploiements › nouvelle version.')
+      : null;
+    return el('div', {}, ancien, el('p', { classe: 'inv-bandeau-gestion' }, el('strong', { texte: 'Administration · Gestion des inventaires' }),
+      ' — les modifications sont enregistrées au fur et à mesure. Pour réaliser un inventaire : menu › Inventaires.'));
   }
 
   function ligneSynchro() {
