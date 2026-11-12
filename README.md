@@ -139,3 +139,15 @@ Sur grand écran (à partir de 1100 px de large), la page d'un inventaire affich
 En check-list, un contenant **scellable** pas encore vérifié aujourd'hui demande d'abord s'il est scellé :
 - **Oui, il est scellé** : son inventaire et celui de tout ce qu'il contient sont validés sur la base du dernier réalisé (mêmes articles présents ou manquants, mêmes dates de péremption connues), avec la remarque « Scellé : validé sur la base de l'inventaire du … ». Impossible si un des contenants n'a jamais été vérifié ou si un emplacement est vide : il faut alors faire l'inventaire complet.
 - **Non, il est ouvert** : l'inventaire se fait normalement.
+
+### Contrôles dans les inventaires
+
+En gestion, « Ajouter un contrôle » insère une ligne qui se relève au lieu de se cocher :
+
+- **À scanner / renseigner** : n° de série (matériel biomédical…), scanné (QR / code-barres) ou saisi ; valeur attendue facultative. Le dernier n° relevé est pré-rempli.
+- **Température** : en °C, plage min/max (2 à 8 °C par défaut).
+- **Niveau de batterie** : en % ou de 0 à 4, avec un seuil (50 % ou 2/4 par défaut).
+- **Oui / Non** : branchement secteur, appairage réussi, test effectué…
+- **Mesure** : nombre avec unité (bar, L…) et plage.
+
+Hors plage, « Non », valeur différente de l'attendue ou non renseigné : la ligne passe en rouge et est notée en anomalie (avec sa valeur) à la validation. « Tout cocher » ne touche que les cases. Les valeurs sont enregistrées dans InventairesVerifs et reprises par un scellé.

@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 10;
+  const VERSION_SERVEUR = 11;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -270,6 +270,46 @@ const Inventaires = (() => {
 
   /** Articles à cocher (sans les séparations, qui ne servent qu'à regrouper la liste). */
   const aCocher = (c) => c.articles.filter((a) => !a.separateur);
+  // ---------- Contrôles : valeur à relever au lieu d'une case ----------
+  const CONTROLES = {
+    scan: { nom: 'À scanner / renseigner', aide: 'n° de série, matériel biomédical', defaut: 'Numéro de série' },
+    temperature: { nom: 'Température', aide: '°C, avec plage', defaut: 'Température', unite: '°C' },
+    batterie: { nom: 'Niveau de batterie', aide: '% ou 0 à 4', defaut: 'Batterie' },
+    oui: { nom: 'Oui / Non', aide: 'branchement secteur, appairage, test', defaut: 'Test effectué' },
+    valeur: { nom: 'Mesure', aide: 'nombre avec unité (bar, L…)', defaut: 'Pression' },
+  };
+  const estControle = (a) => Boolean(a && CONTROLES[a.controle]);
+  const seuilBatterie = (a) => (a.seuil !== undefined ? a.seuil : (a.echelle === '4' ? 2 : 50));
+  /** Évalue une valeur relevée : { ok, rempli }. */
+  function evaluer(a, v) {
+    const t = String(v === undefined || v === null ? '' : v).trim();
+    if (!t) return { ok: false, rempli: false };
+    if (a.controle === 'scan') return { ok: !a.attendu || t.toLowerCase() === String(a.attendu).trim().toLowerCase(), rempli: true };
+    if (a.controle === 'oui') return { ok: t === 'Oui', rempli: true };
+    const n = Number(t.replace(',', '.'));
+    if (!Number.isFinite(n)) return { ok: false, rempli: true };
+    if (a.controle === 'batterie') return { ok: n >= seuilBatterie(a), rempli: true };
+    return { ok: (a.min === undefined || n >= a.min) && (a.max === undefined || n <= a.max), rempli: true };
+  }
+  /** Valeur affichée (avec unité). */
+  function texteValeur(a, v) {
+    if (v === '' || v === undefined) return 'non renseigné';
+    if (a.controle === 'temperature') return `${v} °C`;
+    if (a.controle === 'batterie') return a.echelle === '4' ? `${v}/4` : `${v} %`;
+    if (a.controle === 'valeur' && a.unite) return `${v} ${a.unite}`;
+    return String(v);
+  }
+  /** Plage attendue, en clair. */
+  function texteAttente(a) {
+    if (a.controle === 'scan') return a.attendu ? `attendu : ${a.attendu}` : '';
+    if (a.controle === 'batterie') return `≥ ${seuilBatterie(a)}${a.echelle === '4' ? '/4' : ' %'}`;
+    if (a.controle === 'oui') return '';
+    const u = a.controle === 'temperature' ? ' °C' : (a.unite ? ` ${a.unite}` : '');
+    if (a.min !== undefined && a.max !== undefined) return `${a.min} à ${a.max}${u}`;
+    if (a.min !== undefined) return `≥ ${a.min}${u}`;
+    if (a.max !== undefined) return `≤ ${a.max}${u}`;
+    return '';
+  }
   const contenant = (id) => {
     const c = structure.contenants[id];
     return c && !c.supprime ? c : null;
@@ -655,10 +695,18 @@ const Inventaires = (() => {
         const manquants = new Set(v.manquants.map((m) => m.id));
         aCocher(c).forEach((a) => { if (!manquants.has(a.id)) coches[a.id] = true; });
       }
-      brouillons.liste[c.id] = { coches, quantites: {}, dates: {}, invalides: {}, remarque: v ? v.remarque : '' };
+      // Valeurs : celles du jour si déjà vérifié ; sinon, le n° scanné la dernière fois (même appareil en général).
+      const valeurs = {};
+      const der = etat.verifs[c.id];
+      aCocher(c).filter(estControle).forEach((a) => {
+        const dv = der && der.valeurs ? der.valeurs[a.id] : undefined;
+        if (dv !== undefined && (v || a.controle === 'scan')) valeurs[a.id] = dv;
+      });
+      brouillons.liste[c.id] = { coches, quantites: {}, dates: {}, invalides: {}, valeurs, remarque: v ? v.remarque : '' };
     }
     const b = brouillons.liste[c.id];
     if (!b.quantites) b.quantites = {};
+    if (!b.valeurs) b.valeurs = {};
     return b;
   }
   /** Quantité attendue (nombre) d'un article, ou null s'il n'en a pas. */
@@ -674,6 +722,10 @@ const Inventaires = (() => {
       return;
     }
     const articles = aCocher(c).map((a) => {
+      if (estControle(a)) {
+        const val = String(b.valeurs[a.id] === undefined ? '' : b.valeurs[a.id]).trim();
+        return { id: a.id, nom: nomArticle(a), controle: a.controle, ok: evaluer(a, val).ok, valeur: val, libelle: texteValeur(a, val) };
+      }
       const att = attendue(a);
       const qte = trouvee(a, b);
       return {
@@ -687,14 +739,14 @@ const Inventaires = (() => {
     const manquants = articles.filter(incomplet);
     if (manquants.length && confirmer !== `valider-${c.id}`) {
       confirmer = `valider-${c.id}`;
-      const libelle = (a) => (a.ok ? `${a.nom} (${a.quantite}/${a.attendu})` : a.nom);
-      messageVue(`Sera noté manquant : ${manquants.map(libelle).join(' ; ')}. Corrigez ou appuyez de nouveau pour valider quand même.`, 'erreur');
+      const libelle = (a) => (a.controle ? `${a.nom} (${a.libelle})` : (a.ok ? `${a.nom} (${a.quantite}/${a.attendu})` : a.nom));
+      messageVue(`Sera noté manquant ou en anomalie : ${manquants.map(libelle).join(' ; ')}. Corrigez ou appuyez de nouveau pour valider quand même.`, 'erreur');
       zone.querySelector('.inv-valider').textContent = 'Valider quand même';
       return;
     }
     const ok = App.mettreEnFile({
       action: 'verifierInventaire', contenant: c.id,
-      detail: { chemin: chemin(c.id).map((x) => x.nom).join(' > '), articles, remarque: b.remarque.trim() },
+      detail: { chemin: chemin(c.id).map((x) => x.nom).join(' > '), articles: articles.map(({ libelle, ...x }) => x), remarque: b.remarque.trim() },
     });
     if (!ok) {
       messageVue('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur');
@@ -702,7 +754,9 @@ const Inventaires = (() => {
     }
     // Affiché tout de suite, sans attendre la réponse du serveur.
     const maintenant = new Date().toISOString();
-    etat.verifs[c.id] = { date: maintenant, agent: App.agent(), manquants: manquants.map((a) => ({ id: a.id, nom: a.ok ? `${a.nom} (${a.quantite}/${a.attendu})` : a.nom })), remarque: b.remarque.trim() };
+    const valeurs = {};
+    articles.filter((a) => a.controle).forEach((a) => { valeurs[a.id] = a.valeur; });
+    etat.verifs[c.id] = { date: maintenant, agent: App.agent(), manquants: manquants.map((a) => ({ id: a.id, nom: a.controle ? `${a.nom} (${a.libelle})` : (a.ok ? `${a.nom} (${a.quantite}/${a.attendu})` : a.nom) })), remarque: b.remarque.trim(), valeurs };
     articles.filter((a) => a.peremption !== undefined).forEach((a) => { etat.peremptions[`${c.id}/${a.id}`] = { date: a.peremption, maj: maintenant }; });
     delete brouillons.liste[c.id];
     sauverEtat();
@@ -1090,6 +1144,87 @@ const Inventaires = (() => {
    */
   let peremptionsVisibles = false;
   const datesOuvertes = new Set(); // articles dont on a ouvert la date en touchant leur repère
+  /** Ligne d'un contrôle en check-list : champ adapté au type, rouge si hors plage. */
+  function ligneControle(a, b, modifie) {
+    const li = el('li', { classe: `inv-article inv-controle inv-controle-${a.controle}` });
+    const champ = idChamp();
+    const attente = texteAttente(a);
+    const etiquette = el('label', { for: champ, classe: 'inv-nom' }, nomArticle(a), attente ? el('small', { classe: 'inv-attente', texte: ` (${attente})` }) : null);
+    const val = () => (b.valeurs[a.id] === undefined ? '' : String(b.valeurs[a.id]));
+    const ligne = el('div', { classe: 'inv-ligne' }, el('span', { classe: 'inv-pastille-controle', 'aria-hidden': 'true' }), etiquette);
+    const etat_ = () => {
+      const e = evaluer(a, val());
+      li.classList.toggle('controle-ok', e.ok);
+      li.classList.toggle('controle-anomalie', e.rempli && !e.ok);
+    };
+    const poser = (v) => { b.valeurs[a.id] = v; etat_(); modifie(); };
+    let saisie;
+    if (a.controle === 'oui') {
+      saisie = el('span', { classe: 'inv-oui-non', role: 'group', 'aria-label': nomArticle(a) },
+        ...['Oui', 'Non'].map((x) => el('button', { type: 'button', id: x === 'Oui' ? champ : undefined, classe: 'cfg-mini', 'aria-pressed': String(val() === x), texte: x, surclick: (e) => {
+          const nv = val() === x ? '' : x;
+          saisie.querySelectorAll('button').forEach((bt) => bt.setAttribute('aria-pressed', String(bt.textContent === nv)));
+          poser(nv);
+        } })));
+    } else if (a.controle === 'batterie' && a.echelle === '4') {
+      saisie = el('span', { classe: 'inv-batterie4', role: 'group', 'aria-label': `${nomArticle(a)} de 0 à 4` },
+        ...['0', '1', '2', '3', '4'].map((x) => el('button', { type: 'button', id: x === '0' ? champ : undefined, classe: 'cfg-mini', 'aria-pressed': String(val() === x), texte: x, surclick: () => {
+          const nv = val() === x ? '' : x;
+          saisie.querySelectorAll('button').forEach((bt) => bt.setAttribute('aria-pressed', String(bt.textContent === nv)));
+          poser(nv);
+        } })));
+    } else if (a.controle === 'scan') {
+      const entree = el('input', { id: champ, classe: 'inv-valeur inv-valeur-texte', autocomplete: 'off', maxlength: '120', placeholder: 'Scanner ou saisir', valeur: val(), surinput: (e) => poser(e.target.value.trim()) });
+      const bouton = el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Scanner ${nomArticle(a)}`, title: 'Scanner (QR / code-barres)', texte: '⌗', surclick: () => lireCode((t) => { entree.value = t; poser(t); }) });
+      saisie = el('span', { classe: 'inv-valeur-zone' }, entree, bouton);
+    } else {
+      const unite = a.controle === 'temperature' ? '°C' : (a.controle === 'batterie' ? '%' : (a.unite || ''));
+      const entree = el('input', { id: champ, type: 'text', inputmode: 'decimal', classe: 'inv-valeur', autocomplete: 'off', maxlength: '8', valeur: val(), surfocus: (e) => e.target.select(),
+        surinput: (e) => poser(e.target.value.trim().replace(',', '.')) });
+      saisie = el('span', { classe: 'inv-valeur-zone' }, entree, unite ? el('span', { classe: 'inv-qte-attendue', texte: unite }) : null);
+    }
+    ligne.append(saisie);
+    li.append(ligne);
+    etat_();
+    return li;
+  }
+  /** Lit un QR code / code-barres avec la caméra (BarcodeDetector) ; sinon, saisie manuelle. */
+  async function lireCode(surLu) {
+    if (!('BarcodeDetector' in window) || !navigator.mediaDevices) { messageVue('Lecture de code non disponible sur cet appareil : saisissez la valeur.', 'erreur'); return; }
+    const video = el('video', { playsinline: '', muted: '', autoplay: '' });
+    video.muted = true;
+    const lecture = el('p', { classe: 'lecture', role: 'status', texte: 'Ouverture de la caméra…' });
+    let flux = null;
+    let fini = false;
+    const fermer = () => {
+      if (fini) return;
+      fini = true;
+      if (flux) flux.getTracks().forEach((t) => t.stop());
+      ecran.remove();
+      document.body.classList.remove('camera-ouverte');
+    };
+    const ecran = el('div', { classe: 'camera', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Scanner un code' },
+      el('div', { classe: 'camera-vue' }, video, el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }),
+        el('p', { classe: 'consigne-camera consigne-qr', texte: 'Visez le QR code ou le code-barres' })),
+      lecture, el('div', { classe: 'camera-actions' }, el('button', { type: 'button', classe: 'camera-bouton secondaire', texte: 'Annuler', surclick: fermer })));
+    document.body.append(ecran);
+    document.body.classList.add('camera-ouverte');
+    try {
+      flux = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      if (fini) { flux.getTracks().forEach((t) => t.stop()); return; }
+      video.srcObject = flux;
+      await video.play();
+      lecture.textContent = '';
+      const formats = BarcodeDetector.getSupportedFormats ? await BarcodeDetector.getSupportedFormats() : undefined;
+      const det = formats && formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
+      const boucle = async () => {
+        if (fini) return;
+        try { const r = await det.detect(video); if (r.length) { const t = String(r[0].rawValue).trim().slice(0, 120); fermer(); surLu(t); return; } } catch (e) { /* image suivante */ }
+        setTimeout(boucle, 250);
+      };
+      boucle();
+    } catch (e) { lecture.textContent = 'Caméra indisponible : annulez et saisissez la valeur.'; }
+  }
   function blocVerification(c) {
     const articles = aCocher(c);
     if (!articles.length) return null;
@@ -1105,10 +1240,13 @@ const Inventaires = (() => {
       basculer.setAttribute('aria-pressed', String(peremptionsVisibles));
       basculer.textContent = peremptionsVisibles ? 'Masquer les péremptions' : `Péremptions (${suivis.length})`;
     };
+    const cases = articles.filter((a) => !estControle(a));
     const maj = () => {
-      const n = articles.filter((a) => b.coches[a.id]).length;
+      const n = articles.filter((a) => (estControle(a) ? evaluer(a, b.valeurs[a.id]).rempli : b.coches[a.id])).length;
       compte.textContent = `${n}/${articles.length}`;
-      toutCocher.textContent = n === articles.length ? 'Tout décocher' : 'Tout cocher';
+      const nc = cases.filter((a) => b.coches[a.id]).length;
+      toutCocher.hidden = !cases.length;
+      toutCocher.textContent = nc === cases.length ? 'Tout décocher' : 'Tout cocher';
       groupes.forEach((g) => { g.bouton.textContent = g.membres.every((a) => b.coches[a.id]) ? 'Décocher' : 'Cocher'; });
     };
     // Séparations : un intertitre par groupe, avec « Cocher » pour tout le groupe.
@@ -1122,7 +1260,7 @@ const Inventaires = (() => {
       if (a.separateur) {
         const g = { membres: [] };
         let i = c.articles.indexOf(a) + 1;
-        while (i < c.articles.length && !c.articles[i].separateur) g.membres.push(c.articles[i++]);
+        while (i < c.articles.length && !c.articles[i].separateur) { if (!estControle(c.articles[i])) g.membres.push(c.articles[i]); i++; }
         g.bouton = el('button', { type: 'button', classe: 'lien inv-cocher-groupe', 'aria-label': `Cocher le groupe ${a.nom}`, surclick: () => {
           const tout = !g.membres.every((x) => b.coches[x.id]);
           g.membres.forEach((x) => { b.coches[x.id] = tout; const box = liste.querySelector(`input[data-article="${x.id}"]`); if (box) box.checked = tout; });
@@ -1132,6 +1270,7 @@ const Inventaires = (() => {
         liste.append(el('li', { classe: 'inv-separation' }, el('span', { texte: a.nom }), g.membres.length ? g.bouton : null));
         return;
       }
+      if (estControle(a)) { liste.append(ligneControle(a, b, modifie)); return; }
       const champCase = idChamp();
       const coche = el('input', { type: 'checkbox', id: champCase, 'data-article': a.id, checked: Boolean(b.coches[a.id]), surchange: (e) => { b.coches[a.id] = e.target.checked; modifie(); } });
       const li = el('li', { classe: 'inv-article' });
@@ -1205,8 +1344,8 @@ const Inventaires = (() => {
       liste.append(li);
     });
     toutCocher.addEventListener('click', () => {
-      const tout = !articles.every((a) => b.coches[a.id]);
-      articles.forEach((a) => { b.coches[a.id] = tout; });
+      const tout = !cases.every((a) => b.coches[a.id]);
+      cases.forEach((a) => { b.coches[a.id] = tout; });
       liste.querySelectorAll('input[type="checkbox"]').forEach((x) => { x.checked = tout; });
       modifie();
     });
@@ -1782,6 +1921,27 @@ const Inventaires = (() => {
   }
 
   /** Édition des articles d'un contenant (administrateurs). */
+  /** Édition d'un contrôle : libellé et réglages selon le type. */
+  function ligneEditionControle(c, a, outils) {
+    const nombre = (cle, libelle) => el('label', { classe: 'inv-qte-libelle' }, `${libelle} `, el('input', {
+      type: 'text', inputmode: 'decimal', classe: 'inv-qte', valeur: a[cle] === undefined ? '' : String(a[cle]), placeholder: '–', 'aria-label': `${libelle} (${a.nom})`,
+      surchange: (e) => { const t = e.target.value.trim().replace(',', '.'); const n = Number(t); if (t === '' || !Number.isFinite(n)) { delete a[cle]; e.target.value = ''; } else a[cle] = n; marquer(c.id); },
+    }));
+    const reglages = [];
+    if (a.controle === 'temperature' || a.controle === 'valeur') reglages.push(nombre('min', 'Min'), nombre('max', 'Max'));
+    if (a.controle === 'valeur') reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Unité ', el('input', { classe: 'inv-qte', maxlength: '10', valeur: a.unite || '', 'aria-label': `Unité (${a.nom})`, surchange: (e) => { const t = e.target.value.trim(); if (t) a.unite = t; else delete a.unite; marquer(c.id); } })));
+    if (a.controle === 'batterie') {
+      reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Échelle ', el('select', { 'aria-label': `Échelle (${a.nom})`, surchange: (e) => { if (e.target.value === '4') a.echelle = '4'; else delete a.echelle; delete a.seuil; marquer(c.id); rendre({ garderPosition: true }); } },
+        el('option', { value: 'pct', selected: a.echelle !== '4', texte: '%' }), el('option', { value: '4', selected: a.echelle === '4', texte: '0 à 4' }))),
+      nombre('seuil', 'Seuil'));
+    }
+    if (a.controle === 'scan') reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Attendu ', el('input', { classe: 'inv-attendu', maxlength: '60', placeholder: 'facultatif', valeur: a.attendu || '', 'aria-label': `Valeur attendue (${a.nom})`, surchange: (e) => { const t = e.target.value.trim(); if (t) a.attendu = t; else delete a.attendu; marquer(c.id); } })));
+    return el('div', { classe: 'inv-edition-article inv-edition-fiche inv-edition-controle', 'data-cle': a.id }, poignee(a.nom),
+      el('div', { classe: 'inv-edition-nom' },
+        el('input', { 'aria-label': 'Libellé du contrôle', maxlength: '120', valeur: a.nom, classe: 'inv-nom-article', surchange: (e) => { const t = e.target.value.trim(); if (t) { a.nom = t; marquer(c.id); } else e.target.value = a.nom; } }),
+        el('small', { texte: `Contrôle : ${CONTROLES[a.controle].nom}${texteAttente(a) ? ` (${texteAttente(a)})` : ''}` })),
+      el('div', { classe: 'cfg-ligne inv-edition-outils' }, ...reglages, ...outils));
+  }
   function blocArticles(c) {
     const liste = el('div', { classe: 'inv-edition-articles' });
     const dansLaListe = new Set(c.articles.filter((a) => a.ref).map((a) => a.ref));
@@ -1796,6 +1956,7 @@ const Inventaires = (() => {
           ...fleches));
         return;
       }
+      if (estControle(a)) { liste.append(ligneEditionControle(c, a, fleches)); return; }
       const f = fiche(a);
       const qte = el('input', {
         type: 'number', inputmode: 'numeric', min: '0', max: '999', step: '1', classe: 'inv-qte', 'aria-label': `Quantité attendue de ${nom}`,
@@ -1895,13 +2056,22 @@ const Inventaires = (() => {
     afficherResultats();
     if (creation) setTimeout(() => { if (document.contains(zoneCreation)) ouvrirCreation(); });
 
-    return el('section', { classe: 'inv-section' }, el('h2', { texte: 'Articles à cocher' }),
+    return el('section', { classe: 'inv-section' }, el('h2', { texte: 'Articles et contrôles' }),
       c.articles.length ? null : el('p', { classe: 'aide-question', texte: 'Aucun article : ce niveau sert seulement à ouvrir ses sous-inventaires.' }),
       liste,
       el('div', { classe: 'champ inv-recherche-article' },
         el('label', { for: champ, texte: cible ? `Rattacher « ${cible.nom} » à un article de la base` : 'Ajouter un article' }),
         recherche, resultats, zoneCreation,
         cible ? null : el('div', { classe: 'cfg-actions inv-boutons-ajout' },
+          el('details', { classe: 'inv-ajout-controle' },
+            el('summary', { classe: 'cfg-bouton', texte: 'Ajouter un contrôle' }),
+            el('div', { classe: 'inv-types-controle' }, ...Object.entries(CONTROLES).map(([k, t]) => el('button', { type: 'button', classe: 'cfg-bouton', surclick: () => {
+              c.articles.push({ id: nouvelId(), nom: t.defaut, controle: k, ...(k === 'temperature' ? { min: 2, max: 8 } : {}) });
+              marquer(c.id);
+              rendre({ garderPosition: true, focus: '.inv-edition-controle:last-of-type input' });
+              const ch = zone.querySelector('.inv-edition-controle:last-of-type input');
+              if (ch) ch.select();
+            } }, el('strong', { texte: t.nom }), el('small', { texte: ` — ${t.aide}` }))))),
           el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter une séparation', surclick: () => {
             c.articles.push({ id: nouvelId(), nom: 'Nouvelle séparation', separateur: true });
             marquer(c.id);
@@ -2065,7 +2235,9 @@ const Inventaires = (() => {
   const egal = (a, b) => canonique(a === undefined ? null : a) === canonique(b === undefined ? null : b);
   const copieProfonde = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   /** Article réduit à ce qui se répercute (le nom des articles de la base vient de la fiche). */
-  const sigArticle = (a) => (a.separateur ? { separateur: true, nom: a.nom } : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || '') });
+  const sigArticle = (a) => (a.separateur ? { separateur: true, nom: a.nom }
+    : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu }
+      : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || '') });
   /** Instantané d'un contenant du modèle : ce que ses exemplaires doivent reproduire. */
   function instantane(m) {
     return {
@@ -2129,7 +2301,7 @@ const Inventaires = (() => {
       const i = I[id]; const b = B[id]; const mm = M[id];
       const depuisModele = () => { const a = copieProfonde(mm); return a; };
       if (i && mm) {
-        if (forcer || (b && egal(sigArticle(i), sigArticle(b)))) resultat.push({ ...i, ...depuisModele() });
+        if (forcer || (b && egal(sigArticle(i), sigArticle(b)))) resultat.push(mm.controle || i.controle ? depuisModele() : { ...i, ...depuisModele() });
         else { resultat.push(i); if (!egal(sigArticle(i), sigArticle(mm))) conserves += 1; }
       } else if (i && !mm) {
         if (b && (forcer || egal(sigArticle(i), sigArticle(b)))) return; // retiré du modèle
@@ -2332,6 +2504,10 @@ const Inventaires = (() => {
       const derniere = etat.verifs[d.id];
       const manquants = new Set(derniere.manquants.map((m) => m.id));
       const articles = aCocher(d).map((a) => {
+        if (estControle(a)) {
+          const val = derniere.valeurs && derniere.valeurs[a.id] !== undefined ? String(derniere.valeurs[a.id]) : '';
+          return { id: a.id, nom: nomArticle(a), controle: a.controle, ok: !manquants.has(a.id), valeur: val };
+        }
         const att = attendue(a);
         return {
           id: a.id, nom: nomArticle(a), ok: !manquants.has(a.id),
@@ -2342,7 +2518,7 @@ const Inventaires = (() => {
       const remarque = `Scellé : validé sur la base de l'inventaire du ${new Date(derniere.date).toLocaleDateString('fr-FR')} (${derniere.agent}).`;
       const ok = App.mettreEnFile({ action: 'verifierInventaire', contenant: d.id, detail: { chemin: chemin(d.id).map((x) => x.nom).join(' > '), articles, remarque, scelle: true } });
       if (!ok) { avis = 'Non enregistré : la mémoire de l\'appareil est pleine.'; rendre(); return; }
-      etat.verifs[d.id] = { date: maintenant, agent: App.agent(), manquants: derniere.manquants, remarque, scelle: true };
+      etat.verifs[d.id] = { date: maintenant, agent: App.agent(), manquants: derniere.manquants, remarque, scelle: true, valeurs: derniere.valeurs || {} };
       n += 1;
     }
     sauverEtat();
@@ -2577,7 +2753,7 @@ const Inventaires = (() => {
         el(niveau ? 'h2' : 'h1', { texte: `${x.nom}${x.scellable ? ' (scellable)' : ''}` }),
         x.articles.length ? el('ul', {}, ...x.articles.map((a) => (a.separateur ? el('li', { classe: 'imp-separation', texte: a.nom }) : el('li', {},
           el('span', { classe: 'imp-case', 'aria-hidden': 'true' }),
-          el('span', { classe: 'imp-nom', texte: `${nomArticle(a)}${a.quantite ? ` × ${a.quantite}` : ''}` }),
+          el('span', { classe: 'imp-nom', texte: estControle(a) ? `${nomArticle(a)}${texteAttente(a) ? ` (${texteAttente(a)})` : ''} : ${a.controle === 'oui' ? 'Oui / Non' : '……………'}` : `${nomArticle(a)}${a.quantite ? ` × ${a.quantite}` : ''}` }),
           suiviPeremption(a) ? el('span', { classe: 'imp-date', texte: `Pér. ${afficherDate(datePeremption(x.id, a.id)) || '……/………'}` }) : null)))) : null);
     });
     lancerImpression([
