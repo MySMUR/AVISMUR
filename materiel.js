@@ -750,8 +750,20 @@ const Materiel = (() => {
   const INVARIABLES = { type: 'Type', modele: 'Modèle', numInterne: 'N° interne SMUR', numBiomed: 'N° biomed', numSerie: 'N° de série' };
   /** Lien ouvrant la fiche de l'appareil dans l'appli (même principe que « #inv=… » des inventaires). */
   const adresse = (id) => `${location.origin}${location.pathname.replace(/index\.html$/, '')}#mat=${id}`;
+  // Libellés courts : une NTAG213 ne contient que 144 octets (lien + texte).
+  const COURTS = { type: '', modele: '', numInterne: 'n°', numBiomed: 'Biomed ', numSerie: 'S/N ' };
   function texteFiche(f, champs) {
-    return ['SMUR Avignon', ...champs.filter((k) => f[k]).map((k) => `${INVARIABLES[k]} : ${f[k]}`)].join('\n');
+    const a = (k) => (champs.includes(k) && f[k] ? `${COURTS[k]}${f[k]}` : '');
+    return ['SMUR Avignon', [a('type'), a('numInterne'), a('modele')].filter(Boolean).join(' '), a('numBiomed'), a('numSerie')]
+      .filter(Boolean).join('\n');
+  }
+  /** Taille approximative du message NDEF (en-têtes compris), à comparer à la capacité de la puce. */
+  function tailleNdef(lien, texte) {
+    const octets = (t) => new TextEncoder().encode(t).length;
+    let n = 0;
+    if (lien) n += 5 + octets(lien.replace(/^https:\/\//, ''));
+    if (texte) n += 6 + octets(texte);
+    return n + 4; // TLV
   }
 
   /**
@@ -765,7 +777,14 @@ const Materiel = (() => {
     const champs = new Set(Object.keys(INVARIABLES).filter((k) => f[k]));
     let avecLien = true;
     const apercu = el('pre', { classe: 'mat-apercu' });
-    const majApercu = () => { apercu.textContent = `${avecLien ? `${adresse(f.id)}\n\n` : ''}${texteFiche(f, [...champs])}`; };
+    const taille = el('p', { classe: 'aide-question' });
+    const majApercu = () => {
+      const texte = champs.size ? texteFiche(f, [...champs]) : '';
+      apercu.textContent = `${avecLien ? `${adresse(f.id)}\n\n` : ''}${texte}`;
+      const n = tailleNdef(avecLien ? adresse(f.id) : '', texte);
+      taille.textContent = `Taille : environ ${n} octets. ${n <= 137 ? 'Tient sur une NTAG213 (144 octets).' : (n <= 496 ? 'Trop grand pour une NTAG213 : il faut une NTAG215 ou NTAG216, ou décochez des informations.' : 'Trop grand : décochez des informations.')}`;
+      taille.className = n <= 137 ? 'aide-question' : 'message erreur';
+    };
     majApercu();
     const sortie = el('p', { classe: 'message', role: 'status' });
     const bouton = el('button', { type: 'button', classe: 'principal', texte: 'Écrire sur la puce', disabled: !disponible });
@@ -781,17 +800,15 @@ const Materiel = (() => {
       sortie.textContent = 'Approchez la puce du dos du téléphone…';
       try {
         const nfc = new NDEFReader();
-        // 1. Formatage : remplace tout l'ancien contenu (lien, texte, autre appli…) par un message NDEF vide.
-        await nfc.write({ records: [{ recordType: 'empty' }] }, { signal: delai.signal, overwrite: true });
-        sortie.textContent = 'Puce formatée, écriture… Gardez-la contre le téléphone.';
-        // 2. Écriture des informations.
+        // Une seule écriture : « overwrite » remplace tout l'ancien contenu (formatage NDEF compris si la puce est vierge).
+        // Deux écritures de suite échouent souvent : Chrome attend que la puce soit présentée à nouveau.
         await nfc.write({ records }, { signal: delai.signal, overwrite: true });
-        sortie.textContent = `Puce formatée puis encodée pour ${nomAppareil(f)}.`;
+        sortie.textContent = `Puce effacée puis encodée pour ${nomAppareil(f)}.`;
         sortie.className = 'message succes';
       } catch (e) {
         sortie.textContent = e.name === 'AbortError' ? 'Aucune puce détectée. Réessayez en la gardant contre le téléphone.'
           : (e.name === 'NotAllowedError' ? 'Autorisez le NFC pour cette application et vérifiez qu\'il est activé sur le téléphone.'
-            : 'Écriture impossible : puce verrouillée, trop petite ou non compatible (NTAG213 ou plus recommandée).');
+            : `Écriture impossible (${e.name}${e.message ? ` : ${e.message}` : ''}). Puce trop petite pour ce contenu (décochez des informations), verrouillée, ou non compatible : seules les puces NTAG (213, 215, 216) sont prises en charge, pas les MIFARE Classic.`);
         sortie.className = 'message erreur';
       } finally {
         clearTimeout(minuterie);
@@ -807,8 +824,8 @@ const Materiel = (() => {
         Object.keys(INVARIABLES).map((k) => el('label', { classe: 'mat-case-libelle' },
           el('input', { type: 'checkbox', coche: champs.has(k), disabled: !f[k], surchange: (ev) => { if (ev.target.checked) champs.add(k); else champs.delete(k); majApercu(); } }),
           el('span', { texte: `${INVARIABLES[k]} : ${f[k] || '(non renseigné)'}` })))),
-      el('p', { classe: 'aide-question', texte: 'Aperçu du contenu :' }), apercu,
-      el('p', { classe: 'aide-question', texte: 'L\'ancien contenu de la puce est effacé avant l\'écriture.' }),
+      el('p', { classe: 'aide-question', texte: 'Aperçu du contenu :' }), apercu, taille,
+      el('p', { classe: 'aide-question', texte: 'L\'ancien contenu de la puce est effacé. Appuyez sur « Écrire », puis gardez la puce contre le dos du téléphone jusqu\'au message de confirmation (ignorez la notification « Carte NFC détectée » d\'Android).' }),
       el('div', { classe: 'mat-boutons' }, bouton), sortie);
     fenetre(`Puce NFC · ${nomAppareil(f)}`, contenu, { large: true });
   }
@@ -828,7 +845,7 @@ const Materiel = (() => {
         const lien = tout.match(/#mat=([a-z0-9]{6,20})/);
         const liste = fiches();
         const f = (lien && liste.find((x) => x.id === lien[1]))
-          || liste.find((x) => (x.numSerie && tout.includes(`N° de série : ${x.numSerie}`)) || (x.numBiomed && tout.includes(`N° biomed : ${x.numBiomed}`)));
+          || liste.find((x) => (x.numSerie && tout.includes(`S/N ${x.numSerie}`)) || (x.numBiomed && tout.includes(`Biomed ${x.numBiomed}`)));
         if (f) { d.close(); ouvrirFiche(f.id); return; }
         sortie.textContent = 'Puce lue, mais aucun appareil de la base ne correspond.';
         sortie.className = 'message erreur';
