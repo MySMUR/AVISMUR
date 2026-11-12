@@ -1209,7 +1209,16 @@ const Inventaires = (() => {
       ecran.remove();
       document.body.classList.remove('camera-ouverte');
     };
-    const lu = (t) => { const v = String(t || '').trim().slice(0, 120); if (!v || fini) return; fermer(); surLu(v); };
+    // Appareil du suivi du matériel (puce MySMUR, étiquette biomed, n° de série) : on inscrit son n° interne SMUR.
+    const lu = (t, tout) => {
+      const brut = String(t || '').trim();
+      if (!brut || fini) return;
+      const appareil = typeof Materiel !== 'undefined' ? Materiel.identifier(tout || brut) || Materiel.identifier(brut) : null;
+      const v = (appareil && appareil.numInterne ? appareil.numInterne : brut).slice(0, 120);
+      fermer();
+      surLu(v);
+      if (appareil && appareil.numInterne) messageVue(`${appareil.type} n° ${appareil.numInterne}${appareil.modele ? ` (${appareil.modele})` : ''} reconnu.`);
+    };
     const ecran = el('div', { classe: 'camera', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Lire un code' },
       el('div', { classe: `camera-vue${qr ? '' : ' inv-nfc-seul'}` }, qr ? video : el('div', { classe: 'inv-attente-nfc', 'aria-hidden': 'true' }, logoNfc()),
         qr ? el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }) : null,
@@ -1224,7 +1233,9 @@ const Inventaires = (() => {
         const r = [...e.message.records].find((x) => ['text', 'url', 'absolute-url'].includes(x.recordType));
         let t = '';
         if (r) { try { t = new TextDecoder(r.encoding || 'utf-8').decode(r.data); } catch (err) { t = ''; } }
-        lu(t || e.serialNumber);
+        // Tous les enregistrements (lien + texte d'une puce MySMUR) servent à reconnaître un appareil.
+        const tout = [...e.message.records].map((x) => { try { return new TextDecoder(x.encoding || 'utf-8').decode(x.data); } catch (err) { return ''; } }).join('\n');
+        lu(t || e.serialNumber, tout);
       });
       lecteur.scan({ signal: arretNfc.signal }).catch(() => { if (!qr) lecture.textContent = 'NFC refusé ou désactivé : activez le NFC, ou annulez et saisissez la valeur.'; });
     }

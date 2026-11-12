@@ -879,6 +879,24 @@ const Materiel = (() => {
       charger(); // même masqué : les modifications envoyées doivent rejoindre le cache local
     },
     actions: ACTIONS,
+    /**
+     * Appareil correspondant à un code lu (puce NFC, QR code, code-barres de l'étiquette biomed) :
+     * lien « #mat=… », n° biomed ou n° de série (exact, ou « Biomed … » / « S/N … » dans le texte d'une puce).
+     * Sert aux inventaires : le champ reçoit alors le n° interne SMUR. Renvoie null si rien ne correspond.
+     */
+    identifier(code) {
+      const t = String(code || '').trim();
+      if (!t) return null;
+      const liste = fiches().sort((a, b) => Number(Boolean(a.archive)) - Number(Boolean(b.archive)));
+      const lien = t.match(/#mat=([a-z0-9]{6,20})/);
+      if (lien) return liste.find((f) => f.id === lien[1]) || null;
+      const n = normaliser(t);
+      return liste.find((f) => (f.numBiomed && normaliser(f.numBiomed) === n) || (f.numSerie && normaliser(f.numSerie) === n))
+        || liste.find((f) => (f.numBiomed && n.includes(normaliser(`Biomed ${f.numBiomed}`))) || (f.numSerie && n.includes(normaliser(`S/N ${f.numSerie}`))))
+        || null;
+    },
+    /** Met à jour la liste gardée sur l'appareil, sans rien afficher (pour reconnaître les appareils scannés). */
+    actualiser() { charger(); },
     /** Lien « #mat=<id> » (puce NFC) : ouvre la fiche de l'appareil. */
     ouvrirAppareil(id) {
       if (fiches().some((f) => f.id === id)) { ouvrirFiche(id); return; }

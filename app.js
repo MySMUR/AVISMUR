@@ -178,6 +178,7 @@ function afficherApplication(infos) {
   else if (/^#mat=/.test(location.hash)) ouvrirAppareilDuLien(location.hash);
   else ouvrirVue(/^#inv\b/.test(location.hash) ? vueDuLien() : 'accueil');
   Infos.demarrer();
+  if (accesInventaires()) Materiel.actualiser(); // appareils reconnus au scan dans les inventaires, même hors ligne ensuite
   envoyerFileAttente();
   chargerConfig();
   chargerReleves();
