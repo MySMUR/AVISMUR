@@ -736,17 +736,14 @@ const Inventaires = (() => {
 
   /**
    * La modification des inventaires se fait dans l'administration (menu > Administration >
-   * Gestion des inventaires) : plus de bouton « Modifier » dans la check-list. En gestion, un lien
-   * permet de voir le même inventaire tel que les agents le vérifient.
+   * Gestion des inventaires). On reste dans ce mode en naviguant ; pour réaliser un inventaire,
+   * on repasse par le menu (Inventaires).
    */
-  function boutonEdition() {
-    if (!gestion) return null;
-    return el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Voir en check-list', surclick: () => App.quitterGestion() });
-  }
+  function boutonEdition() { return null; }
   function bandeauGestion() {
     if (!gestion) return null;
     return el('p', { classe: 'inv-bandeau-gestion' }, el('strong', { texte: 'Administration · Gestion des inventaires' }),
-      ' — les modifications sont enregistrées au fur et à mesure.');
+      ' — les modifications sont enregistrées au fur et à mesure. Pour réaliser un inventaire : menu › Inventaires.');
   }
 
   function ligneSynchro() {

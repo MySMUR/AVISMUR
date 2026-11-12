@@ -570,7 +570,12 @@ const accesInventaires = () => roleCourant !== 'ambulancier';
 
 /** Vue correspondant au lien « #inv… » de l'adresse. */
 // En gestion des inventaires (administration), naviguer d'un inventaire à l'autre reste en gestion.
-let gestionInventaires = false;
+// Mémorisé pour l'onglet : un rechargement de la page reste en gestion. On n'en sort que par le menu.
+let gestionInventaires = (() => { try { return sessionStorage.getItem('avismur_gestion_inv') === '1'; } catch (e) { return false; } })();
+function majGestion(valeur) {
+  gestionInventaires = valeur;
+  try { sessionStorage.setItem('avismur_gestion_inv', valeur ? '1' : ''); } catch (e) { /* stockage indisponible */ }
+}
 const vueDuLien = () => (location.hash === '#inv-base' ? 'base-articles' : (gestionInventaires ? 'gestion-inventaires' : 'inventaires'));
 
 function vueAutorisee(vue) {
@@ -596,8 +601,8 @@ function ouvrirVue(demandee) {
   if (parc) Parc.afficher();
   else Parc.masquer();
 
-  if (vue === 'gestion-inventaires') gestionInventaires = true;
-  else if (vue !== 'base-articles') gestionInventaires = false;
+  if (vue === 'gestion-inventaires') majGestion(roleCourant === 'admin');
+  else if (vue !== 'base-articles') majGestion(false);
   const inventaires = vue === 'inventaires' || vue === 'gestion-inventaires' || vue === 'base-articles' || (vue === 'aujourdhui' && roleCourant === 'iade');
   if (inventaires) {
     Inventaires.afficher({ gestion: gestionInventaires });
@@ -670,7 +675,7 @@ menu.addEventListener('click', (e) => {
   fermerMenu();
   // Inventaires : on repart de la liste des inventaires (ou de la base des articles) ;
   // le changement de lien « #inv… » rouvre la vue (voir « hashchange » plus bas).
-  if (vue === 'inventaires' || vue === 'gestion-inventaires') gestionInventaires = vue === 'gestion-inventaires' && roleCourant === 'admin';
+  if (vue === 'inventaires' || vue === 'gestion-inventaires') majGestion(vue === 'gestion-inventaires' && roleCourant === 'admin');
   if ((vue === 'inventaires' || vue === 'gestion-inventaires') && accesInventaires() && location.hash && location.hash !== '#inv') {
     location.hash = '#inv';
     return;
@@ -707,8 +712,6 @@ Inventaires.initialiser({
   appeler,
   // Publier sur le mur d'accueil (formulaire du mur, pré-rempli).
   publierSurMur: (prerempli) => Infos.publier(prerempli),
-  // « Voir en check-list » depuis la gestion des inventaires : même inventaire, vu comme les agents.
-  quitterGestion: () => { gestionInventaires = false; ouvrirVue('inventaires'); },
   mettreEnFile,
   role: () => roleCourant,
   agent: () => (session.lire() || appareil.lire() || {}).identifiant || '',
