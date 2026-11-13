@@ -380,9 +380,27 @@ const Inventaires = (() => {
   }
   function noterPointage(idEmplacement, idMobile) {
     const e = contenant(idEmplacement);
-    if (!e || !e.emplacement) return;
-    brouillonsDuJour().pointes[idEmplacement] = idMobile;
+    if (!e) return;
+    // Emplacement : son occupant du jour. Autre contenant : « m:<mobile> » → contenant où il a été pointé.
+    if (e.emplacement) brouillonsDuJour().pointes[idEmplacement] = idMobile;
+    else brouillonsDuJour().pointes[`m:${idMobile}`] = idEmplacement;
     sauverBrouillons();
+  }
+  /** Contenant mobile (hors emplacement) déjà pointé aujourd'hui là où il se trouve. */
+  function mobilePointe(m) {
+    return brouillonsDuJour().pointes[`m:${m.id}`] === m.parent || Boolean(verifDuJour(m.id));
+  }
+  /** Identification à rouvrir au prochain affichage (icône « changer de contenant »). */
+  let aIdentifier = '';
+  /** L'agent s'est trompé ou a changé de contenant : on oublie le pointage et on redemande lequel est là. */
+  function changerContenant(c) {
+    const e = contenant(c.parent);
+    const dessus = etagesAuDessus(c)[0];
+    if (!e || !dessus) return;
+    const pointes = brouillonsDuJour().pointes;
+    if (e.emplacement) { delete pointes[e.id]; aIdentifier = `emp:${e.id}`; } else { delete pointes[`m:${c.id}`]; aIdentifier = c.id; }
+    sauverBrouillons();
+    aller(dessus.id);
   }
   /** Occupant d'un emplacement, seulement s'il a été pointé aujourd'hui (sinon null : « à identifier »). */
   function occupantDuJour(e) {
@@ -819,10 +837,12 @@ const Inventaires = (() => {
     sauverBrouillons();
     confirmer = '';
     avis = `« ${c.nom} » vérifié${manquants.length ? ` : ${pluriel(manquants.length, 'manquant')}` : ''}.`;
-    // S'il reste des sous-inventaires à vérifier, on reste ici ; sinon on remonte d'un niveau.
+    // S'il reste des sous-inventaires à vérifier, on reste ici ; sinon on remonte au contenant parent
+    // (l'emplacement s'efface derrière son occupant : on remonte au niveau visible du dessus).
     const reste = enfants(c.id).some((f) => { const bf = bilan(f.id); return bf.total && !bf.complet; });
+    const dessus = etagesAuDessus(c)[0];
     if (reste) rendre();
-    else aller(c.parent);
+    else aller(dessus ? dessus.id : '');
   }
 
   // ---------- Vues ----------
@@ -947,6 +967,7 @@ const Inventaires = (() => {
     consultation: ['M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z', 'M12 9.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5z'],
     lieu: ['M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z', 'M12 7a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5z'],
     appareil: ['M4 6h16v12H4z', 'M4 12h4l2-3 3 6 2-3h5'],
+    changer: ['M4 8h14', 'M15 4l4 4-4 4', 'M20 16H6', 'M9 12l-4 4 4 4'],
   };
   /** Pictogramme : `nom` d'un tracé ci-dessus ; `etiquette` le rend lisible (sinon décoratif). */
   function picto(nom, etiquette = '', classe = '') {
@@ -1017,24 +1038,37 @@ const Inventaires = (() => {
     }
     const p = structurel || contenant(contexte.primaire);
     return el('div', { classe: `inv-bande-primaire${p ? '' : ' aucun'}`, role: 'status' }, picto('lieu'),
-      el('span', { classe: 'inv-bande-texte' }, p ? 'Contenant primaire : ' : '', el('strong', { texte: p ? p.nom : 'Aucun contenant primaire' })));
+      el('span', { classe: 'inv-bande-texte' }, p ? 'Vous vérifiez actuellement ' : '', el('strong', { texte: p ? p.nom : 'Aucun contenant primaire' })));
   }
   /**
    * Barre collée en haut de l'écran : bande du contenant primaire, puis flèche retour et nom du niveau affiché
    * (le chemin complet « Inventaires › F21 › … » est trop long pour un téléphone).
    */
-  function barreHaut({ c = null, titre = '', retour, etages = [], h1 = true, bande = true }) {
+  function barreHaut({ c = null, titre = '', retour, etages = [], h1 = true, bande = true, libelleRetour = '', changer = null }) {
+    // À côté de la flèche : le contenant où elle ramène (le parent) ; le niveau affiché vient en dessous.
+    if (libelleRetour) {
+      return el('div', { classe: 'inv-barre-haut' }, bande ? bandeauPrimaire(c) : null,
+        el('div', { classe: 'inv-barre-ligne' }, boutonRetour(retour, etages),
+          el('button', { type: 'button', classe: 'inv-retour-nom', 'aria-hidden': 'true', tabindex: '-1', texte: libelleRetour, surclick: retour })),
+        h1 ? el('div', { classe: 'inv-barre-ligne inv-barre-titre' }, el('h1', { tabindex: '-1', classe: 'inv-titre-niveau', texte: titre }),
+          c && c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null,
+          changer ? el('button', { type: 'button', classe: 'inv-changer', 'aria-label': 'Changer de contenant (erreur ou autre contenant)', title: 'Changer de contenant', surclick: changer }, picto('changer')) : null) : null);
+    }
     const nom = h1 ? el('h1', { tabindex: '-1', classe: 'inv-titre-niveau', texte: titre }) : el('span', { classe: 'inv-titre-niveau secondaire', texte: titre });
     return el('div', { classe: 'inv-barre-haut' }, bande ? bandeauPrimaire(c) : null,
       el('div', { classe: 'inv-barre-ligne' }, boutonRetour(retour, etages), nom,
         c && c.scellable && h1 ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null));
   }
   /** Barre du haut d'un contenant : la flèche remonte d'un étage (les emplacements s'effacent derrière leur occupant). */
-  function barreContenant(c, { titre = c.nom, h1 = true, retour = null } = {}) {
+  function barreContenant(c, { titre = c.nom, h1 = true, retour = null, libelleRetour = '' } = {}) {
     const dessus = etagesAuDessus(c);
     const etages = [...dessus.map((p) => ({ nom: p.nom, primaire: p.categorie === 'primaire', aller: () => aller(p.id) })),
       { nom: gestion ? 'Gestion des inventaires' : 'Tous les inventaires', aller: () => aller('') }];
-    return barreHaut({ c, titre, h1, etages, retour: retour || (() => aller(dessus.length ? dessus[0].id : '')) });
+    const parent = contenant(c.parent);
+    const changeable = !gestion && !contexte.consultation && c.categorie === 'mobile' && !dansUnModele(c.id) && parent && dessus.length;
+    return barreHaut({ c, titre, h1, etages, retour: retour || (() => aller(dessus.length ? dessus[0].id : '')),
+      libelleRetour: libelleRetour || (dessus.length ? dessus[0].nom : (gestion ? 'Gestion des inventaires' : 'Tous les inventaires')),
+      changer: changeable ? () => changerContenant(c) : null });
   }
   /** Boutons QR code et NFC réduits à leur pictogramme (barre du bas, à côté de « Valider »). */
   function boutonsScanIcones() {
@@ -1842,7 +1876,7 @@ const Inventaires = (() => {
     const qr = 'BarcodeDetector' in window;
     const nfc = 'NDEFReader' in window;
     return [
-      parent ? barreContenant(parent, { h1: false, retour: () => { identification = ''; rendre(); } }) : null,
+      parent ? barreContenant(parent, { h1: false, libelleRetour: parent.nom, retour: () => { identification = ''; rendre(); } }) : null,
       el('h1', { tabindex: '-1', texte: typeAttendu ? `Quel « ${typeAttendu.nom} » se trouve ici ?` : (plusieurs ? `Quel « ${emp.nom} » se trouve ici ?` : (y ? `Quel « ${y.nom.replace(/\s*n°\s*\d+$/i, '')} » se trouve ici ?` : 'Quel contenant mobile se trouve ici ?')) }),
       plusieurs ? choixTypeEnPhotos(typesAcceptes) : null,
       el('p', { classe: 'consigne' }, `Avant de vérifier son contenu et ses péremptions, identifiez le contenant réellement présent dans « ${parent ? parent.nom : ''} » : scannez son QR code, lisez sa puce NFC ou choisissez-le dans la liste.`),
@@ -3040,6 +3074,7 @@ const Inventaires = (() => {
       ajoutSousOuvert = false;
     }
     if (identifierEmplacement) identification = identifierEmplacement;
+    if (aIdentifier) { identification = aIdentifier; aIdentifier = ''; }
     zone.innerHTML = '';
     const empId = identification.startsWith('emp:') ? identification.slice(4) : '';
     if (empId && contenant(empId) && contenant(empId).parent === id) {
@@ -3243,12 +3278,13 @@ const Inventaires = (() => {
       const m = /^#inv=([a-z0-9]{6,16})$/.exec(a.getAttribute('href'));
       const cible = m && contenant(m[1]);
       // Check-list : ouvrir un contenant mobile depuis son contenant demande d'abord lequel est réellement là.
-      if (cible && !gestion && !contexte.consultation && cible.emplacement && cible.parent === idCourant()) {
+      // … sauf s'il a déjà été pointé aujourd'hui (l'icône « changer » permet de corriger).
+      if (cible && !gestion && !contexte.consultation && cible.emplacement && cible.parent === idCourant() && !occupantDuJour(cible)) {
         identification = `emp:${cible.id}`;
         rendre();
         return;
       }
-      if (cible && !gestion && !contexte.consultation && cible.categorie === 'mobile' && cible.parent && cible.parent === idCourant()) {
+      if (cible && !gestion && !contexte.consultation && cible.categorie === 'mobile' && cible.parent && cible.parent === idCourant() && !mobilePointe(cible)) {
         identification = cible.id;
         rendre();
         return;

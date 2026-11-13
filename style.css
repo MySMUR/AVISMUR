@@ -2049,3 +2049,16 @@ details.inv-tb-legende li { display: inline-flex; align-items: center; gap: 0.35
 /* Cadenas sur la pastille d'un contenant scellable */
 .inv-point { overflow: visible; }
 .inv-point .inv-point-cadenas { position: absolute; right: -0.35rem; bottom: -0.35rem; width: 1.15rem; height: 1.15rem; padding: 0.12rem; border-radius: 50%; background: #fff; color: var(--bleu); box-shadow: 0 0 0 1px rgba(0,0,0,.25); pointer-events: none; }
+
+/* Barre du haut : nom du contenant parent à côté de la flèche, niveau affiché en dessous, icône « changer ». */
+.inv-retour-nom {
+  flex: 1; min-width: 0; padding: 0.3rem 0; text-align: left; font-weight: 700; font-size: 1rem; color: var(--bleu);
+  background: none; border: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+}
+.inv-barre-titre { min-height: 2.2rem; }
+.inv-changer {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 2.4rem; height: 2.4rem; padding: 0;
+  color: var(--bleu); background: #fff; border: 2px solid var(--bleu); border-radius: 50%; touch-action: manipulation;
+}
+.inv-changer .inv-picto { width: 1.2rem; height: 1.2rem; }
+.inv-changer:active { color: #fff; background: var(--bleu); }
