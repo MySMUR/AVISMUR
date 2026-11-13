@@ -2964,6 +2964,7 @@ const Inventaires = (() => {
     const v = vueExemplaire(e);
     const racine = !contenant(e.parent) || !contenant(e.parent).source;
     return Object.keys(CHAMPS_LIBELLES).filter((k) => !(racine && (k === 'nom' || k === 'ordre')))
+      .filter((k) => !(k === 'etiquette' && !v.etiquette))
       .filter((k) => !egal(k === 'articles' ? v.articles : v[k], k === 'articles' ? sansNoms(e.base.articles) : e.base[k]));
   }
   const estPersonnalise = (e) => personnalisations(e).length > 0;
@@ -3024,7 +3025,9 @@ const Inventaires = (() => {
     const avant = canonique(e);
     ['nom', 'ordre', 'photo', 'nomVue', 'scellable', 'categorie', 'etiquette'].forEach((k) => {
       if (racine && (k === 'nom' || k === 'ordre')) return; // le sac garde son nom et sa place
-      if (forcer || egal(v[k], base[k])) e[k] = copieProfonde(m[k]);
+      // Étiquette : un exemplaire sans format propre suit toujours le modèle (formats effacés par un ancien serveur).
+      const suit = k === 'etiquette' && !v.etiquette;
+      if (forcer || suit || egal(v[k], base[k])) e[k] = copieProfonde(m[k]);
       else if (!egal(v[k], nm[k])) bilanR.conserves += 1;
     });
     // Sous-inventaires
