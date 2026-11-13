@@ -6,6 +6,10 @@
  * aujourd'hui par défaut ; fin facultative) et destinataires (ambulanciers, IADE, encadrement).
  * Tout le monde peut mettre fin à une information devenue obsolète.
  *
+ * Pièces jointes : photos (réduites à 1280 px), documents (PDF, Office, texte ; 2 Mo au plus) et liens,
+ * jusqu'à 6 par information ou commentaire. Commentaires : tout agent peut commenter une information
+ * (bouton « Commenter » de la carte) ; l'auteur de l'information et les autres commentateurs sont notifiés.
+ *
  * Classement : urgentes en tête, puis en cours (importance, puis les plus récentes), à venir
  * (par date de début), et terminées depuis moins d'une semaine (repliées).
  *
@@ -14,8 +18,8 @@
  * une fois par appareil (bouton en haut du mur) ; l'appareil se réabonne seul à chaque ouverture.
  *
  * Hors ligne : le dernier mur reçu est gardé sur l'appareil ; une publication ou une fin
- * passe par la file d'attente de app.js (actions « creerInfo », « terminerInfo »).
- * Backend : Infos.gs et Push.gs (dépôt AVISMUR-backend).
+ * passe par la file d'attente de app.js (actions « creerInfo », « terminerInfo », « commenterInfo »,
+ * « supprimerCommentaire »). Backend : Infos.gs, CommentairesInfos.gs, PiecesJointes.gs et Push.gs (dépôt AVISMUR-backend).
  */
 const Infos = (() => {
   const CLE_MUR = 'avismur_infos';
@@ -189,7 +193,7 @@ const Infos = (() => {
     } catch (err) { /* hors ligne : on garde le dernier mur connu */ } finally {
       chargementEnCours = false;
     }
-    if (estVisible()) rendre();
+    if (estVisible() && !saisieEnCours()) rendre();
   }
 
   const estVisible = () => zone && !zone.hidden;
@@ -317,6 +321,18 @@ const Infos = (() => {
     else if (info.importance === 'importante') pastilles.push(el('span', { classe: 'info-pastille importante', texte: 'Important' }));
     if (st === 'encours' && info.fin === aujourdhui) pastilles.push(el('span', { classe: 'info-pastille dernier-jour', texte: 'Dernier jour' }));
     if (info.enAttente || info.finEnAttente) pastilles.push(el('span', { classe: 'info-pastille attente', texte: 'En attente d\'envoi' }));
+    // Commentaires : pas sur une information pas encore publiée (elle n'a pas d'identifiant sur le serveur).
+    const commentaires = info.enAttente ? [] : commentairesDe(info);
+    const ouvert = !info.enAttente && ouverts.has(info.id);
+    const n = commentaires.length;
+    const boutonCommentaires = info.enAttente ? null : el('button', {
+      type: 'button', classe: `info-bouton info-bouton-commentaires${ouvert ? ' actif' : ''}`, 'aria-expanded': String(ouvert),
+      surclick: () => {
+        if (ouvert) ouverts.delete(info.id); else ouverts.add(info.id);
+        rendre();
+        if (!ouvert) focaliser(`[data-id="${CSS.escape(info.id)}"] .commentaire-saisie textarea`);
+      },
+    }, el('span', { 'aria-hidden': 'true', texte: '💬 ' }), n ? `${n} commentaire${n > 1 ? 's' : ''}` : 'Commenter');
 
     return el('article', {
       classe: `info info-${info.importance} info-${st}`, 'data-id': info.id, tabindex: '-1', 'aria-label': `${type.libelle} : ${info.titre}`,
@@ -326,21 +342,24 @@ const Infos = (() => {
       el('span', { classe: 'info-pastilles' }, pastilles)),
     el('h3', { classe: 'info-titre', texte: info.titre }),
     info.texte ? el('p', { classe: 'info-texte', texte: info.texte }) : null,
+    affichagePieces(info.pieces),
     el('p', { classe: 'info-periode' }, icone('calendrier', 'info-mini-picto'), periode(info, aujourdhui)),
     el('p', { classe: 'info-meta' },
       `${info.auteur || ''}${info.creee ? `, ${relatif(info.creee)}` : ''}`,
       tous ? null : el('span', { classe: 'info-destinataires' }, 'Pour : ',
         info.destinataires.map((d) => (METIERS.find((m) => m.id === d) || { libelle: d }).libelle).join(', '))),
-    st === 'terminee' ? null : (enConfirmation
+    enConfirmation
       ? el('div', { classe: 'info-confirmation', role: 'group', 'aria-label': 'Confirmer' },
         el('p', { texte: 'Mettre fin à cette information pour tout le monde ?' }),
         el('div', { classe: 'info-confirmation-boutons' },
           el('button', { type: 'button', classe: 'info-bouton danger', texte: 'Oui, y mettre fin', surclick: () => terminer(info) }),
           el('button', { type: 'button', classe: 'info-bouton', texte: 'Annuler', surclick: () => { confirmerFin = ''; rendre(); } })))
       : el('div', { classe: 'info-actions' },
-        el('button', {
+        boutonCommentaires,
+        st === 'terminee' ? null : el('button', {
           type: 'button', classe: 'info-bouton', surclick: () => { confirmerFin = info.id; rendre(); focaliser(`[data-id="${CSS.escape(info.id)}"] .info-confirmation .danger`); },
-        }, info.enAttente ? 'Annuler la publication' : 'Plus d\'actualité'))));
+        }, info.enAttente ? 'Annuler la publication' : 'Plus d\'actualité')),
+    ouvert ? filCommentaires(info, commentaires) : null);
   }
 
   function focaliser(selecteur) {
@@ -357,6 +376,266 @@ const Infos = (() => {
     return el('nav', { classe: 'mur-liens', 'aria-label': 'Accès rapides' },
       liens.map(([texte, v]) => el('button', { type: 'button', classe: 'lien', texte: `${texte} →`, surclick: () => App.ouvrirVue(v) })));
   }
+
+  // ---------- Pièces jointes (photos, documents, liens) ----------
+  const PIECES_MAX = 6;
+  const DOCUMENT_MAX = 2 * 1024 * 1024; // 2 Mo : la pièce attend dans la file d'attente de l'appareil si hors ligne
+  const TYPES_DOCUMENTS = {
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    odt: 'application/vnd.oasis.opendocument.text',
+    ods: 'application/vnd.oasis.opendocument.spreadsheet',
+    txt: 'text/plain',
+    csv: 'text/csv',
+  };
+  const ACCEPTE_DOCUMENTS = Object.keys(TYPES_DOCUMENTS).map((e) => `.${e}`).join(',');
+  const cachePieces = new Map(); // id Drive → Promise<dataUrl> (le temps de la session)
+
+  /** Pièce du serveur ({ t, id, nom, mime, url }) ou en attente d'envoi ({ type, nom, donnees, url, titre }). */
+  const piece = (p) => ({ t: p.t || p.type, id: p.id || '', nom: p.nom || p.titre || '', url: p.url || '', donnees: p.donnees || '', mime: p.mime || '' });
+
+  /** Photo réduite à 1280 px et compressée (JPEG) : légère pour l'envoi et la file d'attente. */
+  function reduirePhoto(fichier) {
+    return new Promise((ok, echec) => {
+      const img = new Image();
+      const url = URL.createObjectURL(fichier);
+      img.onload = () => {
+        const echelle = Math.min(1, 1280 / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * echelle);
+        c.height = Math.round(img.height * echelle);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        ok(c.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); echec(new Error('image')); };
+      img.src = url;
+    });
+  }
+
+  function lireDocument(fichier) {
+    const ext = (fichier.name.split('.').pop() || '').toLowerCase();
+    const mime = TYPES_DOCUMENTS[ext];
+    if (!mime) return Promise.reject(new Error(`« ${fichier.name} » : format non accepté (PDF, Word, Excel, PowerPoint, texte).`));
+    if (fichier.size > DOCUMENT_MAX) return Promise.reject(new Error(`« ${fichier.name} » dépasse 2 Mo.`));
+    return new Promise((ok, echec) => {
+      const lecteur = new FileReader();
+      lecteur.onload = () => ok(`data:${mime};base64,${String(lecteur.result).split(',')[1] || ''}`);
+      lecteur.onerror = () => echec(new Error(`« ${fichier.name} » est illisible.`));
+      lecteur.readAsDataURL(fichier);
+    });
+  }
+
+  function chargerPiece(id) {
+    if (!cachePieces.has(id)) {
+      const p = App.appeler('pieceJointe', { id }).then((rep) => {
+        if (!rep.ok) throw new Error(rep.erreur || 'Pièce jointe introuvable');
+        return rep.donnees;
+      });
+      p.catch(() => cachePieces.delete(id)); // réessayer plus tard (hors ligne)
+      cachePieces.set(id, p);
+    }
+    return cachePieces.get(id);
+  }
+
+  const domaine = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return url; } };
+
+  /** Éditeur de pièces jointes : modifie le tableau `pieces` sur place. */
+  function editeurPieces(pieces) {
+    const liste = el('ul', { classe: 'pj-edition' });
+    const erreur = el('p', { classe: 'message erreur', role: 'status' });
+    const ids = { photo: nouvelId(), doc: nouvelId(), url: nouvelId(), titre: nouvelId() };
+    const entreePhoto = el('input', { id: ids.photo, type: 'file', accept: 'image/*', multiple: true, classe: 'invisible' });
+    const entreeDoc = el('input', { id: ids.doc, type: 'file', accept: ACCEPTE_DOCUMENTS, multiple: true, classe: 'invisible' });
+    const champUrl = el('input', { id: ids.url, type: 'url', inputmode: 'url', placeholder: 'https://…', autocomplete: 'off' });
+    const champTitre = el('input', { id: ids.titre, maxlength: '120', placeholder: 'Ex. : protocole sur l\'intranet', autocomplete: 'off' });
+    const saisieLien = el('div', { classe: 'pj-saisie-lien', hidden: true },
+      el('div', { classe: 'champ' }, el('label', { for: ids.url, texte: 'Adresse du lien' }), champUrl),
+      el('div', { classe: 'champ' }, el('label', { for: ids.titre }, 'Titre ', el('small', { texte: '(facultatif)' })), champTitre),
+      el('div', { classe: 'pj-saisie-boutons' },
+        el('button', { type: 'button', classe: 'info-bouton', texte: 'Ajouter le lien', surclick: ajouterLien }),
+        el('button', { type: 'button', classe: 'lien', texte: 'Annuler', surclick: () => { saisieLien.hidden = true; } })));
+    const boutonPhoto = el('label', { for: ids.photo, classe: 'pj-ajout' }, '📷 Photo');
+    const boutonDoc = el('label', { for: ids.doc, classe: 'pj-ajout' }, '📎 Document');
+    const boutonLien = el('button', { type: 'button', classe: 'pj-ajout', surclick: () => { saisieLien.hidden = false; champUrl.focus(); } }, '🔗 Lien');
+
+    const signaler = (texte) => { erreur.textContent = texte; };
+    function maj() {
+      liste.innerHTML = '';
+      pieces.forEach((brute, i) => {
+        const p = piece(brute);
+        const libelle = p.t === 'lien' ? (p.nom || domaine(p.url)) : p.nom;
+        liste.append(el('li', { classe: `pj-element pj-${p.t}` },
+          p.t === 'photo' ? el('img', { src: p.donnees, alt: '', classe: 'pj-mini' }) : el('span', { classe: 'pj-symbole', 'aria-hidden': 'true', texte: p.t === 'lien' ? '🔗' : '📄' }),
+          el('span', { classe: 'pj-nom', texte: libelle }),
+          el('button', { type: 'button', classe: 'pj-retirer', 'aria-label': `Retirer ${libelle}`, texte: '✕', surclick: () => { pieces.splice(i, 1); maj(); } })));
+      });
+      const plein = pieces.length >= PIECES_MAX;
+      [boutonPhoto, boutonDoc, boutonLien].forEach((b) => b.classList.toggle('desactive', plein));
+      entreePhoto.disabled = plein; entreeDoc.disabled = plein; boutonLien.disabled = plein;
+    }
+    function place(n) {
+      if (pieces.length + n > PIECES_MAX) { signaler(`Pas plus de ${PIECES_MAX} pièces jointes.`); return false; }
+      return true;
+    }
+    async function ajouterFichiers(entree, lire, type) {
+      signaler('');
+      const fichiers = [...entree.files];
+      entree.value = '';
+      if (!place(fichiers.length)) return;
+      for (const f of fichiers) {
+        try {
+          pieces.push({ type, nom: f.name.slice(0, 80), donnees: await lire(f) });
+        } catch (e) {
+          signaler(e.message === 'image' ? `« ${f.name} » n'est pas une image lisible.` : e.message);
+        }
+      }
+      maj();
+    }
+    function ajouterLien() {
+      signaler('');
+      let url = champUrl.value.trim();
+      if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
+      let valide = false;
+      try { valide = /^https?:$/.test(new URL(url).protocol) && url.length <= 500; } catch (e) { /* invalide */ }
+      if (!valide) { signaler('Adresse de lien invalide.'); champUrl.focus(); return; }
+      if (!place(1)) return;
+      pieces.push({ type: 'lien', url, titre: champTitre.value.replace(/\s+/g, ' ').trim() });
+      champUrl.value = ''; champTitre.value = '';
+      saisieLien.hidden = true;
+      maj();
+    }
+    // Entrée dans le champ du lien : ajoute le lien au lieu d'envoyer le formulaire.
+    [champUrl, champTitre].forEach((c) => c.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ajouterLien(); } }));
+    entreePhoto.addEventListener('change', () => ajouterFichiers(entreePhoto, reduirePhoto, 'photo'));
+    entreeDoc.addEventListener('change', () => ajouterFichiers(entreeDoc, lireDocument, 'document'));
+    maj();
+    return el('div', { classe: 'pj-editeur' },
+      el('div', { classe: 'pj-boutons' }, boutonPhoto, entreePhoto, boutonDoc, entreeDoc, boutonLien),
+      saisieLien, liste, erreur);
+  }
+
+  /** Affichage des pièces jointes d'une information ou d'un commentaire. */
+  function affichagePieces(liste) {
+    if (!liste || !liste.length) return null;
+    const pieces = liste.map(piece);
+    const photos = pieces.filter((p) => p.t === 'photo');
+    const autres = pieces.filter((p) => p.t !== 'photo');
+    return el('div', { classe: 'pj-affichage' },
+      photos.length ? el('div', { classe: 'pj-vignettes' }, photos.map(vignette)) : null,
+      autres.length ? el('ul', { classe: 'pj-fichiers' }, autres.map((p) => el('li', {}, p.t === 'lien'
+        ? el('a', { classe: 'pj-puce', href: p.url, target: '_blank', rel: 'noopener noreferrer' },
+          el('span', { 'aria-hidden': 'true', texte: '🔗' }), el('span', { classe: 'pj-nom', texte: p.nom || domaine(p.url) }))
+        : boutonDocument(p)))) : null);
+  }
+
+  function vignette(p) {
+    const img = el('img', { alt: p.nom || 'Photo jointe', classe: 'pj-vignette-img', loading: 'lazy' });
+    const bouton = el('button', { type: 'button', classe: 'pj-vignette chargement', 'aria-label': `Agrandir la photo ${p.nom}`.trim() }, img);
+    const afficher = (src) => { img.src = src; bouton.classList.remove('chargement'); };
+    if (p.donnees) afficher(p.donnees);
+    else if (p.id) chargerPiece(p.id).then(afficher).catch(() => { bouton.classList.replace('chargement', 'indisponible'); bouton.title = 'Photo indisponible hors ligne'; });
+    bouton.addEventListener('click', () => {
+      if (!img.getAttribute('src')) return;
+      const idT = nouvelId();
+      ouvrirFenetre(p.nom || 'Photo', idT, el('img', { classe: 'pj-grande', src: img.src, alt: p.nom || 'Photo jointe' }));
+    });
+    return bouton;
+  }
+
+  function boutonDocument(p) {
+    const bouton = el('button', { type: 'button', classe: 'pj-puce' },
+      el('span', { 'aria-hidden': 'true', texte: '📄' }), el('span', { classe: 'pj-nom', texte: p.nom || 'Document' }));
+    bouton.addEventListener('click', async () => {
+      bouton.disabled = true;
+      bouton.classList.add('chargement');
+      try {
+        const donnees = p.donnees || await chargerPiece(p.id);
+        const blob = await (await fetch(donnees)).blob();
+        const url = URL.createObjectURL(blob);
+        const a = el('a', { href: url, download: p.nom || 'document' });
+        document.body.append(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      } catch (e) {
+        avis = { texte: `Impossible d'ouvrir « ${p.nom} » (pas de réseau ?).`, classe: 'erreur' };
+        rendre();
+        return;
+      }
+      bouton.disabled = false;
+      bouton.classList.remove('chargement');
+    });
+    return bouton;
+  }
+
+  // ---------- Commentaires ----------
+  const ouverts = new Set(); // informations dont le fil de commentaires est déplié
+  const brouillons = new Map(); // id d'information → { texte, pieces } (garde la saisie entre deux affichages)
+  const brouillon = (id) => { if (!brouillons.has(id)) brouillons.set(id, { texte: '', pieces: [] }); return brouillons.get(id); };
+
+  /** Commentaires reçus du serveur + ceux qui attendent dans la file d'attente de cet appareil. */
+  function commentairesDe(info) {
+    const file = App.fileAttente();
+    const retires = new Set(file.filter((e) => e.action === 'supprimerCommentaire').map((e) => e.donnees.id));
+    const locaux = file.filter((e) => e.action === 'commenterInfo' && e.donnees.info === info.id).map((e) => ({
+      ...e.donnees, id: `local-${e.id}`, idFile: e.id, auteur: e.agent || agent(), creee: e.date, enAttente: true,
+    }));
+    return (info.commentaires || []).filter((c) => !retires.has(c.id)).concat(locaux);
+  }
+
+  function filCommentaires(info, commentaires) {
+    const b = brouillon(info.id);
+    const idTexte = nouvelId();
+    const admin = App.role() === 'admin';
+    const zoneTexte = el('textarea', {
+      id: idTexte, rows: '2', maxlength: '1000', placeholder: 'Votre commentaire…', valeur: b.texte,
+      surinput: (e) => { b.texte = e.target.value; },
+    });
+    return el('div', { classe: 'info-fil' },
+      commentaires.length ? el('ul', { classe: 'commentaires' }, commentaires.map((c) => el('li', { classe: `commentaire${c.enAttente ? ' attente' : ''}` },
+        el('p', { classe: 'commentaire-meta' },
+          el('strong', { texte: c.auteur || '' }), c.creee ? ` · ${relatif(c.creee)}` : '',
+          c.enAttente ? el('span', { classe: 'info-pastille attente', texte: 'En attente d\'envoi' }) : null,
+          c.auteur === agent() || admin
+            ? el('button', { type: 'button', classe: 'lien commentaire-retirer', texte: 'Retirer', surclick: () => retirerCommentaire(c) }) : null),
+        c.texte ? el('p', { classe: 'commentaire-texte', texte: c.texte }) : null,
+        affichagePieces(c.pieces)))) : el('p', { classe: 'info-note', texte: 'Aucun commentaire pour l\'instant.' }),
+      el('form', { classe: 'commentaire-saisie', novalidate: true, sursubmit: (e) => { e.preventDefault(); envoyerCommentaire(info); } },
+        el('label', { for: idTexte, classe: 'invisible', texte: 'Commentaire' }),
+        zoneTexte,
+        editeurPieces(b.pieces),
+        el('button', { type: 'submit', classe: 'info-bouton envoyer', texte: 'Envoyer' })));
+  }
+
+  function envoyerCommentaire(info) {
+    const b = brouillon(info.id);
+    const texte = b.texte.trim();
+    if (!texte && !b.pieces.length) { focaliser(`[data-id="${CSS.escape(info.id)}"] .commentaire-saisie textarea`); return; }
+    const ok = App.mettreEnFile({ action: 'commenterInfo', donnees: { info: info.id, texte, pieces: b.pieces }, agent: agent() });
+    if (!ok) {
+      avis = { texte: 'Impossible d\'enregistrer sur cet appareil (mémoire pleine : pièces jointes trop lourdes ?).', classe: 'erreur' };
+      rendre();
+      return;
+    }
+    brouillons.delete(info.id);
+    avis = navigator.onLine ? { texte: '', classe: '' } : { texte: 'Commentaire enregistré sur cet appareil : il sera envoyé au retour du réseau.', classe: 'succes' };
+    rendre();
+  }
+
+  function retirerCommentaire(c) {
+    if (c.enAttente) App.retirerDeFile(c.idFile);
+    else App.mettreEnFile({ action: 'supprimerCommentaire', donnees: { id: c.id }, agent: agent() });
+    rendre();
+  }
+
+  /** Une saisie est en cours sur le mur : ne pas tout redessiner sous les doigts de l'agent. */
+  const saisieEnCours = () => zone && zone.contains(document.activeElement) && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName);
 
   // ---------- Fin d'une information ----------
   function terminer(info) {
@@ -396,6 +675,7 @@ const Infos = (() => {
     const champFin = el('input', { id: ids.fin, type: 'date', min: jour() });
     const noteNotif = el('p', { classe: 'info-note' });
     const message = el('p', { classe: 'message', role: 'status' });
+    const pieces = [];
 
     const majNote = () => {
       const debut = champDebut.value || jour();
@@ -413,6 +693,7 @@ const Infos = (() => {
         el('input', { id: ids.titre, maxlength: '120', required: true, placeholder: 'Ex. : F22 au garage jusqu\'à jeudi', autocomplete: 'off' })),
       el('div', { classe: 'champ' }, el('label', { for: ids.texte }, 'Détails ', el('small', { texte: '(facultatif)' })),
         el('textarea', { id: ids.texte, maxlength: '1500', rows: '3' })),
+      el('fieldset', { classe: 'question' }, el('legend', {}, 'Photos, documents, liens ', el('small', { texte: '(facultatif)' })), editeurPieces(pieces)),
       el('div', { classe: 'dates-info' },
         el('div', { classe: 'champ' }, el('label', { for: ids.debut, texte: 'Début' }), champDebut),
         el('div', { classe: 'champ' }, el('label', { for: ids.fin }, 'Fin ', el('small', { texte: '(facultatif)' })), champFin)),
@@ -462,10 +743,11 @@ const Infos = (() => {
         debut,
         fin,
         destinataires,
+        pieces,
       };
       const ok = App.mettreEnFile({ action: 'creerInfo', donnees, agent: agent() });
       if (!ok) {
-        message.textContent = 'Impossible d\'enregistrer sur cet appareil (mémoire pleine).';
+        message.textContent = 'Impossible d\'enregistrer sur cet appareil (mémoire pleine : pièces jointes trop lourdes ?).';
         message.className = 'message erreur';
         return;
       }
@@ -732,6 +1014,9 @@ const Infos = (() => {
       mur = { aujourdhui: '', metier: '', types: TYPES_DEFAUT, infos: [], recu: '' };
       filtre = { portee: '', type: '' };
       etatPush = '';
+      ouverts.clear();
+      brouillons.clear();
+      cachePieces.clear();
       try { localStorage.removeItem(CLE_MUR); localStorage.removeItem(CLE_FILTRE); } catch (e) { /* rien */ }
     },
   };
