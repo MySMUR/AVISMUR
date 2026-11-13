@@ -2198,3 +2198,36 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .usr-stage-en-cours span:first-child { font-weight: 700; }
 .usr-stage-boutons { display: flex; gap: 0.4rem; }
 .usr-form-stage { padding: 0.5rem 0; }
+
+/* ---------- Mon profil (profil.js) ---------- */
+.profil { max-width: 46rem; }
+.pro-carte { margin: 0 0 1rem; padding: 1rem 1.1rem; background: #fff; border: 1px solid var(--trait); border-radius: var(--rayon); }
+.pro-carte h2 { margin: 0 0 0.6rem; font-size: 1.15rem; }
+.pro-carte h3 { margin: 0.9rem 0 0.4rem; font-size: 1rem; }
+.pro-carte .champ { margin-bottom: 0.6rem; }
+.pro-identite { display: flex; align-items: center; gap: 1rem; }
+.pro-avatar {
+  flex: 0 0 3.4rem; height: 3.4rem; border-radius: 50%; display: grid; place-items: center;
+  background: var(--bleu); color: #fff; font-weight: 700; font-size: 1.25rem; letter-spacing: 0.03em;
+}
+.pro-identite p { margin: 0; }
+.pro-nom { font-weight: 700; font-size: 1.15rem; }
+.pro-fonction, .pro-cri { color: var(--gris); }
+.pro-ligne { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.6rem 1rem; }
+.pro-ligne > .champ, .pro-ligne > .pro-valeur { flex: 1 1 14rem; }
+.pro-ligne .cfg-bouton { flex: 0 0 auto; margin-bottom: 0.6rem; }
+.pro-valeur { display: flex; flex-direction: column; gap: 0.15rem; margin-bottom: 0.6rem; }
+.pro-etiquette { font-weight: 700; }
+.pro-valeur small, .pro-aide { color: var(--gris); font-size: 0.92rem; }
+.pro-aide { margin: 0.2rem 0 0.7rem; }
+.pro-sous-formulaire { margin: 0.4rem 0 0.6rem; padding: 0.8rem; background: #F6F9FD; border-radius: var(--rayon); }
+.pro-boutons { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.2rem; }
+.pro-boutons .principal, .pro-bouton-court.principal { width: auto; margin: 0; padding-inline: 1.4rem; }
+.pro-carte .case-rester { margin-bottom: 0.8rem; }
+.pro-vert { background: #DDF2EF; color: #11635B; }
+.pro-orange { background: #FDEBD8; color: #8A4609; }
+.pro-gris { background: #E6EBF2; color: var(--gris); }
+.pro-ligne .usr-pastille { margin-bottom: 0.6rem; white-space: normal; }
+.pro-appareils ul { list-style: none; margin: 0; padding: 0; }
+.pro-appareils li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.45rem 0; border-top: 1px solid #E1E8F2; }
+.pro-appareils small { color: var(--gris); }

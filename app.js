@@ -168,6 +168,19 @@ function memoriserAppareil(rep, resterConnecte) {
   return !resterConnecte;
 }
 
+/**
+ * Mot de passe changé depuis « Mon profil » : le serveur a coupé les anciennes sessions et renvoie
+ * un nouveau jeton (et un nouveau jeton d'appareil si celui-ci était mémorisé).
+ */
+function nouvelleSession(rep) {
+  const actuelle = session.lire() || {};
+  session.ecrire({ ...actuelle, jeton: rep.jeton, debut: Date.now(), droits: rep.droits || actuelle.droits || [] });
+  const enregistre = appareil.lire();
+  if (!enregistre) return;
+  if (rep.jetonAppareil) appareil.ecrire({ ...enregistre, jetonAppareil: rep.jetonAppareil });
+  else appareil.effacer();
+}
+
 function avertirSansAppareil() {
   $('statut').textContent = '« Rester connecté » n\'a pas pu être activé : le serveur ne l\'a pas accepté. Prévenez l\'administrateur.';
   $('statut').className = 'message erreur';
@@ -535,6 +548,7 @@ $('deconnexion').addEventListener('click', async () => {
   } catch (err) { /* déconnexion locale quand même */ }
   Infos.oublier();
   Materiel.oublier();
+  Profil.oublier();
   session.effacer();
   appareil.effacer();
   afficher('ecran-connexion');
@@ -629,6 +643,7 @@ function enregistrerAmbulancier() {
 // « aujourdhui » : check-list du jour selon le métier (véhicules pour l'ambulancier, inventaires pour l'IADE).
 // Véhicules : « checklist-ambulancier » (tableau de bord du parc sur ordinateur, cases sinon),
 //   « carburant », « carrosserie », « mecanique » (mêmes cases ; toucher un véhicule ouvre directement l'écran voulu).
+// « profil » : Mon profil (profil.js), pour tous les agents.
 // Inventaires : « inventaires » (inventaires.js). Administration : « utilisateurs », « configuration », « base-articles ».
 let roleCourant = '';
 let vueCourante = 'accueil';
@@ -737,13 +752,17 @@ function ouvrirVue(demandee) {
   if (utilisateurs) Utilisateurs.ouvrir();
   else Utilisateurs.masquer();
 
+  const monProfil = vue === 'profil';
+  if (monProfil) Profil.ouvrir();
+  else Profil.masquer();
+
   const infos = vue === 'accueil' || vue === 'types-infos';
   if (vue === 'accueil') Infos.afficher(cibleInfo);
   else if (vue === 'types-infos') Infos.afficherTypes();
   else Infos.masquer();
   cibleInfo = '';
 
-  const vehicules = !parc && !inventaires && !config && !utilisateurs && !infos && !materiel;
+  const vehicules = !parc && !inventaires && !config && !utilisateurs && !infos && !materiel && !monProfil;
   $('zone-ambulancier').hidden = !vehicules;
   if (vehicules) {
     const def = VUES_VEHICULES[vue] || VUES_VEHICULES['checklist-ambulancier'];
@@ -888,6 +907,17 @@ function ouvrirAppareilDuLien(lien) {
 Parc.initialiser({ appeler });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });
 Utilisateurs.initialiser({ appeler, aDroit, estPrincipal: () => roleCourant === 'admin' });
+Profil.initialiser({
+  appeler,
+  mettreEnFile,
+  identifiant: () => (session.lire() || appareil.lire() || {}).identifiant || '',
+  jetonAppareil: () => (appareil.lire() || {}).jetonAppareil || '',
+  nouvelleSession,
+  etatNotifications: () => Infos.etatNotifications(),
+  activerNotifications: () => Infos.activerNotifications(),
+  finAbonnement: () => Infos.finAbonnement(),
+  desactiverNotifications: () => Infos.desactiverNotifications(),
+});
 Materiel.demarrer({
   appeler, mettreEnFile, retirerDeFile, lireFile: () => fileAttente.lire(), estAdmin: () => aDroit('MATERIEL'),
 });

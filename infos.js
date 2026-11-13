@@ -828,6 +828,7 @@ const Infos = (() => {
     }
     if (!pushPossible()) return null;
     if (Notification.permission === 'granted') {
+      if (pushCoupe()) return null; // choix de l'agent (Mon profil) : pas de relance sur le mur
       return etatPush === 'erreur'
         ? el('div', { classe: 'mur-notif' }, icone('accident', 'mur-notif-picto'),
           el('p', {}, el('strong', { texte: 'Notifications non activées.' }), ' Le serveur n\'a pas pu enregistrer cet appareil.'),
@@ -861,8 +862,17 @@ const Infos = (() => {
   }
 
   /** Abonne cet appareil (ou rafraîchit son abonnement) et le transmet au serveur. Silencieux hors ligne. */
+  // Notifications désactivées par l'agent dans « Mon profil » : pas de réabonnement silencieux à la connexion.
+  const CLE_PUSH_COUPE = 'avismur_push_desactive';
+  const pushCoupe = () => { try { return localStorage.getItem(CLE_PUSH_COUPE) === '1'; } catch (e) { return false; } };
+  function couperPush(oui) {
+    try { if (oui) localStorage.setItem(CLE_PUSH_COUPE, '1'); else localStorage.removeItem(CLE_PUSH_COUPE); } catch (e) { /* rien */ }
+  }
+
   async function abonner(forcer = false) {
     if (!pushPossible() || Notification.permission !== 'granted') return;
+    if (forcer) couperPush(false);
+    else if (pushCoupe()) return;
     try {
       const enregistrement = await navigator.serviceWorker.ready;
       let cle = localStorage.getItem(CLE_PUSH);
@@ -1017,6 +1027,42 @@ const Infos = (() => {
       charger();
     },
     desabonner,
+    // « Mon profil » (profil.js) : état et réglage des notifications de cet appareil.
+    /** 'ios' (installer l'appli d'abord), 'impossible', 'bloque', 'actif', 'erreur' ou 'inactif'. */
+    async etatNotifications() {
+      if (iosHorsAppli()) return 'ios';
+      if (!pushPossible()) return 'impossible';
+      if (Notification.permission === 'denied') return 'bloque';
+      if (Notification.permission !== 'granted') return 'inactif';
+      try {
+        const enregistrement = await navigator.serviceWorker.getRegistration();
+        const abonnement = enregistrement && await enregistrement.pushManager.getSubscription();
+        if (!abonnement) return etatPush === 'erreur' ? 'erreur' : 'inactif';
+      } catch (e) { return 'inactif'; }
+      return etatPush === 'erreur' ? 'erreur' : 'actif';
+    },
+    /** Demande l'autorisation puis abonne cet appareil ; renvoie le nouvel état. */
+    async activerNotifications() {
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') await abonner(true);
+      } catch (err) { etatPush = 'erreur'; }
+      return this.etatNotifications();
+    },
+    /** « Désactiver » dans Mon profil : désabonne cet appareil et s'en souvient. */
+    async desactiverNotifications() {
+      couperPush(true);
+      etatPush = '';
+      await desabonner();
+    },
+    /** Fin de l'adresse d'abonnement de cet appareil (pour le reconnaître dans la liste du serveur). */
+    async finAbonnement() {
+      try {
+        const enregistrement = await navigator.serviceWorker.getRegistration();
+        const abonnement = enregistrement && await enregistrement.pushManager.getSubscription();
+        return abonnement ? abonnement.endpoint.slice(-24) : '';
+      } catch (e) { return ''; }
+    },
     /** Vider l'affichage (déconnexion) : le prochain agent ne voit pas l'ancien filtre. */
     oublier() {
       mur = { aujourdhui: '', metier: '', types: TYPES_DEFAUT, infos: [], recu: '' };

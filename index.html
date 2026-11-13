@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=64">
+  <link rel="stylesheet" href="style.css?v=65">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -196,6 +196,9 @@
       <!-- Gestion des utilisateurs : agents de DB_SMUR, comptes, droits (administrateurs, utilisateurs.js) -->
       <div id="zone-utilisateurs" class="utilisateurs" hidden></div>
 
+      <!-- Mon profil : mot de passe, téléphone, mail, partage du numéro, notifications (profil.js) -->
+      <div id="zone-profil" class="profil" hidden></div>
+
       <!-- Inventaires emboîtés (IADE) : sac > sacoche > pochette, photos à points, péremptions (inventaires.js) -->
       <div id="zone-inventaires" class="inventaires" hidden></div>
 
@@ -220,6 +223,7 @@
       </div>
       <nav class="tiroir-corps" aria-label="Menu principal">
         <button type="button" class="tiroir-lien tiroir-accueil" data-vue="accueil">Accueil<small>Informations et rappels</small></button>
+        <button type="button" class="tiroir-lien tiroir-accueil" data-vue="profil">Mon profil<small>Mot de passe, téléphone, mail, notifications</small></button>
 
         <section id="rubrique-vehicules" class="rubrique" aria-labelledby="titre-rubrique-vehicules">
           <h2 id="titre-rubrique-vehicules"><button type="button" class="rubrique-titre" aria-expanded="false" aria-controls="liste-rubrique-vehicules"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 16V8a1 1 0 0 1 1-1h10l4 4h2a1 1 0 0 1 1 1v4"/><path d="M3 16h2m4 0h6m4 0h2"/><circle cx="7" cy="16.5" r="2"/><circle cx="17" cy="16.5" r="2"/><path d="M8 10.5h3M9.5 9v3"/></svg>Véhicules<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg></button></h2>
@@ -285,12 +289,13 @@
   <script src="parc.js?v=7"></script>
   <script src="lib/qrcode.js?v=1"></script>
   <script src="inventaires.js?v=34"></script>
-  <script src="infos.js?v=4"></script>
+  <script src="infos.js?v=5"></script>
   <script src="materiel.js?v=6"></script>
+  <script src="profil.js?v=1"></script>
   <nav id="barre-scan" class="barre-scan" aria-label="Accès rapide aux inventaires">
     <button type="button" data-scan="qr" aria-label="Scanner un QR code" title="QR code"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM5 5v3h3V5zM14 3h7v7h-7zm2 2v3h3V5zM3 14h7v7H3zm2 2v3h3v-3zM14 14h3v3h-3zM18 18h3v3h-3zM14 18h3v3h-3zM18 14h3v3h-3z" fill="currentColor"/></svg><span>QR code</span></button>
     <button type="button" data-scan="nfc" aria-label="Lire une puce NFC" title="NFC"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 4v10h2V11l4 6h2V7h-2v6l-4-6z" fill="currentColor"/></svg><span>NFC</span></button>
   </nav>
-  <script src="app.js?v=45"></script>
+  <script src="app.js?v=46"></script>
 </body>
 </html>

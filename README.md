@@ -44,6 +44,12 @@ Liens connexes à prévoir (fonctionnalités non encore développées) :
 | Maintenance | Fiche véhicule ; Matériel ; Aujourd'hui (échéances) |
 | Pilotage (cadre, chef d'unité) | Menu (rubrique à créer) ; historiques par véhicule et par agent |
 
+## Mon profil (menu, sous Accueil)
+
+Pour tous les agents (`profil.js`, backend `Profil.gs`) : changer son mot de passe, son numéro de portable (confirmé par un code SMS), son adresse mail, choisir de partager son numéro avec les autres utilisateurs (annuaire du personnel) et avec l'application (SMS d'alerte ou de rappel), activer ou désactiver les notifications push sur l'appareil et retirer un ancien appareil.
+
+Hors ligne : le profil connu est affiché ; le mail et les choix de partage partent dans la file d'attente, le téléphone et le mot de passe nécessitent le réseau. « Désactiver » les notifications est mémorisé sur l'appareil : elles ne se réactivent pas seules à la connexion suivante.
+
 ## Mur d'informations (page d'accueil)
 
 Chaque agent peut publier une information, une alerte ou un rappel (bouton « Nouvelle information ») :
