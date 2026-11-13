@@ -2152,3 +2152,28 @@ body.fenetre-ouverte .mur-publier { display: none; }
 /* Numéro de version, discret, en pied du menu */
 .version-appli { margin: 0.5rem 0 0; font-size: 0.72rem; color: #8796AE; text-align: center; }
 .version-appli:empty { display: none; }
+
+/* ---------- Gestion des utilisateurs (utilisateurs.js) ---------- */
+.usr-outils { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: flex-end; margin: 1rem 0 0.4rem; }
+.usr-champ { flex: 1 1 12rem; margin: 0; }
+.usr-outils .cfg-bouton { flex: 0 0 auto; }
+.usr-liste { list-style: none; margin: 0.6rem 0 0; padding: 0; }
+.usr-agent { margin: 0 0 0.5rem; background: #fff; border: 1px solid var(--trait); border-radius: var(--rayon); }
+.usr-agent.ouvert { border-color: var(--bleu); }
+.usr-entete {
+  display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.6rem; width: 100%; padding: 0.7rem 0.9rem;
+  background: none; border: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; min-height: 0;
+}
+.usr-nom { font-weight: 700; }
+.usr-role { grid-column: 1; color: var(--gris); font-size: 0.9rem; }
+.usr-entete .usr-pastille { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+.usr-pastille { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
+.usr-vert { background: #DDF2EF; color: #11635B; }
+.usr-orange { background: #FDEBD8; color: #8A4609; }
+.usr-gris { background: #E6EBF2; color: var(--gris); }
+.usr-fiche { padding: 0 0.9rem 0.9rem; border-top: 1px solid #E1E8F2; }
+.usr-infos { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.5rem 1rem; margin: 0.8rem 0; }
+.usr-info dt { color: var(--gris); font-size: 0.85rem; }
+.usr-info dd { margin: 0; font-weight: 700; }
+.usr-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+.usr-confirmer.cfg-bouton { color: #fff; background: var(--erreur); border-color: var(--erreur); }

@@ -608,7 +608,7 @@ function enregistrerAmbulancier() {
 // « aujourdhui » : check-list du jour selon le métier (véhicules pour l'ambulancier, inventaires pour l'IADE).
 // Véhicules : « checklist-ambulancier » (tableau de bord du parc sur ordinateur, cases sinon),
 //   « carburant », « carrosserie », « mecanique » (mêmes cases ; toucher un véhicule ouvre directement l'écran voulu).
-// Inventaires : « inventaires » (inventaires.js). Administration : « configuration », « base-articles ».
+// Inventaires : « inventaires » (inventaires.js). Administration : « utilisateurs », « configuration », « base-articles ».
 let roleCourant = '';
 let vueCourante = 'accueil';
 let cibleInfo = ''; // information à mettre en évidence à l'ouverture du mur (lien d'une notification)
@@ -639,7 +639,7 @@ const vueDuLien = () => (location.hash === '#inv-base' ? 'base-articles' : (gest
 function vueAutorisee(vue) {
   if (VUES_VEHICULES[vue] && !accesVehicules()) return 'aujourdhui';
   if ((vue === 'inventaires' || vue === 'base-articles' || vue === 'suivi-materiel') && !accesInventaires()) return 'aujourdhui';
-  if ((vue === 'configuration' || vue === 'types-infos' || vue === 'gestion-inventaires') && roleCourant !== 'admin') return 'accueil';
+  if ((vue === 'configuration' || vue === 'utilisateurs' || vue === 'types-infos' || vue === 'gestion-inventaires') && roleCourant !== 'admin') return 'accueil';
   return vue;
 }
 
@@ -678,13 +678,17 @@ function ouvrirVue(demandee) {
   $('zone-config').hidden = !config;
   if (config) ConfigAdmin.ouvrir();
 
+  const utilisateurs = vue === 'utilisateurs';
+  if (utilisateurs) Utilisateurs.ouvrir();
+  else Utilisateurs.masquer();
+
   const infos = vue === 'accueil' || vue === 'types-infos';
   if (vue === 'accueil') Infos.afficher(cibleInfo);
   else if (vue === 'types-infos') Infos.afficherTypes();
   else Infos.masquer();
   cibleInfo = '';
 
-  const vehicules = !parc && !inventaires && !config && !infos && !materiel;
+  const vehicules = !parc && !inventaires && !config && !utilisateurs && !infos && !materiel;
   $('zone-ambulancier').hidden = !vehicules;
   if (vehicules) {
     const def = VUES_VEHICULES[vue] || VUES_VEHICULES['checklist-ambulancier'];
@@ -825,6 +829,7 @@ function ouvrirAppareilDuLien(lien) {
 }
 Parc.initialiser({ appeler });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });
+Utilisateurs.initialiser({ appeler });
 Materiel.demarrer({
   appeler, mettreEnFile, retirerDeFile, lireFile: () => fileAttente.lire(), estAdmin: () => roleCourant === 'admin',
 });
