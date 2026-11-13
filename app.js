@@ -219,7 +219,9 @@ function afficherApplication(infos) {
  * Bandeau et en-tête du menu : nom prénom et fonction de l'agent.
  * La fonction vient du serveur (colonne « Fonction » de DB_SMUR) ; à défaut, elle est déduite du rôle.
  */
-const FONCTIONS = { ambulancier: 'Ambulancier', iade: 'IADE', encadrement: 'Encadrement', admin: 'Administrateur' };
+const FONCTIONS = {
+  ambulancier: 'Ambulancier', iade: 'IADE', 'etudiant-iade': 'Étudiant IADE', medecin: 'Médecin', interne: 'Interne', encadrement: 'Encadrement', admin: 'Administrateur',
+};
 function afficherAgent(infos) {
   const nom = [infos.nom, infos.prenom].filter(Boolean).join(' ') || infos.identifiant || '';
   const fonction = infos.fonction || FONCTIONS[infos.role] || infos.role || '';
@@ -623,7 +625,12 @@ const VUES_VEHICULES = {
   mecanique: { mode: 'garage', titre: 'Suivi mécanique', consigne: 'Touchez un véhicule pour noter un passage au garage' },
 };
 
-const accesVehicules = () => roleCourant !== 'iade';
+// Profils « comme un IADE » : inventaires et suivi du matériel, pas de check-list véhicules.
+// L'étudiant IADE n'aura pas accès aux stupéfiants (estEtudiant), quand ils seront en place.
+const PROFILS_IADE = ['iade', 'etudiant-iade', 'medecin', 'interne'];
+const profilIade = () => PROFILS_IADE.includes(roleCourant);
+const estEtudiant = () => roleCourant === 'etudiant-iade';
+const accesVehicules = () => !profilIade();
 const accesInventaires = () => roleCourant !== 'ambulancier';
 
 /** Vue correspondant au lien « #inv… » de l'adresse. */
@@ -648,7 +655,7 @@ function ouvrirVue(demandee) {
   const vue = vueAutorisee(demandee);
   vueCourante = vue;
   // Lien actif dans le menu : la check-list du jour de l'IADE, ce sont ses inventaires ; celle de l'ambulancier, ses véhicules.
-  const active = vue === 'aujourdhui' ? (roleCourant === 'iade' ? 'inventaires' : 'checklist-ambulancier') : vue;
+  const active = vue === 'aujourdhui' ? (profilIade() ? 'inventaires' : 'checklist-ambulancier') : vue;
   document.querySelectorAll('#menu [data-vue]').forEach((lien) => {
     if (lien.dataset.vue === active) lien.setAttribute('aria-current', 'page');
     else lien.removeAttribute('aria-current');
@@ -661,7 +668,7 @@ function ouvrirVue(demandee) {
 
   if (vue === 'gestion-inventaires') majGestion(roleCourant === 'admin');
   else if (vue !== 'base-articles') majGestion(false);
-  const inventaires = vue === 'inventaires' || vue === 'gestion-inventaires' || vue === 'base-articles' || (vue === 'aujourdhui' && roleCourant === 'iade');
+  const inventaires = vue === 'inventaires' || vue === 'gestion-inventaires' || vue === 'base-articles' || (vue === 'aujourdhui' && profilIade());
   if (inventaires) {
     Inventaires.afficher({ gestion: gestionInventaires });
   } else {
@@ -796,6 +803,7 @@ Infos.initialiser({
   retirerDeFile,
   ouvrirVue,
   role: () => roleCourant,
+  accesVehicules: () => accesVehicules(),
   agent: () => (session.lire() || appareil.lire() || {}).identifiant || '',
   fileAttente: () => fileAttente.lire(),
 });

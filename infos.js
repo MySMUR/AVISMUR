@@ -28,6 +28,7 @@ const Infos = (() => {
   const METIERS = [
     { id: 'ambulancier', libelle: 'Ambulanciers' },
     { id: 'iade', libelle: 'IADE' },
+    { id: 'medical', libelle: 'Médecins et internes' },
     { id: 'encadrement', libelle: 'Encadrement' },
   ];
   const IMPORTANCES = [
@@ -376,7 +377,7 @@ const Infos = (() => {
   function liensRapides() {
     // Liens vers les fonctionnalités connexes (règle du README : accès sans passer par le menu).
     const liens = [];
-    if (App.role() !== 'iade') liens.push(['Check-list des véhicules', 'checklist-ambulancier']);
+    if (App.accesVehicules ? App.accesVehicules() : App.role() !== 'iade') liens.push(['Check-list des véhicules', 'checklist-ambulancier']);
     if (App.role() !== 'ambulancier') liens.push(['Check-list des inventaires', 'inventaires']);
     if (App.role() === 'admin') liens.push(['Gérer les types d\'informations', 'types-infos']);
     return el('nav', { classe: 'mur-liens', 'aria-label': 'Accès rapides' },
