@@ -389,6 +389,10 @@ async function envoyerFileAttente() {
           rep = await appeler('deplacerContenant', {
             contenant: suivante.contenant, place: suivante.place, dans: suivante.dans, idSaisie: suivante.id, dateSaisie: suivante.date,
           });
+        } else if (suivante.action === 'majPeremption') {
+          rep = await appeler('majPeremption', {
+            contenant: suivante.contenant, article: suivante.article, detail: suivante.detail, idSaisie: suivante.id, dateSaisie: suivante.date,
+          });
         } else if (suivante.action === 'verifierInventaire') {
           rep = await appeler('verifierInventaire', {
             contenant: suivante.contenant, detail: suivante.detail, idSaisie: suivante.id, dateSaisie: suivante.date,

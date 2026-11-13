@@ -3135,19 +3135,49 @@ const Inventaires = (() => {
   }
 
   /** Consultation seule (recherche par le nom sans contenant primaire) : le contenu, sans case à cocher. */
+  /** Péremption mise à jour hors inventaire (consultation d'un contenant mobile) : locale tout de suite, envoyée au retour du réseau. */
+  function enregistrerPeremption(c, a, iso) {
+    const maj = new Date().toISOString();
+    const ok = App.mettreEnFile({ action: 'majPeremption', contenant: c.id, article: a.id,
+      detail: { chemin: chemin(c.id).map((x) => x.nom).join(' > '), nom: nomArticle(a), peremption: iso } });
+    if (!ok) { messageVue('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur'); return; }
+    etat.peremptions[`${c.id}/${a.id}`] = { date: iso, maj };
+    sauverEtat();
+  }
   function blocConsultation(c) {
     const articles = aCocher(c);
     if (!articles.length) return null;
     const p = primaireDe(c.id);
+    const datesModifiables = c.categorie === 'mobile';
     return el('section', { classe: 'inv-section inv-consultation' },
       el('div', { classe: 'inv-liste-entete' }, el('h2', {}, 'Contenu ', el('span', { classe: 'inv-compte', texte: String(articles.length) }))),
       el('p', { classe: 'aide-question', texte: p
         ? `Consultation seule. Pour vérifier : touchez « Je suis dans ${p.nom} » en haut, ou scannez l'étiquette sur place.`
         : 'Consultation seule. Pour vérifier : choisissez en haut le contenant primaire où vous êtes.' }),
+      datesModifiables && articles.some(suiviPeremption) ? el('p', { classe: 'aide-question', texte: 'Les dates de péremption restent modifiables : chaque date est enregistrée dès sa saisie.' }) : null,
       el('ul', { classe: 'inv-liste-modele' }, ...c.articles.map((a) => {
         if (a.separateur) return el('li', { classe: 'inv-separation', texte: a.nom });
         const date = suiviPeremption(a) ? datePeremption(c.id, a.id) : '';
         const pe = suiviPeremption(a) ? etatPeremption(date) : null;
+        if (datesModifiables && suiviPeremption(a)) {
+          // Contenant mobile sans contenant primaire : pas d'inventaire, mais les péremptions se mettent à jour.
+          const li = el('li', { classe: pe.niveau }, nomArticle(a),
+            a.quantite ? el('span', { classe: 'inv-qte-attendue', texte: ` × ${a.quantite}` }) : null);
+          const echeance = el('small', { classe: 'inv-consultation-date', texte: pe.texte ? ` ${pe.texte}` : '' });
+          const champ = el('input', { inputmode: 'numeric', autocomplete: 'off', placeholder: 'MM/AAAA', classe: 'inv-date',
+            'aria-label': `Péremption de ${nomArticle(a)}`, valeur: afficherDate(date),
+            surchange: (e) => {
+              const iso = analyserDate(e.target.value);
+              if (iso === null) { echeance.textContent = ' Date non reconnue'; li.className = 'perime'; return; }
+              e.target.value = afficherDate(iso);
+              enregistrerPeremption(c, a, iso);
+              const n = etatPeremption(iso);
+              echeance.textContent = n.texte ? ` ${n.texte}` : '';
+              li.className = n.niveau;
+            } });
+          li.append(el('div', { classe: 'inv-peremption' }, el('span', { texte: 'Pér. ' }), champ, echeance));
+          return li;
+        }
         return el('li', { classe: pe ? pe.niveau : '' }, nomArticle(a),
           a.quantite ? el('span', { classe: 'inv-qte-attendue', texte: ` × ${a.quantite}` }) : null,
           date ? el('small', { classe: 'inv-consultation-date', texte: ` · pér. ${afficherDate(date)}${pe.texte ? ` (${pe.texte})` : ''}` }) : null);
