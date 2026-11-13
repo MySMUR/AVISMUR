@@ -3497,11 +3497,9 @@ const Inventaires = (() => {
       el('svg:path', { d: 'M8 16V8l8 8V8', fill: 'none', stroke: k.bleu, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })],
     smur: (k) => [el('svg:path', { d: 'M12 3v18M3 12h18', stroke: k.bleu, 'stroke-width': 4, 'stroke-linecap': 'round' })],
   };
-  // Logo NFC officiel (N-Mark du NFC Forum) : déposer le fichier fourni par le NFC Forum à cet emplacement
-  // pour qu'il remplace le pictogramme provisoire. Tant qu'il est absent, un « N » blanc sur fond bleu est affiché.
-  const FICHIER_LOGO_NFC = 'img/nfc-n-mark.svg';
-  let nfcOfficiel = false;
-  fetch(FICHIER_LOGO_NFC, { method: 'HEAD' }).then((r) => { nfcOfficiel = r.ok && /svg|image/.test(r.headers.get('content-type') || ''); }).catch(() => {});
+  // Logo NFC officiel (N-Mark du NFC Forum), fourni par Louis et vectorisé (copie dans img/nfc-n-mark.svg).
+  // Intégré au code pour s'afficher hors ligne et à l'impression.
+  const LOGO_NFC = { viewBox: '0 0 900 901', d: 'M96.5 899.9C81.6 897.7 63.8 890.8 50.0 881.9C41.7 876.5 24.7 859.5 19.2 851.0C9.7 836.6 3.3 819.8 1.1 803.6C-0.4 792.7 -0.4 109.3 1.1 98.4C3.3 82.2 9.7 65.5 19.1 51.0C24.6 42.6 41.6 25.6 50.0 20.1C64.4 10.7 81.1 4.4 98.2 1.9C109.6 0.2 789.6 0.3 802.0 2.0C839.7 7.2 872.1 30.8 889.0 65.5C893.6 74.9 897.4 87.7 898.9 98.4C900.4 109.3 900.4 792.7 898.9 803.6C896.7 819.8 890.3 836.6 880.8 851.0C875.0 859.9 858.1 876.6 849.0 882.5C835.0 891.6 818.8 897.7 802.6 899.9C793.1 901.2 105.7 901.2 96.5 899.9ZM263.0 825.5C263.0 825.2 261.3 822.6 259.2 819.7C250.4 807.7 239.8 786.9 234.5 771.5C230.7 760.3 227.3 744.3 226.1 732.1C225.3 725.1 225.0 617.8 225.0 398.9L225.0 76.0L166.0 76.0C108.9 76.0 106.7 76.1 100.8 78.1C88.6 82.2 80.7 90.1 77.0 101.9C75.0 108.2 75.0 110.7 75.0 451.0C75.0 781.6 75.1 794.0 76.8 799.8C80.5 811.4 88.7 819.8 100.5 823.9C106.4 825.9 108.4 825.9 184.8 826.0C227.8 826.0 263.0 825.8 263.0 825.5ZM674.0 825.5C674.0 825.3 656.6 809.2 635.2 789.9C587.2 746.2 531.3 695.3 494.6 661.9C466.7 636.6 424.6 598.3 392.2 569.0L375.1 553.5L375.1 502.7L375.0 451.8L385.3 461.2C399.4 473.9 565.7 625.2 584.5 642.2L599.5 655.9L599.8 418.2C600.0 203.2 599.9 179.5 598.5 170.5C590.7 122.7 553.4 85.4 505.4 77.6C496.5 76.1 481.4 76.0 360.7 76.2L226.0 76.5L248.0 96.5C274.5 120.5 268.2 114.8 319.9 161.9C343.3 183.1 367.6 205.2 374.0 211.0C380.4 216.8 408.3 242.2 436.1 267.4C463.8 292.7 495.2 321.3 505.8 330.9L525.0 348.3L525.0 398.7C525.0 426.3 524.8 449.0 524.5 449.0C524.2 449.0 514.0 439.9 501.7 428.7C489.5 417.6 466.7 396.8 451.0 382.6C435.3 368.3 408.3 343.8 391.0 328.0C373.7 312.2 346.2 287.3 330.0 272.6L300.5 245.8L300.2 481.6C300.0 639.6 300.3 720.5 301.0 726.6C305.3 764.8 330.3 799.3 365.3 815.5C373.9 819.5 387.7 823.6 396.5 824.9C402.5 825.8 674.0 826.4 674.0 825.5ZM799.3 823.9C807.3 821.2 813.9 816.3 818.3 809.8C825.6 799.0 825.0 831.6 825.0 450.9C825.0 120.4 824.9 108.0 823.2 102.2C819.5 90.4 810.6 81.5 798.9 77.9C793.2 76.1 788.4 76.0 715.0 76.0L637.1 76.0L643.7 85.8C651.2 97.0 660.6 115.7 664.9 128.1C668.7 139.1 672.6 156.9 673.9 169.2C674.7 175.8 675.0 282.2 675.0 502.5L675.0 826.0L734.0 826.0C791.3 826.0 793.3 825.9 799.3 823.9Z' };
   // Identité graphique de l'appli (bandeau, index.html) : complexe QRS et silhouette d'Avignon
   // (pont Saint-Bénézet, rocher des Doms, Palais des Papes). Ligne de base à y = 38, hauteur utile ≈ 0–60.
   const TRACE_QRS = { l: 96, d: 'M0 38 l8 -6 l8 6 h10 l6 6 l10 -40 l10 52 l8 -18 h16 q10 -14 20 0' };
@@ -3679,11 +3677,8 @@ const Inventaires = (() => {
     }
     if (badge) {
       const { x, y, b } = badge;
-      enfants.push(nfcOfficiel
-        ? el('svg:image', { href: FICHIER_LOGO_NFC, x, y, width: b, height: b, preserveAspectRatio: 'xMidYMid meet' })
-        : el('svg:g', {}, el('svg:rect', { x, y, width: b, height: b, rx: b * 0.2, fill: k.bleu }),
-          el('svg:svg', { x: x + b * 0.14, y: y + b * 0.14, width: b * 0.72, height: b * 0.72, viewBox: '0 0 24 24' },
-            el('svg:path', { d: 'M7 17V7l10 10V7', fill: 'none', stroke: '#fff', 'stroke-width': 2.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))));
+      enfants.push(el('svg:svg', { x, y, width: b, height: b, viewBox: LOGO_NFC.viewBox, role: 'img', 'aria-label': 'NFC' },
+        el('svg:path', { d: LOGO_NFC.d, fill: k.bleu, 'fill-rule': 'evenodd' })));
     }
     return el('svg:svg', {
       classe: 'inv-etiquette-qr', viewBox: `0 0 ${W} ${H}`, width: `${W}mm`, height: `${H}mm`, role: 'img',
