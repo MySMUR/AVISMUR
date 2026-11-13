@@ -2864,9 +2864,9 @@ const Inventaires = (() => {
     const formats = [[40, 40], [30, 30], [60, 30], [50, 25], [70, 35], [25, 50]];
     const reglages = el('div', { classe: 'inv-etiquette-reglages' },
       champMm('largeur', 'Largeur (mm)'), champMm('hauteur', 'Hauteur (mm)'),
-      el('label', {}, el('span', { texte: 'Logo central' }),
+      el('label', {}, el('span', { texte: 'Logo' }),
         el('select', { surchange: (e) => regler('logo', e.target.value) },
-          ...[['', 'Aucun'], ['nfc', 'NFC (puce collée au dos)'], ['smur', 'Croix SMUR']].map(([v, t]) => el('option', { value: v, selected: r0.logo === v, texte: t })))),
+          ...[['', 'Aucun'], ['nfc', 'Pictogramme NFC sur le côté (puce au dos)'], ['smur', 'Croix SMUR au centre']].map(([v, t]) => el('option', { value: v, selected: r0.logo === v, texte: t })))),
       el('div', { classe: 'inv-etiquette-formats' }, el('span', { texte: 'Formats courants :' }),
         ...formats.map(([l, h]) => el('button', { type: 'button', classe: 'cfg-mini', texte: `${l}×${h}`, surclick: () => {
           c.etiquette = normaliser({ etiquette: { ...reglageEtiquette(c), largeur: l, hauteur: h } }).etiquette;
@@ -3497,6 +3497,11 @@ const Inventaires = (() => {
       el('svg:path', { d: 'M8 16V8l8 8V8', fill: 'none', stroke: k.bleu, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })],
     smur: (k) => [el('svg:path', { d: 'M12 3v18M3 12h18', stroke: k.bleu, 'stroke-width': 4, 'stroke-linecap': 'round' })],
   };
+  // Logo NFC officiel (N-Mark du NFC Forum) : déposer le fichier fourni par le NFC Forum à cet emplacement
+  // pour qu'il remplace le pictogramme provisoire. Tant qu'il est absent, un « N » blanc sur fond bleu est affiché.
+  const FICHIER_LOGO_NFC = 'img/nfc-n-mark.svg';
+  let nfcOfficiel = false;
+  fetch(FICHIER_LOGO_NFC, { method: 'HEAD' }).then((r) => { nfcOfficiel = r.ok && /svg|image/.test(r.headers.get('content-type') || ''); }).catch(() => {});
   // Identité graphique de l'appli (bandeau, index.html) : complexe QRS et silhouette d'Avignon
   // (pont Saint-Bénézet, rocher des Doms, Palais des Papes). Ligne de base à y = 38, hauteur utile ≈ 0–60.
   const TRACE_QRS = { l: 96, d: 'M0 38 l8 -6 l8 6 h10 l6 6 l10 -40 l10 52 l8 -18 h16 q10 -14 20 0' };
@@ -3588,10 +3593,26 @@ const Inventaires = (() => {
       else zoneTrace = { x: coin * 0.6 + ep, y: yBas + hb * 0.2, l: W - 2 * (coin * 0.6 + ep), h: hb * 0.72 };
     }
 
+    // Puce NFC collée au dos : pictogramme bien visible sur le côté (jamais sur le QR code).
+    let badge = null;
+    if (reglage.logo === 'nfc') {
+      if (mode !== 'carre') { // en bout de tracé, en bas à droite
+        const b = Math.min(8, zoneTrace.l * 0.3, Math.max(zoneTrace.h * (mode === 'paysage' ? 1.1 : 1.4), 3.5));
+        badge = { x: zoneTrace.x + zoneTrace.l - b, y: zoneTrace.y + zoneTrace.h - b, b };
+        zoneTrace.l -= b + ep;
+      } else {
+        const z = zoneSous || zoneTrace;
+        const hb = qr.y - ecart;
+        const b = Math.min(8, hb * 0.92);
+        badge = { x: W - (coin * 0.5 + ep) - b, y: qr.y + qr.s + (hb - b) / 2, b };
+        z.l = badge.x - ep - z.x;
+      }
+    }
+
     // QR code
     const mod = qr.s / (n + 8);
     const o = 4 * mod;
-    const L = reglage.logo ? (Math.round(n * 0.2) | 1) : 0, l0 = (n - L) / 2;
+    const L = reglage.logo === 'smur' ? (Math.round(n * 0.2) | 1) : 0, l0 = (n - L) / 2;
     // Modules arrondis : un coin n'est arrondi que s'il n'a de voisin sombre sur aucun de ses deux côtés,
     // si bien que les modules voisins restent soudés (lecture inchangée) ; repères d'angle en carrés arrondis.
     const masque = (r, col) => L && r >= l0 - 0.5 && r < l0 + L && col >= l0 - 0.5 && col < l0 + L;
@@ -3655,6 +3676,14 @@ const Inventaires = (() => {
         enfants.push(el('svg:path', { ...ligne, 'stroke-width': ligne['stroke-width'] / e, transform: `translate(${xv} ${yBase}) scale(${e})`, d: TRACE_AVIGNON.d }),
           el('svg:path', { ...ligne, 'stroke-width': ligne['stroke-width'] * 0.7 / e, transform: `translate(${xv} ${yBase}) scale(${e})`, d: TRACE_AVIGNON.details }));
       }
+    }
+    if (badge) {
+      const { x, y, b } = badge;
+      enfants.push(nfcOfficiel
+        ? el('svg:image', { href: FICHIER_LOGO_NFC, x, y, width: b, height: b, preserveAspectRatio: 'xMidYMid meet' })
+        : el('svg:g', {}, el('svg:rect', { x, y, width: b, height: b, rx: b * 0.2, fill: k.bleu }),
+          el('svg:svg', { x: x + b * 0.14, y: y + b * 0.14, width: b * 0.72, height: b * 0.72, viewBox: '0 0 24 24' },
+            el('svg:path', { d: 'M7 17V7l10 10V7', fill: 'none', stroke: '#fff', 'stroke-width': 2.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))));
     }
     return el('svg:svg', {
       classe: 'inv-etiquette-qr', viewBox: `0 0 ${W} ${H}`, width: `${W}mm`, height: `${H}mm`, role: 'img',
