@@ -3491,11 +3491,11 @@ const Inventaires = (() => {
 
   /** Réglages d'étiquette d'un contenant (par défaut : carré de 40 mm, sans logo). */
   const reglageEtiquette = (c) => ({ largeur: 40, hauteur: 40, logo: '', ...(c.etiquette || {}) });
-  const COULEURS_ETIQUETTE = { bleu: '#1D4F9F', fonce: '#163E7E', rhone: '#1E8C82', encre: '#13294B', orange: '#E07A12' };
+  const COULEURS_ETIQUETTE = { bleu: '#1D4F9F', fonce: '#163E7E', accent: '#163E7E', encre: '#13294B', orange: '#E07A12' };
   const LOGOS_ETIQUETTE = {
     nfc: (k) => [el('svg:rect', { x: 3, y: 2, width: 18, height: 20, rx: 3, fill: 'none', stroke: k.bleu, 'stroke-width': 1.8 }),
       el('svg:path', { d: 'M8 16V8l8 8V8', fill: 'none', stroke: k.bleu, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })],
-    smur: (k) => [el('svg:path', { d: 'M12 3v18M3 12h18', stroke: k.rhone, 'stroke-width': 4, 'stroke-linecap': 'round' })],
+    smur: (k) => [el('svg:path', { d: 'M12 3v18M3 12h18', stroke: k.bleu, 'stroke-width': 4, 'stroke-linecap': 'round' })],
   };
   // Identité graphique de l'appli (bandeau, index.html) : complexe QRS et silhouette d'Avignon
   // (pont Saint-Bénézet, rocher des Doms, Palais des Papes). Ligne de base à y = 38, hauteur utile ≈ 0–60.
@@ -3553,7 +3553,7 @@ const Inventaires = (() => {
     const a = ep / 2 + 0.3, cr = Math.min(3, petit * 0.07);
     [[a, a, 1, 1], [W - a, a, -1, 1], [a, H - a, 1, -1], [W - a, H - a, -1, -1]].forEach(([x, y, sx, sy]) => enfants.push(el('svg:path', {
       d: `M${x} ${y + sy * coin}V${y + sy * cr}Q${x} ${y} ${x + sx * cr} ${y}H${x + sx * coin}`,
-      fill: 'none', stroke: k.rhone, 'stroke-width': ep * 1.7, 'stroke-linecap': 'round' })));
+      fill: 'none', stroke: k.accent, 'stroke-width': ep * 1.7, 'stroke-linecap': 'round' })));
 
     // Emplacement du QR (zone calme comprise) et des zones de texte.
     let qr, zoneNom, zoneSous, zoneTrace;
@@ -3592,11 +3592,24 @@ const Inventaires = (() => {
     const mod = qr.s / (n + 8);
     const o = 4 * mod;
     const L = reglage.logo ? (Math.round(n * 0.2) | 1) : 0, l0 = (n - L) / 2;
+    // Modules arrondis : un coin n'est arrondi que s'il n'a de voisin sombre sur aucun de ses deux côtés,
+    // si bien que les modules voisins restent soudés (lecture inchangée) ; repères d'angle en carrés arrondis.
+    const masque = (r, col) => L && r >= l0 - 0.5 && r < l0 + L && col >= l0 - 0.5 && col < l0 + L;
+    const repere = (r, col) => (r < 7 && col < 7) || (r < 7 && col >= n - 7) || (r >= n - 7 && col < 7);
+    const sombre = (r, col) => r >= 0 && col >= 0 && r < n && col < n && !masque(r, col) && !repere(r, col) && q.isDark(r, col);
+    const R = 0.5;
     let trace = '';
     for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) {
-      if (L && r >= l0 - 0.5 && r < l0 + L && col >= l0 - 0.5 && col < l0 + L) continue;
-      if (q.isDark(r, col)) trace += `M${col} ${r}h1v1h-1z`;
+      if (!sombre(r, col)) continue;
+      const h = sombre(r - 1, col), b = sombre(r + 1, col), g = sombre(r, col - 1), d = sombre(r, col + 1);
+      const [hg, hd, bd, bg] = [!h && !g, !h && !d, !b && !d, !b && !g].map((x) => (x ? R : 0));
+      trace += `M${col + hg} ${r}H${col + 1 - hd}${hd ? `a${R} ${R} 0 0 1 ${R} ${R}` : ''}V${r + 1 - bd}${bd ? `a${R} ${R} 0 0 1 -${R} ${R}` : ''}H${col + bg}${bg ? `a${R} ${R} 0 0 1 -${R} -${R}` : ''}V${r + hg}${hg ? `a${R} ${R} 0 0 1 ${R} -${R}` : ''}Z`;
     }
+    [[0, 0], [0, n - 7], [n - 7, 0]].forEach(([r, col]) => {
+      trace += `M${col + 2.2} ${r}H${col + 4.8}a2.2 2.2 0 0 1 2.2 2.2V${r + 4.8}a2.2 2.2 0 0 1 -2.2 2.2H${col + 2.2}a2.2 2.2 0 0 1 -2.2 -2.2V${r + 2.2}a2.2 2.2 0 0 1 2.2 -2.2Z`
+        + `M${col + 2} ${r + 1}a1 1 0 0 0 -1 1V${r + 5}a1 1 0 0 0 1 1H${col + 5}a1 1 0 0 0 1 -1V${r + 2}a1 1 0 0 0 -1 -1Z`
+        + `M${col + 3} ${r + 2}H${col + 4}a1 1 0 0 1 1 1V${r + 4}a1 1 0 0 1 -1 1H${col + 3}a1 1 0 0 1 -1 -1V${r + 3}a1 1 0 0 1 1 -1Z`;
+    });
     enfants.push(
       el('svg:rect', { x: qr.x - 0.4, y: qr.y - 0.4, width: qr.s + 0.8, height: qr.s + 0.8, rx: 1, fill: 'none', stroke: k.orange, 'stroke-width': Math.max(0.2, ep * 0.3), 'stroke-dasharray': `${ep} ${ep * 0.7}` }),
       el('svg:g', { transform: `translate(${qr.x + o} ${qr.y + o}) scale(${mod})` }, el('svg:path', { d: trace, fill: k.encre })));
@@ -3615,7 +3628,7 @@ const Inventaires = (() => {
       const y0 = zone.y + (zone.h - total) / 2 + police * 0.88;
       enfants.push(el('svg:text', {
         x: zone.centre ? zone.x + zone.l / 2 : zone.x, y: y0, 'text-anchor': zone.centre ? 'middle' : 'start',
-        'font-family': 'system-ui, sans-serif', 'font-size': police, fill: gras ? k.fonce : k.rhone,
+        'font-family': 'system-ui, sans-serif', 'font-size': police, fill: gras ? k.fonce : k.bleu,
         ...(gras ? { 'font-weight': 800 } : { 'font-style': 'italic' }),
       }, ...lignes.map((t, i) => el('svg:tspan', { x: zone.centre ? zone.x + zone.l / 2 : zone.x, dy: i ? police * 1.15 : 0, texte: t }))));
       return police;
@@ -3631,7 +3644,7 @@ const Inventaires = (() => {
       const e = avecVille ? eVille : zoneTrace.h / 60; // échelle du tracé (hauteur de référence 60)
       const lq = TRACE_QRS.l * e * 0.8, la = TRACE_AVIGNON.l * e;
       const yBase = zoneTrace.y + zoneTrace.h - 60 * e; // tracé calé en bas de sa zone
-      const ligne = { fill: 'none', stroke: k.rhone, 'stroke-width': Math.max(0.25, ep * 0.45), 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
+      const ligne = { fill: 'none', stroke: k.bleu, 'stroke-width': Math.max(0.25, ep * 0.45), 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
       const x0 = zoneTrace.x, x1 = zoneTrace.x + zoneTrace.l, yl = yBase + 38 * e;
       const xq = avecVille ? x0 + zoneTrace.l * 0.03 : x0 + (zoneTrace.l - lq) / 2;
       const xv = x1 - la;
