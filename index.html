@@ -190,7 +190,7 @@
       <!-- Suivi du matériel biomédical : base des appareils, révisions, interventions (materiel.js) -->
       <div id="zone-materiel" class="materiel" hidden></div>
 
-      <!-- Configuration des véhicules et des check-lists (administrateurs) -->
+      <!-- Gestion des véhicules : véhicules et questions des check-lists (administrateurs) -->
       <div id="zone-config" class="configuration" hidden></div>
 
       <!-- Inventaires emboîtés (IADE) : sac > sacoche > pochette, photos à points, péremptions (inventaires.js) -->
@@ -243,11 +243,19 @@
         <section id="rubrique-admin" class="rubrique rubrique-admin" aria-labelledby="titre-rubrique-admin" hidden>
           <h2 id="titre-rubrique-admin"><button type="button" class="rubrique-titre" aria-expanded="false" aria-controls="liste-rubrique-admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/></svg>Administration<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg></button></h2>
           <ul id="liste-rubrique-admin" hidden>
-          <li><button type="button" class="tiroir-lien" data-vue="configuration">Configuration<small>Véhicules et questions des check-lists</small></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="configuration">Gestion des véhicules<small>Véhicules et questions des check-lists</small></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="gestion-inventaires">Gestion des inventaires<small>Créer et modifier les inventaires, inventaires types</small></button></li>
-          <li><button type="button" class="tiroir-lien" data-vue="base-articles">Base des articles<small>Fiches des articles des inventaires</small></button></li>
-          <li><button type="button" class="tiroir-lien" data-vue="suivi-materiel">Base du matériel<small>Appareils biomédicaux, interventions, répercussion</small></button></li>
-          <li><button type="button" class="tiroir-lien" data-vue="types-infos">Types d'informations<small>Catégories du mur d'accueil</small></button></li>
+          <li class="tiroir-groupe"><span class="tiroir-groupe-titre">Gestion des catalogues</span>
+            <ul>
+            <li><button type="button" class="tiroir-lien" data-vue="base-articles">Base des articles<small>Fiches des articles des inventaires</small></button></li>
+            <li><button type="button" class="tiroir-lien" data-vue="suivi-materiel">Base du matériel<small>Appareils biomédicaux, interventions, répercussion</small></button></li>
+            </ul>
+          </li>
+          <li class="tiroir-groupe"><span class="tiroir-groupe-titre">Gestion de la communication</span>
+            <ul>
+            <li><button type="button" class="tiroir-lien" data-vue="types-infos">Types d'informations<small>Catégories du mur d'accueil</small></button></li>
+            </ul>
+          </li>
           </ul>
         </section>
       </nav>

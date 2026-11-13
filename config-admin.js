@@ -1,5 +1,5 @@
 /*
- * Écran « Configuration » (administrateurs) : véhicules et questions de chaque modèle
+ * Écran « Gestion des véhicules » (administrateurs) : véhicules et questions de chaque modèle
  * de check-list. On travaille sur un brouillon ; « Enregistrer » l'envoie au serveur,
  * qui le partage avec tous les appareils.
  */
@@ -285,7 +285,7 @@ const ConfigAdmin = (() => {
     const defilement = window.scrollY;
     zone.innerHTML = '';
     zone.append(
-      el('h1', { texte: 'Configuration' }),
+      el('h1', { texte: 'Gestion des véhicules' }),
       el('p', { classe: 'consigne', texte: 'Véhicules et questions de la check-list ambulancier. Les modifications s\'appliquent à tous les appareils après « Enregistrer ».' }),
       el('p', { classe: 'note-parc', texte: 'Le libellé d\'une question sert aussi de nom de colonne dans l\'ancien Sheet « Check-list journalière ». Le renommer coupe la copie de cette réponse vers l\'onglet du jour.' }),
       rendreVehicules(),

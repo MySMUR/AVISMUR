@@ -1,5 +1,5 @@
 /*
- * Suivi du matériel biomédical (menu Inventaires > Suivi matériel ; Administration > Base du matériel).
+ * Suivi du matériel biomédical (menu Inventaires > Suivi matériel ; Administration > Gestion des catalogues > Base du matériel).
  *
  * Base des appareils : type, modèle, n° interne SMUR, n° biomed, n° de série, révision prévue,
  * historique des révisions / interventions / réparations, traceur GeoTraceSMUR.
