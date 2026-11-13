@@ -441,7 +441,8 @@ const Utilisateurs = (() => {
         .map(([v, t]) => el('option', { value: v, texte: t, selected: v === filtreRole })));
 
     zone.innerHTML = '';
-    zone.append(
+    // append() écrirait « null » pour un élément absent : on filtre.
+    zone.append(...[
       el('h1', { texte: 'Gestion des utilisateurs' }),
       el('p', { classe: 'consigne', texte: `${agents.filter((a) => !a.etudiant).length} agents et ${agents.filter((a) => a.etudiant).length} étudiants IADE, ${actifs} avec un mot de passe créé.` }),
       el('p', { classe: 'note-parc', texte: 'Agents : DB_SMUR (onglets PERSONNEL et Encadrement). Étudiants IADE et leurs stages : DB_EIADE. Tout se modifie ici, y compris la suppression.' }),
@@ -461,7 +462,7 @@ const Utilisateurs = (() => {
       el('p', { classe: `message usr-message ${messageCourant.classe}`.trim(), role: 'status', texte: messageCourant.texte }),
       edition && !edition.ancienCri ? el('div', { classe: 'usr-agent ouvert' }, rendreFormulaire()) : null,
       el('ul', { classe: 'usr-liste' }, ...liste.map(rendreAgent)),
-      liste.length ? null : el('p', { classe: 'consigne usr-vide', texte: agents.length ? 'Aucun agent ne correspond.' : '' }));
+      liste.length ? null : el('p', { classe: 'consigne usr-vide', texte: agents.length ? 'Aucun agent ne correspond.' : '' })].filter(Boolean));
     window.scrollTo(0, defilement);
   }
 
