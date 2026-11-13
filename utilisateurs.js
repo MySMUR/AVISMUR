@@ -125,7 +125,7 @@ const Utilisateurs = (() => {
         surclick: () => {
           edition = {
             ancienCri: a.cri, ancienNom: a.nom, nom: a.nom, cri: a.etudiant || a.sansCri ? '' : a.cri, code: a.code, telephone: a.numero,
-            nomSeul: a.nomSeul || '', prenom: a.prenom || '', identifiant: a.identifiant || '',
+            ...separerNom(a), identifiant: a.identifiant || '',
           };
           aConfirmer = ''; stageEdite = null; rendre();
         },
@@ -295,6 +295,15 @@ const Utilisateurs = (() => {
 
   // ---------- Ajout / modification ----------
 
+  /** Nom et prénom : colonnes séparées si DB_SMUR les a, sinon « NOM Prénom » découpé (mots en majuscules = nom). */
+  function separerNom(a) {
+    if (a.nomSeul || a.prenom) return { nomSeul: a.nomSeul || '', prenom: a.prenom || '' };
+    const mots = String(a.nom || '').split(' ').filter(Boolean);
+    const nom = [];
+    while (mots.length > 1 && mots[0] === mots[0].toUpperCase()) nom.push(mots.shift());
+    return { nomSeul: nom.join(' '), prenom: mots.join(' ') };
+  }
+
   /** Aperçu de l'identifiant généré (même nom et prénom = même étudiant). */
   const morceau = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/[\s'’.]+/g, '').replace(/[^a-z-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '');
@@ -347,7 +356,8 @@ const Utilisateurs = (() => {
         ? 'Le stage est enregistré dans DB_EIADE. En dehors de ses stages, l\'étudiant ne peut pas se connecter (contrôlé aussi hors ligne). Droits d\'un IADE, sans les stupéfiants.'
         : 'Changer le nom ou le prénom renomme tous ses stages dans DB_EIADE et change son identifiant (il devra se reconnecter).' }),
     ] : [
-      champTexte('usr-f-nom', 'Nom et prénom', 'nom', { autocomplete: 'off', placeholder: 'NOM Prénom', maxlength: 80 }),
+      champTexte('usr-f-nomseul', 'Nom', 'nomSeul', { autocomplete: 'off', maxlength: 40 }),
+      champTexte('usr-f-prenom', 'Prénom', 'prenom', { autocomplete: 'off', maxlength: 40 }),
       champTexte('usr-f-cri', 'Code CRI (6 chiffres ; sans lui, l\'agent ne peut pas se connecter)', 'cri', { inputmode: 'numeric', maxlength: 6, autocomplete: 'off' }),
       champTexte('usr-f-tel', 'Téléphone portable (pour le SMS de connexion)', 'telephone', { type: 'tel', inputmode: 'tel', autocomplete: 'off', placeholder: '06 12 34 56 78' }),
       el('p', { classe: 'aide-question', texte: 'Changer le code CRI ou la fonction déconnecte l\'agent de ses sessions en cours.' }),
@@ -381,9 +391,9 @@ const Utilisateurs = (() => {
       }
       charge = { ancienCri: e.ancienCri, code: e.code, nomSeul: e.nomSeul, prenom: e.prenom, telephone: e.telephone, debut: e.debut, fin: e.fin, ifia: e.ifia };
     } else {
-      if (!String(e.nom || '').trim()) { message('Indiquez le nom et le prénom.', 'erreur'); return; }
+      if (!String(e.nomSeul || '').trim() || !String(e.prenom || '').trim()) { message('Indiquez le nom et le prénom.', 'erreur'); return; }
       if (cri && !/^\d{6}$/.test(cri)) { message('Le code CRI comporte 6 chiffres.', 'erreur'); return; }
-      charge = { ancienCri: e.ancienCri, ancienNom: e.ancienNom, nom: e.nom, cri, code: e.code, telephone: e.telephone };
+      charge = { ancienCri: e.ancienCri, ancienNom: e.ancienNom, nomSeul: e.nomSeul, prenom: e.prenom, cri, code: e.code, telephone: e.telephone };
     }
     message('Enregistrement dans DB_SMUR…');
     try {
