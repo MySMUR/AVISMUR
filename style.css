@@ -712,6 +712,9 @@ body:has(.tiroir[open]) { overflow: hidden; }
   padding: max(1rem, env(safe-area-inset-top)) 1rem 1rem 1.25rem;
   color: #fff; background: var(--bleu);
 }
+.tiroir-avatar { flex: none; width: 3rem; height: 3rem; border-radius: 50%; overflow: hidden; border: 2px solid rgba(255, 255, 255, 0.85); }
+.tiroir-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.tiroir-identite { flex: 1 1 auto; min-width: 0; }
 .tiroir-nom { margin: 0; font-size: 1.1rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
 .tiroir-fonction { margin: 0.15rem 0 0; font-size: 0.9rem; opacity: 0.9; }
 .tiroir-fonction:empty { display: none; }
@@ -2213,10 +2216,18 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .pro-carte .champ { margin-bottom: 0.6rem; }
 .pro-identite { display: flex; align-items: center; gap: 1rem; }
 .pro-avatar {
-  flex: 0 0 3.4rem; height: 3.4rem; border-radius: 50%; display: grid; place-items: center;
-  background: var(--bleu); color: #fff; font-weight: 700; font-size: 1.25rem; letter-spacing: 0.03em;
+  flex: 0 0 5rem; height: 5rem; border-radius: 50%; display: grid; place-items: center;
+  background: var(--bleu); color: #fff; font-weight: 700; font-size: 1.7rem; letter-spacing: 0.03em;
 }
 .pro-identite p { margin: 0; }
+.pro-photo { flex: none; }
+.avatar-photo { object-fit: cover; display: block; background: var(--ciel); }
+.pro-avatar.avatar-photo { width: 5rem; height: 5rem; flex: none; }
+.pro-identite { align-items: flex-start; }
+.pro-identite-texte { min-width: 0; flex: 1 1 auto; }
+.pro-identite-texte .pro-boutons { margin-top: 0.5rem; align-items: center; }
+.pro-photo-bouton { cursor: pointer; display: inline-flex; align-items: center; }
+.pro-identite-texte .pro-aide { margin-top: 0.4rem; }
 .pro-nom { font-weight: 700; font-size: 1.15rem; }
 .pro-fonction, .pro-cri { color: var(--gris); }
 .pro-ligne { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.6rem 1rem; }

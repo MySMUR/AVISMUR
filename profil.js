@@ -19,6 +19,9 @@ const Profil = (() => {
   let telephone = { etape: '', numero: '', message: '', classe: '' }; // étape : '' | 'saisie' | 'code'
   const messages = {};   // message de chaque bloc : { texte, classe }
   const CLE = 'avismur_profil';
+  const CLE_PHOTO = 'avismur_photo'; // photo de l'agent connecté, pour le menu (même hors ligne)
+  const TAILLE_PHOTO = 160;
+  const PHOTO_MAX = 40000; // caractères ; limite du serveur
 
   function el(balise, attributs = {}, ...enfants) {
     const n = document.createElement(balise);
@@ -71,6 +74,7 @@ const Profil = (() => {
       if (rep.ok) {
         profil = rep.profil;
         ecrireCache();
+        App.surPhoto && App.surPhoto(profil.photo || '');
       } else if (rep.erreur) {
         erreurChargement = /Action inconnue/.test(rep.erreur) ? 'Le serveur n\'est pas encore à jour (fichier Profil.gs à ajouter dans Apps Script).' : rep.erreur;
       }
@@ -111,12 +115,98 @@ const Profil = (() => {
 
   // ---------- Blocs ----------
   function blocIdentite() {
+    const idPhoto = nouvelId();
+    const entree = el('input', { id: idPhoto, type: 'file', accept: 'image/*', classe: 'invisible' });
+    entree.addEventListener('change', async () => {
+      const fichier = entree.files[0];
+      entree.value = '';
+      if (!fichier) return;
+      dire('photo', 'Préparation de la photo…');
+      let photo;
+      try { photo = await recadrerPhoto(fichier); } catch (e) { dire('photo', 'Image illisible : choisissez une autre photo.', 'erreur'); return; }
+      await enregistrerPhoto(photo);
+    });
     return el('section', { classe: 'pro-carte pro-identite' },
-      el('div', { classe: 'pro-avatar', 'aria-hidden': 'true', texte: initiales(profil.nom) }),
-      el('div', {},
+      el('div', { classe: 'pro-photo' },
+        avatar('pro-avatar', profil.nom, profil.photo),
+        entree),
+      el('div', { classe: 'pro-identite-texte' },
         el('p', { classe: 'pro-nom', texte: profil.nom }),
         el('p', { classe: 'pro-fonction', texte: profil.fonction }),
-        el('p', { classe: 'pro-cri', texte: `${profil.etudiant ? 'Identifiant' : 'Code CRI'} : ${profil.identifiant}` })));
+        el('p', { classe: 'pro-cri', texte: `${profil.etudiant ? 'Identifiant' : 'Code CRI'} : ${profil.identifiant}` }),
+        el('div', { classe: 'pro-boutons' },
+          el('label', { for: idPhoto, classe: 'cfg-bouton pro-photo-bouton', texte: profil.photo ? 'Changer la photo' : 'Ajouter une photo' }),
+          profil.photo ? el('button', { type: 'button', classe: 'lien danger', texte: 'Retirer', surclick: retirerPhoto }) : null),
+        el('p', { classe: 'pro-aide', texte: 'Facultative. Visible des autres utilisateurs de l\'application (annuaire du personnel).' }),
+        zoneMessage('photo')));
+  }
+
+  /** Pastille ronde : la photo si elle existe, sinon les initiales. */
+  function avatar(classe, nom, photo) {
+    return photo
+      ? el('img', { classe: `${classe} avatar-photo`, src: photo, alt: '' })
+      : el('div', { classe, 'aria-hidden': 'true', texte: initiales(nom) });
+  }
+
+  /** Carré centré de 160 px, JPEG : léger pour l'envoi, la file d'attente et l'annuaire. */
+  function recadrerPhoto(fichier) {
+    return new Promise((ok, echec) => {
+      const img = new Image();
+      const url = URL.createObjectURL(fichier);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const cote = Math.min(img.width, img.height);
+        if (!cote) { echec(new Error('image')); return; }
+        const c = document.createElement('canvas');
+        c.width = c.height = TAILLE_PHOTO;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; // PNG transparent : fond blanc plutôt que noir
+        ctx.fillRect(0, 0, TAILLE_PHOTO, TAILLE_PHOTO);
+        ctx.drawImage(img, (img.width - cote) / 2, (img.height - cote) / 2, cote, cote, 0, 0, TAILLE_PHOTO, TAILLE_PHOTO);
+        for (const qualite of [0.8, 0.65, 0.5]) {
+          const data = c.toDataURL('image/jpeg', qualite);
+          if (data.length <= PHOTO_MAX) { ok(data); return; }
+        }
+        echec(new Error('trop lourde'));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); echec(new Error('image')); };
+      img.src = url;
+    });
+  }
+
+  /** Affichée tout de suite ; envoyée au serveur, ou mise en file d'attente hors ligne. */
+  async function enregistrerPhoto(photo) {
+    profil.photo = photo;
+    ecrireCache();
+    App.surPhoto && App.surPhoto(photo);
+    rendre();
+    dire('photo', 'Enregistrement…');
+    try {
+      const rep = await App.appeler('enregistrerPhotoProfil', { photo });
+      if (rep.ok) dire('photo', 'Photo enregistrée.', 'succes');
+      else dire('photo', rep.erreur || 'Refusé par le serveur.', 'erreur');
+    } catch (err) {
+      if (err && err.serveur) { dire('photo', err.message, 'erreur'); return; }
+      App.mettreEnFile({ action: 'enregistrerPhotoProfil', donnees: { photo } });
+      dire('photo', 'Hors ligne : gardée sur cet appareil, envoyée au retour du réseau.');
+    }
+  }
+
+  async function retirerPhoto() {
+    profil.photo = '';
+    ecrireCache();
+    App.surPhoto && App.surPhoto('');
+    rendre();
+    dire('photo', 'Enregistrement…');
+    try {
+      const rep = await App.appeler('retirerPhotoProfil');
+      if (rep.ok) dire('photo', 'Photo retirée.', 'succes');
+      else dire('photo', rep.erreur || 'Refusé par le serveur.', 'erreur');
+    } catch (err) {
+      if (err && err.serveur) { dire('photo', err.message, 'erreur'); return; }
+      App.mettreEnFile({ action: 'retirerPhotoProfil', donnees: {} });
+      dire('photo', 'Hors ligne : retrait envoyé au retour du réseau.');
+    }
   }
   const initiales = (nom) => String(nom || '').split(/[\s-]+/).filter(Boolean).slice(0, 2).map((m) => m[0]).join('').toUpperCase();
 
@@ -407,10 +497,27 @@ const Profil = (() => {
     masquer() {
       if (zone) zone.hidden = true;
     },
+    /** Photo de l'agent connecté pour le menu : celle gardée sur l'appareil, puis celle du serveur. */
+    async photoMenu() {
+      try {
+        const c = JSON.parse(localStorage.getItem(CLE_PHOTO));
+        if (c && c.identifiant === App.identifiant() && c.photo) App.surPhoto(c.photo);
+      } catch (e) { /* rien */ }
+      try {
+        const rep = await App.appeler('lirePhotoProfil');
+        if (rep.ok) App.surPhoto(rep.photo || '');
+      } catch (e) { /* hors ligne ou serveur pas à jour : on garde la photo de l'appareil */ }
+    },
+    memoriserPhoto(photo) {
+      try {
+        if (photo) localStorage.setItem(CLE_PHOTO, JSON.stringify({ identifiant: App.identifiant(), photo }));
+        else localStorage.removeItem(CLE_PHOTO);
+      } catch (e) { /* stockage plein */ }
+    },
     /** Déconnexion : rien du profil ne reste pour l'agent suivant. */
     oublier() {
       profil = null;
-      try { localStorage.removeItem(CLE); } catch (e) { /* rien */ }
+      try { localStorage.removeItem(CLE); localStorage.removeItem(CLE_PHOTO); } catch (e) { /* rien */ }
     },
   };
 })();

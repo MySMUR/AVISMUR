@@ -261,6 +261,20 @@ function afficherAgent(infos) {
   $('fonction-utilisateur').textContent = fonction;
   $('menu-nom').textContent = nom || 'Menu';
   $('menu-fonction').textContent = fonction;
+  Profil.photoMenu(); // photo de profil facultative : gardée sur l'appareil, mise à jour depuis le serveur
+}
+
+/** Photo de profil dans l'en-tête du menu (initiales si l'agent n'en a pas). */
+function afficherPhotoMenu(photo) {
+  Profil.memoriserPhoto(photo);
+  const zone = $('menu-avatar');
+  zone.textContent = '';
+  zone.hidden = !photo;
+  if (!photo) return;
+  const img = document.createElement('img');
+  img.src = photo;
+  img.alt = '';
+  zone.append(img);
 }
 
 /** Configuration des véhicules et des questions, si un administrateur l'a modifiée. */
@@ -549,6 +563,7 @@ $('deconnexion').addEventListener('click', async () => {
   Infos.oublier();
   Materiel.oublier();
   Profil.oublier();
+  afficherPhotoMenu('');
   Annuaire.oublier();
   session.effacer();
   appareil.effacer();
@@ -919,6 +934,7 @@ Annuaire.initialiser({
 });
 Profil.initialiser({
   appeler,
+  surPhoto: afficherPhotoMenu,
   ouvrirVue,
   mettreEnFile,
   identifiant: () => (session.lire() || appareil.lire() || {}).identifiant || '',

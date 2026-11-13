@@ -82,7 +82,8 @@ const Annuaire = (() => {
         el('a', { classe: 'ann-bouton ann-sms', href: `sms:${a.telephone}`, 'aria-label': `SMS à ${a.nom}` }, avecIcone(ICONE_SMS, 'SMS')))
       : el('p', { classe: 'ann-non-partage', texte: 'Numéro non partagé' });
     return el('li', { classe: `ann-agent${a.moi ? ' ann-moi' : ''}` },
-      el('div', { classe: 'ann-avatar', 'aria-hidden': 'true', texte: initiales(a.nom) }),
+      a.photo ? el('img', { classe: 'ann-avatar avatar-photo', src: a.photo, alt: '', loading: 'lazy' })
+        : el('div', { classe: 'ann-avatar', 'aria-hidden': 'true', texte: initiales(a.nom) }),
       el('div', { classe: 'ann-identite' },
         el('p', { classe: 'ann-nom' }, a.nom, a.moi ? el('span', { classe: 'usr-pastille usr-gris', texte: 'Vous' }) : null),
         el('p', { classe: 'ann-fonction', texte: a.fonction || '—' })),
