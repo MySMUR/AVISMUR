@@ -59,12 +59,13 @@ const Utilisateurs = (() => {
       if (filtreRole.startsWith('etudiants-')) return a.etudiant && (!PERIODES_FILTRE[filtreRole] || a.periode === PERIODES_FILTRE[filtreRole]);
       if (a.etudiant && a.periode !== 'en-cours' && !f && ouvert !== a.cri) return false;
       if (filtreRole === 'inactif') return !a.compteActif;
+      if (filtreRole === 'sans-cri') return Boolean(a.sansCri);
       if (filtreRole === 'droits') return a.role === 'admin' || a.droits.length > 0;
       return !filtreRole || a.role === filtreRole;
     };
     return agents.filter((a) => {
       if (!garder(a)) return false;
-      return !f || sansAccent(a.nom).includes(f) || a.cri.includes(f) || sansAccent(a.fonction).includes(f);
+      return !f || sansAccent(a.nom).includes(f) || (!a.sansCri && a.cri.includes(f)) || sansAccent(a.fonction).includes(f);
     });
   }
 
@@ -76,6 +77,7 @@ const Utilisateurs = (() => {
   const PERIODES = { 'a-venir': 'Stage à venir', terminee: 'Stage terminé', inconnue: 'Dates manquantes' };
 
   function etatCompte(a) {
+    if (a.sansCri) return pastille('Sans code CRI', 'usr-orange');
     if (!a.role) return pastille('Non autorisé', 'usr-gris');
     if (a.etudiant && a.periode !== 'en-cours') return pastille(PERIODES[a.periode] || a.periode, a.periode === 'terminee' ? 'usr-gris' : 'usr-orange');
     return a.compteActif ? pastille('Compte actif', 'usr-vert') : pastille('Jamais connecté', 'usr-orange');
@@ -105,7 +107,7 @@ const Utilisateurs = (() => {
 
   function rendreFiche(a) {
     const infos = el('dl', { classe: 'usr-infos' },
-      a.etudiant ? ligneInfo('Identifiant de connexion', a.identifiant) : ligneInfo('Code CRI', a.cri),
+      a.etudiant ? ligneInfo('Identifiant de connexion', a.identifiant) : ligneInfo('Code CRI', a.sansCri ? 'Non renseigné' : a.cri),
 
       ligneInfo(a.etudiant ? 'Fonction' : 'Fonction (DB_SMUR)', a.etudiant ? 'Étudiant IADE (DB_EIADE)' : `${a.fonction || '—'} · onglet ${a.onglet}`),
       ligneInfo('Rôle dans l\'appli', ROLES[a.role] || a.role),
@@ -122,18 +124,18 @@ const Utilisateurs = (() => {
         type: 'button', classe: 'cfg-bouton', texte: 'Modifier la fiche',
         surclick: () => {
           edition = {
-            ancienCri: a.cri, nom: a.nom, cri: a.etudiant ? '' : a.cri, code: a.code, telephone: a.numero,
+            ancienCri: a.cri, ancienNom: a.nom, nom: a.nom, cri: a.etudiant || a.sansCri ? '' : a.cri, code: a.code, telephone: a.numero,
             nomSeul: a.nomSeul || '', prenom: a.prenom || '', identifiant: a.identifiant || '',
           };
           aConfirmer = ''; stageEdite = null; rendre();
         },
       }));
     }
-    if (gerable && a.compteActif) {
+    if (gerable && a.compteActif && !a.sansCri) {
       actions.append(boutonAction(a, 'reinitialiserMdp', 'Réinitialiser le mot de passe',
         'Appuyez de nouveau : le mot de passe sera effacé et l\'agent déconnecté partout. Il en recréera un via le SMS.'));
     }
-    if (gerable && (a.appareils > 0 || a.compteActif)) {
+    if (gerable && !a.sansCri && (a.appareils > 0 || a.compteActif)) {
       actions.append(boutonAction(a, 'deconnecterAppareils', 'Déconnecter tous ses appareils',
         'Appuyez de nouveau pour déconnecter cet agent de tous ses appareils.'));
     }
@@ -143,13 +145,14 @@ const Utilisateurs = (() => {
         : 'Appuyez de nouveau : l\'agent sera retiré de DB_SMUR et déconnecté. Son historique est conservé.'));
     }
     // Administrateur principal (propriété ADMINS) : seul un administrateur principal en nomme un autre.
-    if (a.role && !a.etudiant && estPrincipal() && a.cri !== moi) {
+    if (a.role && !a.etudiant && !a.sansCri && estPrincipal() && a.cri !== moi) {
       actions.append(a.role === 'admin'
         ? boutonAction(a, 'retirerAdmin', 'Retirer « administrateur principal »', 'Appuyez de nouveau : il gardera seulement ses droits délégués.')
         : boutonAction(a, 'nommerAdmin', 'Nommer administrateur principal', 'Appuyez de nouveau : cet agent aura tous les droits, sans restriction.'));
     }
 
     const notes = [];
+    if (a.sansCri) notes.push('Pas encore de code CRI : « Modifier la fiche » pour le renseigner, avec son portable. Il pourra ensuite se connecter.');
     if (!a.role) notes.push('Fonction non reconnue : cet agent ne peut pas se connecter. « Modifier la fiche » pour lui attribuer une fonction.');
     if (a.etudiant && a.periode === 'a-venir') notes.push(`Connexion possible à partir du ${dateFr(a.debut)} : identifiant « ${a.identifiant} », puis « Recevoir un code par SMS ».`);
     if (a.etudiant && a.periode === 'terminee') notes.push('Stage terminé : l\'étudiant ne peut plus se connecter. Pour un nouveau stage ou une prolongation, utilisez les stages ci-dessous.');
@@ -250,7 +253,7 @@ const Utilisateurs = (() => {
   const libelleDroit = (code) => (catalogueDroits.find((d) => d.code === code) || { libelle: code }).libelle;
 
   function rendreDroits(a) {
-    if (a.etudiant || !a.role || !aDroit('GRANT')) return null;
+    if (a.etudiant || a.sansCri || !a.role || !aDroit('GRANT')) return null;
     const bloc = el('fieldset', { classe: 'usr-droits' }, el('legend', { texte: 'Droits d\'administration' }));
     if (a.role === 'admin') {
       bloc.append(el('p', { classe: 'aide-question', texte: 'Administrateur principal (propriété ADMINS) : tous les droits, non modifiables ici.' }));
@@ -345,7 +348,7 @@ const Utilisateurs = (() => {
         : 'Changer le nom ou le prénom renomme tous ses stages dans DB_EIADE et change son identifiant (il devra se reconnecter).' }),
     ] : [
       champTexte('usr-f-nom', 'Nom et prénom', 'nom', { autocomplete: 'off', placeholder: 'NOM Prénom', maxlength: 80 }),
-      champTexte('usr-f-cri', 'Code CRI (6 chiffres)', 'cri', { inputmode: 'numeric', maxlength: 6, autocomplete: 'off' }),
+      champTexte('usr-f-cri', 'Code CRI (6 chiffres ; sans lui, l\'agent ne peut pas se connecter)', 'cri', { inputmode: 'numeric', maxlength: 6, autocomplete: 'off' }),
       champTexte('usr-f-tel', 'Téléphone portable (pour le SMS de connexion)', 'telephone', { type: 'tel', inputmode: 'tel', autocomplete: 'off', placeholder: '06 12 34 56 78' }),
       el('p', { classe: 'aide-question', texte: 'Changer le code CRI ou la fonction déconnecte l\'agent de ses sessions en cours.' }),
     ];
@@ -379,14 +382,14 @@ const Utilisateurs = (() => {
       charge = { ancienCri: e.ancienCri, code: e.code, nomSeul: e.nomSeul, prenom: e.prenom, telephone: e.telephone, debut: e.debut, fin: e.fin, ifia: e.ifia };
     } else {
       if (!String(e.nom || '').trim()) { message('Indiquez le nom et le prénom.', 'erreur'); return; }
-      if (!/^\d{6}$/.test(cri)) { message('Le code CRI comporte 6 chiffres.', 'erreur'); return; }
-      charge = { ancienCri: e.ancienCri, nom: e.nom, cri, code: e.code, telephone: e.telephone };
+      if (cri && !/^\d{6}$/.test(cri)) { message('Le code CRI comporte 6 chiffres.', 'erreur'); return; }
+      charge = { ancienCri: e.ancienCri, ancienNom: e.ancienNom, nom: e.nom, cri, code: e.code, telephone: e.telephone };
     }
     message('Enregistrement dans DB_SMUR…');
     try {
       const rep = await appelerServeur('enregistrerAgent', { agent: charge });
       if (!rep.ok) { message(rep.erreur || 'Refusé par le serveur.', 'erreur'); return; }
-      ouvert = etudiant ? (rep.identifiant || e.ancienCri) : cri;
+      ouvert = etudiant ? (rep.identifiant || e.ancienCri) : (cri || '');
       if (rep.identifiant) filtre = '';
       edition = null;
       await charger(rep.message);
@@ -411,7 +414,7 @@ const Utilisateurs = (() => {
   }
 
   async function executer(a, operation) {
-    const charge = { cri: a.cri, operation };
+    const charge = { cri: a.cri, nom: a.nom, operation };
     if (operation === 'nommerAdmin' || operation === 'retirerAdmin') {
       charge.operation = 'definirAdmin';
       charge.admin = operation === 'nommerAdmin';
@@ -437,7 +440,7 @@ const Utilisateurs = (() => {
     });
     const choixRole = el('select', { id: 'usr-filtre', surchange: (e) => { filtreRole = e.target.value; rendreListe(); } },
       ...[['', 'Tous'], ['ambulancier', 'Ambulanciers'], ['iade', 'IADE'], ['etudiant-iade', 'Étudiants en stage'], ['etudiants-a-venir', 'Étudiants à venir'], ['etudiants-passes', 'Étudiants passés'], ['etudiants-tous', 'Tous les étudiants'], ['medecin', 'Médecins'], ['interne', 'Internes'], ['cadre', 'Cadres'], ['chef', 'Chefs d\'unité'],
-        ['admin', 'Administrateurs principaux'], ['droits', 'Avec des droits d\'administration'], ['inactif', 'Jamais connectés']]
+        ['admin', 'Administrateurs principaux'], ['droits', 'Avec des droits d\'administration'], ['inactif', 'Jamais connectés'], ['sans-cri', 'Sans code CRI']]
         .map(([v, t]) => el('option', { value: v, texte: t, selected: v === filtreRole })));
 
     zone.innerHTML = '';
