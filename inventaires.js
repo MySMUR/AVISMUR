@@ -3651,7 +3651,6 @@ const Inventaires = (() => {
         + `M${col + 3} ${r + 2}H${col + 4}a1 1 0 0 1 1 1V${r + 4}a1 1 0 0 1 -1 1H${col + 3}a1 1 0 0 1 -1 -1V${r + 3}a1 1 0 0 1 1 -1Z`;
     });
     enfants.push(
-      el('svg:rect', { x: qr.x - 0.4, y: qr.y - 0.4, width: qr.s + 0.8, height: qr.s + 0.8, rx: 1, fill: 'none', stroke: k.orange, 'stroke-width': Math.max(0.2, ep * 0.3), 'stroke-dasharray': `${ep} ${ep * 0.7}` }),
       el('svg:g', { transform: `translate(${qr.x + o} ${qr.y + o}) scale(${mod})` }, el('svg:path', { d: trace, fill: k.encre })));
     if (L) {
       const p = (L + 1) * mod, x = qr.x + o + (l0 - 0.5) * mod, y = qr.y + o + (l0 - 0.5) * mod;
