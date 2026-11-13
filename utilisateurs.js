@@ -445,7 +445,6 @@ const Utilisateurs = (() => {
     zone.append(...[
       el('h1', { texte: 'Gestion des utilisateurs' }),
       el('p', { classe: 'consigne', texte: `${agents.filter((a) => !a.etudiant).length} agents et ${agents.filter((a) => a.etudiant).length} étudiants IADE, ${actifs} avec un mot de passe créé.` }),
-      el('p', { classe: 'note-parc', texte: 'Agents : DB_SMUR (onglets PERSONNEL et Encadrement). Étudiants IADE et leurs stages : DB_EIADE. Tout se modifie ici, y compris la suppression.' }),
       el('div', { classe: 'usr-outils' },
         el('div', { classe: 'champ usr-champ' }, el('label', { for: 'usr-recherche', texte: 'Rechercher' }), recherche),
         el('div', { classe: 'champ usr-champ' }, el('label', { for: 'usr-filtre', texte: 'Afficher' }), choixRole),
