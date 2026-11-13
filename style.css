@@ -2148,3 +2148,7 @@ body.fenetre-ouverte .mur-publier { display: none; }
 /* Administration : sous-rubriques (Gestion des catalogues, Gestion de la communication) */
 .tiroir-groupe-titre { display: block; padding: 0.7rem 0.75rem 0.2rem; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--gris); }
 .tiroir-groupe ul .tiroir-lien { padding-left: 1.8rem; }
+
+/* Numéro de version, discret, en pied du menu */
+.version-appli { margin: 0.5rem 0 0; font-size: 0.72rem; color: #8796AE; text-align: center; }
+.version-appli:empty { display: none; }
