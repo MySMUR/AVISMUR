@@ -1728,7 +1728,6 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .inv-tb-onglet:hover { border-color: var(--bleu); }
 .inv-tb-onglet[aria-selected="true"] { color: #fff; background: var(--bleu); border-color: var(--bleu); }
 .inv-tb-onglet .inv-tb-pastille { width: 0.8rem; height: 0.8rem; border-radius: 50%; }
-.inv-tb-primaire { min-height: calc(100vh - 16rem); }
 .inv-tb-primaire > .inv-tb-contenu { display: block; columns: 22rem; column-gap: 0.7rem; }
 .inv-tb-primaire > .inv-tb-contenu > .inv-tb-cadre { display: block; width: 100%; margin: 0 0 0.7rem; break-inside: avoid; }
 .inv-tb-cadre .inv-tb-cadre { min-width: min(9rem, 100%); }
@@ -1780,17 +1779,19 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 
 /* Barre du bas : QR code et NFC (téléphone, agent connecté) */
 .barre-scan { display: none; }
+/* Téléphone : QR code et NFC en deux pastilles rondes en bas à droite (plus de bandeau pleine largeur). */
 @media (max-width: 760px) {
   body.connecte.vue-inv-checklist .barre-scan {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
-    padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid #d5dbe5; box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+    display: flex; gap: 0.6rem; position: fixed; right: 0.9rem; bottom: calc(0.9rem + env(safe-area-inset-bottom)); z-index: 50;
   }
-  body.connecte.vue-inv-checklist { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
-  body.camera-ouverte .barre-scan, body.fenetre-ouverte .barre-scan { display: none; }
+  body.connecte.vue-inv-checklist { padding-bottom: calc(4.4rem + env(safe-area-inset-bottom)); }
+  body.camera-ouverte .barre-scan, body.fenetre-ouverte .barre-scan, body.inv-avec-valider .barre-scan { display: none !important; }
+  body.connecte.vue-inv-checklist.inv-avec-valider { padding-bottom: env(safe-area-inset-bottom); }
   .barre-scan button {
-    display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; border-radius: 0.75rem;
-    border: none; background: var(--bleu, #1d4e9e); color: #fff; font: inherit; font-weight: 600; font-size: 1rem;
+    display: flex; align-items: center; justify-content: center; width: 3.3rem; height: 3.3rem; padding: 0; border-radius: 50%;
+    border: none; background: var(--bleu, #1d4e9e); color: #fff; box-shadow: 0 3px 10px rgb(19 41 75 / 0.3);
   }
+  .barre-scan span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .barre-scan svg { width: 1.6rem; height: 1.6rem; }
 }
 .barre-scan-avis { position: fixed; left: 1rem; right: 1rem; bottom: calc(5rem + env(safe-area-inset-bottom)); z-index: 60; margin: 0; padding: 0.75rem 1rem; border-radius: 0.6rem; background: #263238; color: #fff; text-align: center; }
@@ -1905,3 +1906,139 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .mat-photo { display: block; max-width: 100%; max-height: 18rem; object-fit: contain; border-radius: 10px; border: 1px solid var(--trait); background: #fff; }
 .mat-photo-bloc { display: flex; flex-direction: column; gap: 0.5rem; }
 .mat-libelle { margin: 0; font-weight: 700; }
+
+/* ---------- Inventaires sur téléphone : barres collées en haut et en bas (inventaires.js) ---------- */
+.inv-picto { width: 1.3rem; height: 1.3rem; flex-shrink: 0; }
+.inv-picto.vert { color: #17695F; }
+.inv-picto.orange { color: #A35A00; }
+.inv-picto.rouge { color: var(--erreur); }
+.inv-picto.gris { color: var(--gris); }
+/* Barre du haut : contenant primaire, flèche retour, niveau affiché. Pleine largeur de la feuille. */
+.inv-barre-haut {
+  position: sticky; top: 0; z-index: 20; margin: 0 -1.25rem 0.6rem; padding: max(0.4rem, env(safe-area-inset-top)) 1.25rem 0.45rem;
+  background: #fff; border-bottom: 1px solid #E1E8F2;
+}
+@media (min-width: 640px) { .inv-barre-haut { margin: 0 -2.5rem 0.8rem; padding-inline: 2.5rem; } }
+.inv-bande-primaire {
+  display: flex; align-items: center; gap: 0.45rem; margin: 0 0 0.4rem; padding: 0.3rem 0.7rem; min-height: 2.1rem;
+  font-size: 0.95rem; color: #fff; background: var(--bleu); border-radius: 999px;
+}
+.inv-bande-primaire .inv-picto { width: 1.1rem; height: 1.1rem; }
+.inv-bande-primaire strong { font-weight: 800; }
+.inv-bande-primaire.aucun { color: var(--gris); background: var(--ciel); }
+.inv-bande-primaire.consultation { color: #5B3A00; background: #FFF1DC; border: 1px solid #F0C27F; }
+.inv-bande-texte { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-bande-action {
+  flex-shrink: 0; min-height: 1.8rem; padding: 0.1rem 0.7rem; font: inherit; font-size: 0.85rem; font-weight: 700;
+  color: #fff; background: var(--bleu); border: 0; border-radius: 999px;
+}
+.inv-barre-ligne { display: flex; align-items: center; gap: 0.6rem; min-height: 2.9rem; }
+.inv-retour {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 2.9rem; height: 2.9rem; padding: 0;
+  color: var(--bleu); background: #fff; border: 2px solid var(--bleu); border-radius: 50%;
+  touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.inv-retour .inv-picto { width: 1.4rem; height: 1.4rem; }
+.inv-retour:active { color: #fff; background: var(--bleu); }
+.inv-titre-niveau { flex: 1; min-width: 0; margin: 0; font-size: 1.2rem; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-titre-niveau.secondaire { font-weight: 700; color: var(--gris); }
+.inv-titre-niveau:focus { outline: none; }
+/* Fenêtre « Remonter à… » (appui long sur la flèche) */
+.inv-etages-liste { list-style: none; margin: 0 0 0.6rem; padding: 0; display: grid; gap: 0.4rem; }
+.inv-etage {
+  display: flex; align-items: center; gap: 0.7rem; width: 100%; min-height: 3.2rem; padding: 0.5rem 0.8rem; text-align: left;
+  font: inherit; color: var(--encre); background: var(--ciel); border: 2px solid transparent; border-radius: var(--rayon);
+}
+.inv-etage:hover, .inv-etage:focus-visible { border-color: var(--bleu); }
+.inv-etage-rang { display: inline-flex; align-items: center; justify-content: center; width: 1.8rem; height: 1.8rem; flex-shrink: 0; font-weight: 700; color: #fff; background: var(--bleu); border-radius: 50%; }
+.inv-etage-nom { flex: 1; font-weight: 700; }
+.inv-etage small { color: var(--gris); }
+.inv-etage.primaire { background: #E6EEF9; }
+/* Barre du bas : « Valider » toujours visible, QR code et NFC en pictogrammes. */
+.inv-barre-bas {
+  position: sticky; bottom: 0; z-index: 20; margin: 0.8rem -1.25rem -2rem; padding: 0.55rem 1.25rem calc(0.55rem + env(safe-area-inset-bottom));
+  background: #fff; border-top: 1px solid #E1E8F2; box-shadow: 0 -3px 10px rgb(19 41 75 / 0.06);
+}
+@media (min-width: 640px) { .inv-barre-bas { margin: 1rem -2.5rem -2.25rem; padding-inline: 2.5rem; border-radius: 0 0 20px 20px; } }
+.inv-barre-bas .inv-message { margin: 0 0 0.5rem; max-height: 30vh; overflow: auto; }
+.inv-barre-bas-boutons { display: flex; align-items: stretch; gap: 0.5rem; }
+.inv-barre-bas .inv-valider { flex: 1; width: auto; min-width: 0; margin: 0; }
+.inv-scan-icone {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 3.2rem; min-height: 3.2rem; padding: 0;
+  color: var(--bleu); background: #fff; border: 2px solid var(--bleu); border-radius: var(--rayon);
+}
+.inv-scan-icone .inv-logo { width: 1.6rem; height: 1.6rem; }
+.inv-scan-icone:hover { color: #fff; background: var(--bleu); }
+/* Page des inventaires : loupe discrète qui déplie la recherche */
+.inv-entete-racine { align-items: center; }
+.inv-entete-outils { display: inline-flex; align-items: center; gap: 0.4rem; margin-left: auto; }
+.inv-loupe {
+  display: flex; align-items: center; justify-content: center; width: 2.8rem; height: 2.8rem; padding: 0;
+  color: var(--bleu); background: var(--ciel); border: 0; border-radius: 50%;
+}
+.inv-loupe.ouverte { color: #fff; background: var(--bleu); }
+.inv-loupe .inv-picto { width: 1.4rem; height: 1.4rem; }
+.inv-entete-outils .inv-scan-icone { width: 2.8rem; min-height: 2.8rem; border-radius: 50%; border-width: 0; background: var(--ciel); }
+@media (max-width: 760px) { .inv-scan-ecran-large { display: none; } }
+.inv-panneau-recherche { margin: 0 0 1rem; }
+.inv-recherche-primaire { margin-bottom: 0.5rem; }
+.inv-recherche-primaire .aide-question { margin: 0.3rem 0 0; }
+.inv-recherche-champ { width: 100%; min-height: 3rem; font-size: 1.05rem; }
+.inv-tag-consultation { color: #5B3A00; border-color: #F0C27F; background: #FFF1DC; }
+.inv-consultation .inv-liste-modele li.perime { color: var(--erreur); }
+.inv-consultation .inv-liste-modele li.proche { color: #8A4B00; }
+.inv-consultation-date { color: inherit; }
+.inv-arbre-vide { color: #8A4B00; font-style: italic; }
+
+/* ---------- Tableau de bord : tuiles colorées côte à côte ---------- */
+.inv-tb-tuile {
+  --tb-fond: #F3F6FA; --tb-bord: #D9E2EE; --tb-texte: var(--encre);
+  min-width: 0; padding: 0.5rem; background: var(--tb-fond); border: 1px solid var(--tb-bord); border-radius: 12px;
+}
+.inv-tb-tuile.fait { --tb-fond: #E1F3EF; --tb-bord: #9ED3C8; }
+.inv-tb-tuile.afaire, .inv-tb-tuile.encours { --tb-fond: #FFF1DE; --tb-bord: #F2C88F; }
+.inv-tb-tuile.anomalie { --tb-fond: #FDE6E3; --tb-bord: #F0A9A1; }
+.inv-tb-tuile.vide { --tb-fond: #F3F6FA; --tb-bord: #D9E2EE; }
+.inv-tb-tuile.avide { --tb-fond: #FFF8F0; --tb-bord: #C77A2B; border-style: dashed; }
+/* Un contenant qui en contient d'autres occupe toute la ligne ; son fond est éclairci pour que ses tuiles ressortent. */
+.inv-tb-tuile.parent { grid-column: 1 / -1; background: color-mix(in srgb, var(--tb-fond) 45%, #fff); border-width: 2px; }
+/* Carré quand la place le permet ; rectangle (hauteur plafonnée) quand il est seul sur sa ligne. */
+.inv-tb-tuile:not(.parent) { display: flex; aspect-ratio: 1 / 1; max-height: 8.5rem; }
+.inv-tb-tuile:not(.parent) .inv-tb-tete { flex: 1; flex-direction: column; align-items: flex-start; justify-content: space-between; }
+.inv-tb-tete {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.5rem; width: 100%; padding: 0.15rem; text-align: left;
+  font: inherit; color: var(--tb-texte); background: none; border: 0; border-radius: 8px; cursor: pointer;
+}
+.inv-tb-tete:focus-visible { outline: 3px solid var(--orange); outline-offset: 1px; }
+.inv-tb-nom {
+  font-size: 0.95rem; font-weight: 400; line-height: 1.2; overflow-wrap: break-word; hyphens: auto;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.inv-tb-tuile.parent > .inv-tb-tete .inv-tb-nom { flex: 1; font-weight: 700; -webkit-line-clamp: 2; }
+.inv-tb-nom.inv-tb-biomed { font-weight: 800; }
+.inv-tb-pictos { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; }
+.inv-tb-pictos .inv-picto, .inv-tb-pictos .inv-tb-cadenas { width: 1.35rem; height: 1.35rem; }
+.inv-tb-compte { font-size: 0.85rem; font-weight: 800; color: #A35A00; font-variant-numeric: tabular-nums; }
+.inv-tb-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.5rem; margin-top: 0.45rem; }
+.inv-tb-grille .inv-tb-grille { grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr)); }
+.inv-tb-primaire { padding: 0.7rem; border-width: 3px; border-radius: 16px; }
+.inv-tb-primaire > .inv-tb-tete .inv-tb-nom { font-size: 1.3rem; font-weight: 800; color: var(--bleu); }
+.inv-tb-primaire > .inv-tb-grille { gap: 0.6rem; }
+@media (min-width: 1100px) { .inv-tb-grille { grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); } }
+.inv-tb-pastille.anomalie { border-color: var(--erreur); background: #FDE6E3; }
+.inv-tb-pastille.encours { border-color: var(--orange); }
+details.inv-tb-legende { display: block; margin: 0 0 0.8rem; font-size: 0.9rem; color: var(--gris); }
+details.inv-tb-legende summary { cursor: pointer; font-weight: 700; color: var(--bleu); }
+details.inv-tb-legende ul { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; }
+details.inv-tb-legende li { display: inline-flex; align-items: center; gap: 0.35rem; }
+/* Pop-up d'une tuile */
+.inv-tb-statut { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0 0 0.6rem; padding: 0.5rem 0.7rem; background: var(--ciel); border-radius: var(--rayon); }
+.inv-tb-statut.fait { background: #E1F3EF; }
+.inv-tb-statut.anomalie { background: #FDE6E3; }
+.inv-tb-statut.afaire, .inv-tb-statut.encours { background: #FFF1DE; }
+.inv-tb-rubrique h3 { margin: 0.8rem 0 0.3rem; font-size: 1rem; }
+.inv-tb-rubrique ul { margin: 0; padding-left: 1.1rem; }
+.inv-tb-rubrique li { padding: 0.15rem 0; }
+.inv-tb-rubrique li.rouge { color: var(--erreur); }
+.inv-tb-rubrique li.orange { color: #8A4B00; }
+.inv-tb-rubrique small { color: var(--gris); }

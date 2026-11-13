@@ -49,6 +49,21 @@ const Inventaires = (() => {
   let avis = ''; // message affiché une fois en haut de la vue
   let confirmer = ''; // action en attente d'une deuxième pression (valider avec manquants, supprimer)
   let recherche = '';
+  let rechercheOuverte = false; // loupe de la page des inventaires dépliée
+  /*
+   * Contenant primaire dans lequel se trouve l'agent (véhicule, réserve), toujours affiché en haut d'un inventaire.
+   * Il se déduit du contenant ouvert (ou de l'étiquette scannée sur place). Une recherche par le nom ne dit pas
+   * où l'on est : sans contenant primaire choisi, l'inventaire trouvé s'ouvre en consultation seule (rien à cocher).
+   */
+  const CLE_CONTEXTE = 'avismur_inv_contexte';
+  let contexte = (() => {
+    try { const x = JSON.parse(sessionStorage.getItem(CLE_CONTEXTE)); if (x && typeof x === 'object') return { primaire: String(x.primaire || ''), consultation: x.consultation === true }; } catch (e) { /* stockage indisponible */ }
+    return { primaire: '', consultation: false };
+  })();
+  function fixerContexte(primaire, consultation) {
+    contexte = { primaire: primaire || '', consultation: Boolean(consultation) };
+    try { sessionStorage.setItem(CLE_CONTEXTE, JSON.stringify(contexte)); } catch (e) { /* stockage indisponible */ }
+  }
   let dernierAffiche = null;
   let pile = []; // inventaires ouverts à la suite : remonter d'un niveau revient en arrière dans l'historique du téléphone
   const synchro = { enCours: false, encore: false, texte: '', classe: '', serveurInconnu: false, photos: '' };
@@ -332,6 +347,25 @@ const Inventaires = (() => {
     if (!c || vus.has(id)) return [];
     vus.add(id);
     return [c, ...enfants(id).flatMap((f) => descendants(f.id, vus))];
+  }
+  /** Contenant primaire (véhicule, réserve) qui renferme ce contenant, lui compris. */
+  const primaireDe = (id) => chemin(id).find((x) => x.categorie === 'primaire' && !x.modele) || null;
+  /**
+   * Niveau du dessus, pour la flèche retour et l'arborescence : en check-list, un emplacement
+   * (« ici, un exemplaire de tel inventaire type ») s'efface derrière le contenant qui l'occupe.
+   */
+  function parentVisible(c) {
+    const vus = new Set();
+    let p = contenant(c.parent);
+    while (p && p.emplacement && !gestion && !vus.has(p.id)) { vus.add(p.id); p = contenant(p.parent); }
+    return p;
+  }
+  /** Étages au-dessus d'un contenant, du plus proche au plus lointain. */
+  function etagesAuDessus(c) {
+    const liste = [];
+    const vus = new Set([c.id]);
+    for (let p = parentVisible(c); p && !vus.has(p.id); p = parentVisible(p)) { vus.add(p.id); liste.push(p); }
+    return liste;
   }
   const datePeremption = (idContenant, idArticle) => (etat.peremptions[`${idContenant}/${idArticle}`] || {}).date || '';
   const verifDuJour = (id) => {
@@ -800,6 +834,16 @@ const Inventaires = (() => {
     }
     const sous = c.emplacement ? 0 : enfants(c.id).length;
     const occupant = c.emplacement ? enfants(c.id)[0] : null;
+    // Check-list : un emplacement occupé se présente sous le nom du contenant qui l'occupe (pas celui de l'inventaire type).
+    if (c.emplacement && !gestion) {
+      return el('a', { classe: `inv-carte ${b.classe}`, href: lien(c.id) }, repere,
+        el('span', { classe: 'inv-carte-texte' },
+          el('strong', { texte: occupant ? occupant.nom : c.nom }),
+          occupant ? null : el('span', { classe: 'inv-carte-occupant vide', texte: 'à identifier (QR, NFC ou liste)' }),
+          el('span', { classe: 'inv-carte-etat' }, b.complet ? '✓ ' : '', b.texte),
+          el('span', { classe: 'inv-badges' }, ...badges(b))),
+        el('span', { classe: 'inv-chevron', 'aria-hidden': 'true', texte: '›' }));
+    }
     return el('a', { classe: `inv-carte ${b.classe}`, href: lien(c.id) }, repere,
       el('span', { classe: 'inv-carte-texte' },
         el('strong', {}, c.nom, c.categorie && c.categorie !== 'primaire' && !c.emplacement ? el('span', { classe: `inv-tag-scellable inv-tag-${c.categorie}`, texte: CATEGORIES_CONTENANT[c.categorie].nom }) : null,
@@ -864,24 +908,143 @@ const Inventaires = (() => {
     el('div', { classe: 'cfg-ligne' }, saisie, el('button', { type: 'submit', classe: 'cfg-bouton', texte: 'Ajouter' })));
   }
 
+  // ---------- Pictogrammes (traits, 24 × 24) ----------
+  const TRACES = {
+    retour: ['M19 12H5', 'M11 6l-6 6 6 6'],
+    loupe: ['M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13z', 'M20 20l-4.8-4.8'],
+    fermer: ['M6 6l12 12', 'M18 6L6 18'],
+    ok: ['M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z', 'M8.5 12.5l2.5 2.5 5-5.5'],
+    anomalie: ['M12 4L2.8 19.5h18.4z', 'M12 10v4', 'M12 17v.01'],
+    perime: ['M5 5h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z', 'M16 3v4', 'M8 3v4', 'M4 10h16', 'M10 13.5l4 4', 'M14 13.5l-4 4'],
+    proche: ['M7 3h10', 'M7 21h10', 'M8 3c0 4 8 5 8 9s-8 5-8 9', 'M16 3c0 4-8 5-8 9s8 5 8 9'],
+    date: ['M5 5h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z', 'M16 3v4', 'M8 3v4', 'M4 10h16', 'M12 14v.01', 'M12 17.5v.01'],
+    branchement: ['M9 3v5', 'M15 3v5', 'M7 8h10v3a5 5 0 0 1-10 0z', 'M12 16v5'],
+    debranche: ['M9 3v5', 'M15 3v5', 'M7 8h10v3a5 5 0 0 1-10 0z', 'M12 16v5', 'M3 3l18 18'],
+    identifier: ['M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z', 'M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.4', 'M12 17v.01'],
+    afaire: ['M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z'],
+    consultation: ['M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z', 'M12 9.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5z'],
+    lieu: ['M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z', 'M12 7a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5z'],
+    appareil: ['M4 6h16v12H4z', 'M4 12h4l2-3 3 6 2-3h5'],
+  };
+  /** Pictogramme : `nom` d'un tracé ci-dessus ; `etiquette` le rend lisible (sinon décoratif). */
+  function picto(nom, etiquette = '', classe = '') {
+    const svg = el('svg:svg', { viewBox: '0 0 24 24', classe: `inv-picto inv-picto-${nom} ${classe}`.trim(), fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', ...(etiquette ? { role: 'img', 'aria-label': etiquette } : { 'aria-hidden': 'true' }) },
+      etiquette ? el('svg:title', { texte: etiquette }) : null,
+      ...(TRACES[nom] || []).map((d) => el('svg:path', { d })));
+    if (nom === 'afaire') svg.querySelector('path').setAttribute('stroke-dasharray', '3.5 3');
+    return svg;
+  }
+  /** Batterie remplie selon le niveau relevé (0 à 1). */
+  function pictoBatterie(niveau, etiquette, classe = '') {
+    const largeur = Math.max(0, Math.min(1, niveau)) * 11;
+    return el('svg:svg', { viewBox: '0 0 24 24', classe: `inv-picto inv-picto-batterie ${classe}`.trim(), role: 'img', 'aria-label': etiquette },
+      el('svg:title', { texte: etiquette }),
+      el('svg:rect', { x: '2.5', y: '7', width: '16', height: '10', rx: '2', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }),
+      el('svg:path', { d: 'M21 10.5v3', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round' }),
+      el('svg:rect', { x: '5', y: '9.5', width: String(largeur), height: '5', rx: '0.8', fill: 'currentColor' }));
+  }
+
+  // ---------- Barre du haut : flèche retour, contenant primaire, niveau affiché ----------
+  const CLE_ASTUCE = 'avismur_inv_astuce_retour';
+  /**
+   * Fenêtre des étages (appui long sur la flèche) : du niveau le plus proche jusqu'à la page des inventaires.
+   * `etages` : [{ nom, aller }] ; une ligne par étage, assez haute pour le pouce.
+   */
+  function choisirEtage(etages) {
+    const fond = el('div', { classe: 'fenetre-fond', surclick: (e) => { if (e.target === fond) fermer(); } });
+    const retour = document.activeElement;
+    const fermer = () => { fond.remove(); document.body.classList.remove('fenetre-ouverte'); if (retour && retour.isConnected) retour.focus(); };
+    const titre = idChamp();
+    fond.append(el('div', { classe: 'fenetre inv-etages', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
+      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: 'Remonter à…' }),
+        el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
+      el('ul', { classe: 'inv-etages-liste' }, ...etages.map((x, i) => el('li', {},
+        el('button', { type: 'button', classe: `inv-etage${x.primaire ? ' primaire' : ''}`, surclick: () => { fermer(); x.aller(); } },
+          el('span', { classe: 'inv-etage-rang', 'aria-hidden': 'true', texte: i === etages.length - 1 && !x.primaire ? '⌂' : String(i + 1) }),
+          el('span', { classe: 'inv-etage-nom', texte: x.nom }),
+          x.primaire ? el('small', { texte: 'contenant primaire' }) : null))))));
+    fond.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
+    document.body.append(fond);
+    document.body.classList.add('fenetre-ouverte');
+    const premier = fond.querySelector('.inv-etage');
+    if (premier) premier.focus();
+  }
+  /** Flèche retour : un appui remonte d'un étage ; un appui long (ou clic droit) propose de choisir l'étage. */
+  function boutonRetour(retour, etages) {
+    let minuterie = null;
+    let long = false;
+    const annuler = () => { clearTimeout(minuterie); minuterie = null; };
+    const ouvrirEtages = () => { long = true; annuler(); if (navigator.vibrate) navigator.vibrate(15); choisirEtage(etages); };
+    const titre = etages.length > 1 ? 'Retour (appui long : choisir l\'étage)' : 'Retour';
+    return el('button', {
+      type: 'button', classe: 'inv-retour', 'aria-label': etages.length > 1 ? 'Retour d\'un étage. Appui long ou clic droit : choisir l\'étage' : 'Retour', title: titre,
+      surpointerdown: (e) => { long = false; if (etages.length > 1 && e.button === 0) minuterie = setTimeout(ouvrirEtages, 500); },
+      surpointerup: annuler, surpointerleave: annuler, surpointercancel: annuler,
+      surcontextmenu: (e) => { if (etages.length > 1) { e.preventDefault(); if (!long) ouvrirEtages(); } },
+      surclick: (e) => { if (long) { long = false; e.preventDefault(); return; } retour(); },
+    }, picto('retour'));
+  }
+  /** Bande du contenant primaire : où l'on est (ou « consultation seule » après une recherche par le nom). */
+  function bandeauPrimaire(c) {
+    if (gestion) return null;
+    const structurel = c ? primaireDe(c.id) : null;
+    if (contexte.consultation) {
+      return el('div', { classe: 'inv-bande-primaire consultation', role: 'status' }, picto('consultation'),
+        el('span', { classe: 'inv-bande-texte' }, el('strong', { texte: 'Consultation seule' }), structurel ? ` · ${structurel.nom}` : ''),
+        structurel ? el('button', { type: 'button', classe: 'inv-bande-action', texte: `Je suis dans ${structurel.nom}`, surclick: () => { fixerContexte(structurel.id, false); rendre({ garderPosition: true }); } }) : null);
+    }
+    const p = structurel || contenant(contexte.primaire);
+    return el('div', { classe: `inv-bande-primaire${p ? '' : ' aucun'}`, role: 'status' }, picto('lieu'),
+      el('span', { classe: 'inv-bande-texte' }, p ? 'Contenant primaire : ' : '', el('strong', { texte: p ? p.nom : 'Aucun contenant primaire' })));
+  }
+  /**
+   * Barre collée en haut de l'écran : bande du contenant primaire, puis flèche retour et nom du niveau affiché
+   * (le chemin complet « Inventaires › F21 › … » est trop long pour un téléphone).
+   */
+  function barreHaut({ c = null, titre = '', retour, etages = [], h1 = true, bande = true }) {
+    const nom = h1 ? el('h1', { tabindex: '-1', classe: 'inv-titre-niveau', texte: titre }) : el('span', { classe: 'inv-titre-niveau secondaire', texte: titre });
+    return el('div', { classe: 'inv-barre-haut' }, bande ? bandeauPrimaire(c) : null,
+      el('div', { classe: 'inv-barre-ligne' }, boutonRetour(retour, etages), nom,
+        c && c.scellable && h1 ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null));
+  }
+  /** Barre du haut d'un contenant : la flèche remonte d'un étage (les emplacements s'effacent derrière leur occupant). */
+  function barreContenant(c, { titre = c.nom, h1 = true, retour = null } = {}) {
+    const dessus = etagesAuDessus(c);
+    const etages = [...dessus.map((p) => ({ nom: p.nom, primaire: p.categorie === 'primaire', aller: () => aller(p.id) })),
+      { nom: gestion ? 'Gestion des inventaires' : 'Tous les inventaires', aller: () => aller('') }];
+    return barreHaut({ c, titre, h1, etages, retour: retour || (() => aller(dessus.length ? dessus[0].id : '')) });
+  }
+  /** Boutons QR code et NFC réduits à leur pictogramme (barre du bas, à côté de « Valider »). */
+  function boutonsScanIcones() {
+    return [
+      el('button', { type: 'button', classe: 'inv-scan-icone', 'aria-label': 'Scanner un QR code', title: 'QR code', surclick: () => scanRapide('qr') }, logoQr()),
+      el('button', { type: 'button', classe: 'inv-scan-icone', 'aria-label': 'Lire une puce NFC', title: 'NFC', surclick: () => scanRapide('nfc') }, logoNfc()),
+    ];
+  }
+
   // ----- Premier niveau -----
   function vueRacine() {
     const racines = enfants('');
     const tous = Object.values(structure.contenants).filter((c) => !c.supprime && (gestion || !dansUnModele(c.id)));
+    // Base des articles et tableau de bord : par le menu. Ici, une loupe discrète déplie la recherche.
+    const panneau = encadreRecherche(tous);
+    const loupe = el('button', {
+      type: 'button', classe: `inv-loupe${rechercheOuverte ? ' ouverte' : ''}`, 'aria-expanded': String(rechercheOuverte), 'aria-controls': panneau.id,
+      'aria-label': rechercheOuverte ? 'Fermer la recherche' : 'Chercher un inventaire par son nom', title: 'Chercher un inventaire',
+      surclick: () => {
+        rechercheOuverte = !rechercheOuverte;
+        if (!rechercheOuverte) recherche = '';
+        rendre({ garderPosition: true, focus: rechercheOuverte ? '.inv-recherche-champ' : '.inv-loupe' });
+      },
+    }, picto(rechercheOuverte ? 'fermer' : 'loupe'));
     const noeuds = [
       bandeauGestion(),
-      el('div', { classe: 'inv-entete' }, el('h1', { tabindex: '-1', texte: gestion ? 'Gestion des inventaires' : 'Inventaires' }), boutonEdition()),
+      el('div', { classe: 'inv-entete inv-entete-racine' }, el('h1', { tabindex: '-1', texte: gestion ? 'Gestion des inventaires' : 'Inventaires' }),
+        el('span', { classe: 'inv-entete-outils' }, ...(gestion ? [] : boutonsScanIcones().map((b) => { b.classList.add('inv-scan-ecran-large'); return b; })), loupe)),
+      panneau,
       ligneSynchro(), ligneAvis(),
     ];
-    const nbFiches = Object.values(structure.catalogue).filter((f) => !f.archive).length;
-    if (nbFiches || estAdmin()) {
-      noeuds.push(el('a', { classe: 'lien inv-lien-base', href: lien(BASE), texte: `Base des articles (${nbFiches})` }));
-    }
-    if (!gestion && tous.some((c) => c.categorie === 'primaire' && !dansUnModele(c.id))) {
-      noeuds.push(el('a', { classe: 'lien inv-lien-base inv-lien-tableau', href: lien(TABLEAU), texte: 'Tableau de bord des contenants' }));
-    }
     noeuds.push(encadreARetrouver());
-    noeuds.push(encadreRecherche(tous));
     if (!tous.length) {
       noeuds.push(el('p', { classe: 'consigne', texte: estAdmin()
         ? 'Aucun inventaire pour l\'instant. Menu > Administration > Gestion des inventaires pour créer le premier (un véhicule, la réserve…), puis ajoutez-lui une photo, des sous-inventaires et des articles.'
@@ -912,7 +1075,7 @@ const Inventaires = (() => {
     noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Contenants primaires' }));
     noeuds.push(primaires.length
       ? el('ul', { classe: 'inv-liste' }, ...primaires.map((c) => el('li', {}, carte(c))))
-      : el('p', { classe: 'aide-question', texte: estAdmin() ? (gestion ? 'Aucun contenant primaire : ouvrez un inventaire et choisissez la catégorie « Primaire ».' : 'Aucun contenant primaire : menu > Administration > Gestion des inventaires.') : 'Aucun contenant primaire pour l\'instant : utilisez la recherche ci-dessus.' }));
+      : el('p', { classe: 'aide-question', texte: estAdmin() ? (gestion ? 'Aucun contenant primaire : ouvrez un inventaire et choisissez la catégorie « Primaire ».' : 'Aucun contenant primaire : menu > Administration > Gestion des inventaires.') : 'Aucun contenant primaire pour l\'instant : utilisez la loupe ci-dessus.' }));
     // Administrateurs : inventaires de premier niveau pas encore classés.
     const aClasser = racines.filter((c) => !c.modele && !c.categorie);
     if (aClasser.length && gestion) {
@@ -1278,9 +1441,9 @@ const Inventaires = (() => {
       const nc = cases.filter((a) => b.coches[a.id]).length;
       toutCocher.hidden = !cases.length;
       toutCocher.textContent = nc === cases.length ? 'Tout décocher' : 'Tout cocher';
-      groupes.forEach((g) => { g.bouton.textContent = g.membres.every((a) => b.coches[a.id]) ? 'Décocher' : 'Cocher'; });
+      groupes.forEach((g) => { g.bouton.textContent = g.membres.every((a) => b.coches[a.id]) ? 'Tout décocher' : 'Tout cocher'; });
     };
-    // Séparations : un intertitre par groupe, avec « Cocher » pour tout le groupe.
+    // Séparations : un intertitre par section, avec « Tout cocher » pour toute la section.
     const groupes = [];
     const modifie = () => {
       sauverBrouillons();
@@ -1292,7 +1455,7 @@ const Inventaires = (() => {
         const g = { membres: [] };
         let i = c.articles.indexOf(a) + 1;
         while (i < c.articles.length && !c.articles[i].separateur) { if (!estControle(c.articles[i])) g.membres.push(c.articles[i]); i++; }
-        g.bouton = el('button', { type: 'button', classe: 'lien inv-cocher-groupe', 'aria-label': `Cocher le groupe ${a.nom}`, surclick: () => {
+        g.bouton = el('button', { type: 'button', classe: 'lien inv-cocher-groupe', 'aria-label': `Tout cocher : section ${a.nom}`, surclick: () => {
           const tout = !g.membres.every((x) => b.coches[x.id]);
           g.membres.forEach((x) => { b.coches[x.id] = tout; const box = liste.querySelector(`input[data-article="${x.id}"]`); if (box) box.checked = tout; });
           modifie();
@@ -1390,16 +1553,24 @@ const Inventaires = (() => {
     const veille = v && !verifDuJour(c.id) && (v.manquants.length || v.remarque)
       ? el('p', { classe: 'note-parc anomalie', texte: `Dernière vérification le ${new Date(v.date).toLocaleDateString('fr-FR')} par ${v.agent} : ${[v.manquants.length ? `manquant : ${v.manquants.map((m) => m.nom).join(', ')}` : '', v.remarque].filter(Boolean).join(' — ')}` })
       : null;
-    return el('section', { classe: 'inv-section' },
-      el('div', { classe: 'inv-liste-entete' },
-        el('h2', {}, 'Contenu ', compte),
-        el('div', { classe: 'inv-liste-actions' }, basculer, toutCocher)),
-      veille, liste,
-      el('details', { classe: 'inv-remarque', open: Boolean(b.remarque) },
-        el('summary', { texte: 'Ajouter une remarque' }),
-        el('textarea', { id: champRemarque, rows: '2', maxlength: '500', 'aria-label': 'Remarque', valeur: b.remarque, surinput: (e) => { b.remarque = e.target.value; sauverBrouillons(); } })),
-      el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
-      el('button', { type: 'button', classe: 'principal inv-valider', texte: 'Valider cet inventaire', surclick: () => valider(c) }));
+    // « Tout cocher » de l'en-tête coche toutes les sections d'un coup.
+    if (groupes.length) toutCocher.setAttribute('aria-label', 'Tout cocher : toutes les sections');
+    return [
+      el('section', { classe: 'inv-section' },
+        el('div', { classe: 'inv-liste-entete' },
+          el('h2', {}, 'Contenu ', compte),
+          el('div', { classe: 'inv-liste-actions' }, basculer, toutCocher)),
+        veille, liste,
+        el('details', { classe: 'inv-remarque', open: Boolean(b.remarque) },
+          el('summary', { texte: 'Ajouter une remarque' }),
+          el('textarea', { id: champRemarque, rows: '2', maxlength: '500', 'aria-label': 'Remarque', valeur: b.remarque, surinput: (e) => { b.remarque = e.target.value; sauverBrouillons(); } }))),
+      // Barre collée en bas de l'écran : « Valider » toujours à portée du pouce, QR code et NFC en pictogrammes.
+      el('div', { classe: 'inv-barre-bas' },
+        el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
+        el('div', { classe: 'inv-barre-bas-boutons' }, boutonsScanIcones()[0],
+          el('button', { type: 'button', classe: 'principal inv-valider', texte: 'Valider cet inventaire', surclick: () => valider(c) }),
+          boutonsScanIcones()[1])),
+    ];
   }
 
   /** Fenêtre d'un article de la base : photo en grand et informations (vérification). */
@@ -1438,44 +1609,59 @@ const Inventaires = (() => {
       el('svg:path', { d: 'M8 16V8l8 8V8', fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
   }
   /**
-   * Encadré en tête de la page des inventaires : on atteint n'importe quel inventaire (primaire, immobile
-   * ou mobile, à n'importe quel niveau) par son nom, par son QR code ou par sa puce NFC.
+   * Recherche par le nom, dépliée par la loupe de la page des inventaires. Le nom ne dit pas où se trouve
+   * l'agent : il choisit d'abord le contenant primaire dans lequel il est. Les inventaires de ce contenant
+   * s'ouvrent pour être vérifiés ; sans choix, ou ailleurs, ils s'ouvrent en consultation seule.
+   * (Le QR code et la puce NFC, lus sur place, ouvrent toujours l'inventaire pour le vérifier.)
    */
+  let recherchePrimaire = '';
   function encadreRecherche(tous) {
+    const panneau = el('section', { id: 'inv-panneau-recherche', classe: 'inv-panneau-recherche', 'aria-label': 'Chercher un inventaire', hidden: !rechercheOuverte });
+    if (!rechercheOuverte) return panneau;
+    const primaires = tous.filter((c) => c.categorie === 'primaire' && !dansUnModele(c.id))
+      .sort((x, y) => x.ordre - y.ordre || x.nom.localeCompare(y.nom, 'fr'));
+    if (recherchePrimaire && !primaires.some((p) => p.id === recherchePrimaire)) recherchePrimaire = '';
     const resultats = el('ul', { classe: 'inv-liste inv-resultats-recherche' });
     const champ = idChamp();
+    const groupe = idChamp();
+    const dansPrimaire = (c) => Boolean(recherchePrimaire) && (primaireDe(c.id) || {}).id === recherchePrimaire;
     const filtrer = () => {
       resultats.innerHTML = '';
       const mots = cle(recherche).split(' ').filter(Boolean);
       if (!mots.length || cle(recherche).length < 2) return;
       // Sur le nom du contenant lui-même : « sac rouge » trouve les sacs rouges, pas tout ce qu'ils contiennent.
-      const trouves = tous.filter((c) => { const t = cle(c.nom); return mots.every((m) => t.includes(m)); });
+      const trouves = tous.filter((c) => !c.emplacement && mots.every((m) => cle(c.nom).includes(m)))
+        .sort((a, b) => (dansPrimaire(b) - dansPrimaire(a)) || a.nom.localeCompare(b.nom, 'fr'));
       trouves.slice(0, 12).forEach((c) => {
-        const parents = chemin(c.id).slice(0, -1).map((x) => x.nom).join(' › ');
+        const verifiable = gestion || dansPrimaire(c);
+        const parents = etagesAuDessus(c).reverse().map((x) => x.nom).join(' › ');
         const ligne = carte(c);
         if (parents) ligne.querySelector('.inv-carte-etat').prepend(`${parents} · `);
+        if (!verifiable) ligne.querySelector('strong').append(el('span', { classe: 'inv-tag-scellable inv-tag-consultation', texte: 'Consultation' }));
+        // Avant la navigation (écouteur de la zone) : on note où l'on est et ce que l'on peut faire.
+        ligne.addEventListener('click', () => { if (!gestion) fixerContexte(verifiable ? recherchePrimaire : '', !verifiable); });
         resultats.append(el('li', {}, ligne));
       });
       if (trouves.length > 12) resultats.append(el('li', { classe: 'aide-question', texte: `${trouves.length - 12} autre(s) : précisez la recherche.` }));
       if (!trouves.length) resultats.append(el('li', { classe: 'aide-question', texte: 'Aucun inventaire à ce nom.' }));
     };
-    const qr = 'BarcodeDetector' in window;
-    const nfc = 'NDEFReader' in window;
-    const boutons = el('div', { classe: 'inv-boutons-scan' },
-      el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !qr, surclick: () => scanner({ qr: true, nfc: false }) }, logoQr(), el('span', { texte: 'Scanner un QR code' })),
-      el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !nfc, surclick: () => scanner({ qr: false, nfc: true }) }, logoNfc(), el('span', { texte: 'Lire une puce NFC' })));
-    const aide = !qr || !nfc ? el('p', { classe: 'aide-question inv-aide-scan', texte: !qr && !nfc
-      ? 'Sur cet appareil, scannez le QR code avec l\'appareil photo du téléphone : il ouvre directement l\'inventaire. La lecture NFC demande Chrome sur Android.'
-      : (!nfc ? 'Lecture NFC : Chrome sur Android seulement.' : 'QR code : vous pouvez aussi le scanner avec l\'appareil photo du téléphone.') }) : null;
-    const encadre = el('section', { classe: 'inv-encadre-recherche', 'aria-labelledby': `${champ}-titre` },
-      el('div', { classe: 'inv-encadre-titre' },
-        el('h2', { id: `${champ}-titre`, texte: 'Trouver un inventaire' }),
-        el('span', { classe: 'inv-logos', 'aria-hidden': 'true' }, logoQr(), logoNfc())),
-      el('label', { for: champ, classe: 'inv-libelle-recherche', texte: 'Nom (véhicule, sac, sacoche, tiroir…)' }),
-      el('input', { id: champ, type: 'search', valeur: recherche, autocomplete: 'off', placeholder: 'ex. F25, sac rouge, ampoulier', surinput: (e) => { recherche = e.target.value; filtrer(); } }),
-      boutons, aide, resultats);
+    const choix = gestion || !primaires.length ? null : el('div', { classe: 'inv-recherche-primaire' },
+      el('span', { classe: 'inv-libelle-recherche', id: groupe, texte: 'Vous êtes dans :' }),
+      el('div', { classe: 'puces', role: 'radiogroup', 'aria-labelledby': groupe },
+        ...primaires.flatMap((p) => {
+          const i = idChamp();
+          return [el('input', { type: 'radio', name: groupe, id: i, checked: recherchePrimaire === p.id, surchange: () => { recherchePrimaire = p.id; rendre({ garderPosition: true, focus: '.inv-recherche-champ' }); } }),
+            el('label', { for: i, texte: p.nom })];
+        })),
+      el('p', { classe: 'aide-question', texte: recherchePrimaire
+        ? 'Les inventaires de ce contenant s\'ouvrent pour être vérifiés ; ceux d\'ailleurs, en consultation.'
+        : 'Sans contenant primaire choisi, l\'inventaire trouvé s\'ouvre en consultation seule.' }));
+    panneau.append(choix,
+      el('label', { for: champ, classe: 'invisible', texte: 'Nom de l\'inventaire' }),
+      el('input', { id: champ, type: 'search', classe: 'inv-recherche-champ', valeur: recherche, autocomplete: 'off', placeholder: 'F25, sac rouge, ampoulier…', surinput: (e) => { recherche = e.target.value; filtrer(); } }),
+      resultats);
     filtrer();
-    return encadre;
+    return panneau;
   }
 
   // ---------- Contenants mobiles : identification et désaffectation ----------
@@ -1626,8 +1812,7 @@ const Inventaires = (() => {
     const qr = 'BarcodeDetector' in window;
     const nfc = 'NDEFReader' in window;
     return [
-      el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' }, el('a', { href: lien(''), texte: 'Inventaires' }),
-        ...chemin(parent ? parent.id : '').flatMap((p) => [el('span', { 'aria-hidden': 'true', texte: ' › ' }), el('a', { href: lien(p.id), texte: p.nom })])),
+      parent ? barreContenant(parent, { h1: false, retour: () => { identification = ''; rendre(); } }) : null,
       el('h1', { tabindex: '-1', texte: typeAttendu ? `Quel « ${typeAttendu.nom} » se trouve ici ?` : (plusieurs ? `Quel « ${emp.nom} » se trouve ici ?` : (y ? `Quel « ${y.nom.replace(/\s*n°\s*\d+$/i, '')} » se trouve ici ?` : 'Quel contenant mobile se trouve ici ?')) }),
       plusieurs ? choixTypeEnPhotos(typesAcceptes) : null,
       el('p', { classe: 'consigne' }, `Avant de vérifier son contenu et ses péremptions, identifiez le contenant réellement présent dans « ${parent ? parent.nom : ''} » : scannez son QR code, lisez sa puce NFC ou choisissez-le dans la liste.`),
@@ -1638,7 +1823,6 @@ const Inventaires = (() => {
         el('label', { for: champ, classe: 'inv-libelle-recherche inv-libelle-identif', texte: 'Ou choisissez-le :' }), saisie, resultats),
       el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
       el('p', { classe: 'aide-question', texte: y ? `Prévu ici : « ${y.nom} ». Si c'en est un autre, il prend sa place et « ${y.nom} » est désaffecté jusqu'à ce qu'on le retrouve ailleurs.` : `Le contenant choisi sera rangé dans « ${parent ? parent.nom : ''} ». S'il était désaffecté, il est retrouvé.` }),
-      el('div', { classe: 'inv-pied' }, el('button', { type: 'button', classe: 'lien', texte: `← Retour à ${parent ? parent.nom : 'l\'inventaire'}`, surclick: () => { identification = ''; rendre(); } })),
     ];
   }
 
@@ -1650,10 +1834,18 @@ const Inventaires = (() => {
    */
   function blocArborescence(c) {
     const ch = chemin(c.id);
-    const racine = racineModele(c.id) || ch.find((x) => x.categorie === 'primaire') || ch[0];
+    // Check-list : l'arborescence part du contenant primaire, jamais d'un inventaire type.
+    const racine = (gestion ? racineModele(c.id) : null) || ch.find((x) => x.categorie === 'primaire') || ch[0];
     if (!racine) return null;
     const ouverts = new Set(ch.map((x) => x.id));
-    const noeud = (x, profondeur) => {
+    const noeud = (x0, profondeur) => {
+      // Check-list : un emplacement ne s'affiche pas, son occupant prend sa place (sinon « à identifier »).
+      let x = x0;
+      if (!gestion && x.emplacement) {
+        const occ = enfants(x.id)[0];
+        if (!occ) return el('li', {}, el('span', { classe: 'inv-arbre-lien inv-arbre-vide' }, el('span', { classe: 'inv-arbre-nom', texte: `${x.nom} · à identifier` })));
+        x = occ;
+      }
       const fils = enfants(x.id);
       const b = dansUnModele(x.id) ? null : bilan(x.id);
       const actuel = x.id === c.id;
@@ -1669,7 +1861,7 @@ const Inventaires = (() => {
         el('ul', {}, ...fils.map((f) => noeud(f, profondeur + 1)))));
     };
     return el('aside', { classe: 'inv-arbre', 'aria-label': 'Arborescence' },
-      el('h2', { texte: racine.modele ? 'Inventaire type' : 'Arborescence' }),
+      el('h2', { texte: racine.modele && gestion ? 'Inventaire type' : 'Arborescence' }),
       el('ul', { classe: 'inv-arbre-racine' }, noeud(racine, 0)),
       el('p', { classe: 'aide-question inv-arbre-legende', texte: 'Le nombre indique les articles à cocher.' }));
   }
@@ -1705,76 +1897,147 @@ const Inventaires = (() => {
       el('svg:rect', { x: '5', y: '10.5', width: '14', height: '10', rx: '2', fill: 'currentColor' }),
       el('svg:path', { d: 'M8 10.5V7.5a4 4 0 0 1 8 0v3', fill: 'none', stroke: 'currentColor', 'stroke-width': '2.2', 'stroke-linecap': 'round' }));
   }
-  /** Cadre d'un contenant, avec les cadres de ce qu'il contient. `place` : nom de l'emplacement qu'il occupe. */
-  function cadreTableau(c, niveau = 0, vus = new Set(), place = '') {
+  /** Branchement secteur : contrôle Oui / Non dont le nom parle de secteur, de charge ou de branchement. */
+  const estBranchement = (a) => a.controle === 'oui' && /branch|secteur|charge|chargeur|prise/i.test(cle(nomArticle(a)));
+  /**
+   * Ce que montre une tuile du tableau de bord, et le détail de son pop-up : état du jour du contenant et de tout
+   * ce qu'il contient, manquants, péremptions, batteries et branchements relevés (aujourd'hui, sinon la dernière fois).
+   */
+  function resumeTableau(c) {
+    const b = bilan(c.id);
+    const detail = { manquants: [], peremptions: [], controles: [], appareils: [] };
+    let batterie = null; // la plus faible relevée
+    let branchement = null; // { ok }
+    let controleKo = false;
+    descendants(c.id).forEach((d) => {
+      if (dansUnModele(d.id) || d.emplacement) return;
+      const v = verifDuJour(d.id);
+      const derniere = etat.verifs[d.id];
+      const valeurs = (v && v.valeurs) || (derniere && derniere.valeurs) || {};
+      const ici = d.id === c.id ? '' : d.nom;
+      if (v) v.manquants.forEach((m) => detail.manquants.push({ nom: m.nom, ou: ici }));
+      aCocher(d).forEach((a) => {
+        if (suiviPeremption(a)) {
+          const date = datePeremption(d.id, a.id);
+          const pe = etatPeremption(date);
+          if (pe.niveau === 'perime' || pe.niveau === 'proche') detail.peremptions.push({ nom: nomArticle(a), ou: ici, date, pe, jours: joursRestants(date) });
+        }
+        if (!estControle(a)) return;
+        const val = valeurs[a.id];
+        const e = evaluer(a, val);
+        if (a.controle === 'scan') {
+          if (val) detail.appareils.push({ nom: `${nomArticle(a).replace(/\s*(n°|no|num(éro)?)\.?\s*$/i, '')} n° ${val}`, ou: ici, ok: e.ok });
+          return;
+        }
+        detail.controles.push({ nom: nomArticle(a), ou: ici, texte: texteValeur(a, val), ok: e.ok, rempli: e.rempli });
+        if (e.rempli && !e.ok) controleKo = true;
+        if (a.controle === 'batterie' && e.rempli) {
+          const niveau = Number(String(val).replace(',', '.')) / (a.echelle === '4' ? 4 : 100);
+          if (!batterie || niveau < batterie.niveau) batterie = { niveau, ok: e.ok, texte: texteValeur(a, val) };
+        }
+        if (estBranchement(a) && e.rempli) branchement = { ok: e.ok && (!branchement || branchement.ok) };
+      });
+    });
+    detail.peremptions.sort((x, y) => x.jours - y.jours);
+    const anomalie = detail.manquants.length > 0 || b.perimes > 0 || controleKo;
+    const classe = b.total === 0 && !detail.controles.length ? 'vide' : (anomalie ? 'anomalie' : b.classe);
+    const pictos = [];
+    if (sousScelle(c)) pictos.push(logoCadenas());
+    if (b.total) {
+      if (b.complet && !anomalie) pictos.push(picto('ok', 'Vérifié aujourd\'hui', 'vert'));
+      else if (!b.faits) pictos.push(picto('afaire', 'À vérifier', 'orange'));
+      else if (!b.complet) pictos.push(el('span', { classe: 'inv-tb-compte', title: b.texte, texte: `${b.faits}/${b.total}` }));
+    }
+    if (detail.manquants.length || controleKo) pictos.push(picto('anomalie', `Anomalie : ${pluriel(detail.manquants.length, 'manquant')}${controleKo ? ', contrôle hors limite' : ''}`, 'rouge'));
+    if (b.perimes) pictos.push(picto('perime', pluriel(b.perimes, 'périmé'), 'rouge'));
+    else if (b.proches) pictos.push(picto('proche', `${b.proches} bientôt périmé${b.proches > 1 ? 's' : ''}`, 'orange'));
+    if (b.sansDate) pictos.push(picto('date', `${pluriel(b.sansDate, 'date')} à saisir`, 'gris'));
+    if (batterie) pictos.push(pictoBatterie(batterie.niveau, `Batterie : ${batterie.texte}`, batterie.ok ? 'vert' : 'rouge'));
+    if (branchement) pictos.push(picto(branchement.ok ? 'branchement' : 'debranche', branchement.ok ? 'Branché sur secteur' : 'Non branché', branchement.ok ? 'vert' : 'rouge'));
+    if (b.vides) pictos.push(picto('identifier', `${pluriel(b.vides, 'emplacement')} à identifier`, 'orange'));
+    return { b, classe, pictos, detail, biomed: contenantBiomed(c) };
+  }
+  /** Pop-up d'une tuile : le détail, et l'accès à l'inventaire. */
+  function detailTableau(c, place = '') {
+    const r = resumeTableau(c);
+    const v = aCocher(c).length ? verifDuJour(c.id) : null;
+    const fond = el('div', { classe: 'fenetre-fond', surclick: (e) => { if (e.target === fond) fermer(); } });
+    const retour = document.activeElement;
+    const fermer = () => { fond.remove(); document.body.classList.remove('fenetre-ouverte'); if (retour && retour.isConnected) retour.focus(); };
+    const titre = idChamp();
+    const ou = (x) => (x.ou ? el('small', { texte: ` — ${x.ou}` }) : null);
+    const rubrique = (nom, lignes) => (lignes.length ? el('section', { classe: 'inv-tb-rubrique' }, el('h3', { texte: nom }), el('ul', {}, ...lignes)) : null);
+    const sous = enfants(c.id).length;
+    fond.append(el('div', { classe: 'fenetre inv-tb-fenetre', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
+      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: c.nom }),
+        el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
+      el('p', { classe: 'fenetre-resume', texte: [...etagesAuDessus(c).reverse().map((x) => x.nom), place && cle(place) !== cle(c.nom) ? `emplacement « ${place} »` : ''].filter(Boolean).join(' › ') }),
+      el('p', { classe: `inv-tb-statut ${r.classe}` }, el('span', { classe: 'inv-tb-pictos' }, ...r.pictos),
+        el('strong', { texte: sousScelle(c) ? 'Scellé : non ouvert aujourd\'hui' : r.b.texte }),
+        v ? ` — à ${heure(v.date)} par ${v.agent}` : '', sous ? ` · ${pluriel(sous, 'sous-inventaire')}` : ''),
+      rubrique('Manquants', r.detail.manquants.map((x) => el('li', { classe: 'rouge' }, x.nom, ou(x)))),
+      rubrique('Péremptions', r.detail.peremptions.map((x) => el('li', { classe: x.pe.niveau === 'perime' ? 'rouge' : 'orange' }, `${x.nom} : ${afficherDate(x.date)} (${x.pe.texte})`, ou(x)))),
+      rubrique('Appareils', r.detail.appareils.map((x) => el('li', { classe: x.ok ? '' : 'rouge' }, el('strong', { texte: x.nom }), ou(x)))),
+      rubrique('Contrôles', r.detail.controles.map((x) => el('li', { classe: x.rempli && !x.ok ? 'rouge' : '' }, `${x.nom} : ${x.texte}`, ou(x)))),
+      el('button', { type: 'button', classe: 'principal', texte: 'Ouvrir l\'inventaire', surclick: () => { fermer(); aller(c.id); } })));
+    fond.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
+    document.body.append(fond);
+    document.body.classList.add('fenetre-ouverte');
+    fond.querySelector('.fenetre-fermer').focus();
+  }
+  /**
+   * Tuile d'un contenant : fond coloré selon son état, son nom et des pictogrammes ; ce qu'il contient en tuiles
+   * côte à côte (carrés), autant par ligne que la largeur le permet. Un appui ouvre le détail.
+   * `place` : nom de l'emplacement qu'il occupe.
+   */
+  function tuileTableau(c, niveau = 0, vus = new Set(), place = '') {
     if (vus.has(c.id)) return null;
     vus.add(c.id);
     if (c.emplacement) {
       const occupant = enfants(c.id)[0];
-      if (occupant) return cadreTableau(occupant, niveau, vus, c.nom);
-      return el('div', { classe: 'inv-tb-cadre inv-tb-avide' },
-        el('div', { classe: 'inv-tb-tete' }, el('a', { classe: 'inv-tb-nom', href: lien(c.id), texte: c.nom }),
-          el('span', { classe: 'inv-tb-etat', texte: 'à identifier' })));
+      if (occupant) return tuileTableau(occupant, niveau, vus, c.nom);
+      return el('div', { classe: 'inv-tb-tuile avide' },
+        el('button', { type: 'button', classe: 'inv-tb-tete', 'aria-haspopup': 'dialog', surclick: () => aller(c.id) },
+          el('span', { classe: 'inv-tb-nom', texte: c.nom }),
+          el('span', { classe: 'inv-tb-pictos' }, picto('identifier', 'À identifier', 'orange'))));
     }
-    const b = bilan(c.id);
-    const v = aCocher(c).length ? verifDuJour(c.id) : null;
-    const manquants = new Set(v ? v.manquants.map((m) => m.id) : []);
-    const scelle = sousScelle(c);
-    const biomed = contenantBiomed(c);
-    const etatTexte = b.total === 0 ? '' : (b.complet ? '✓' : (b.faits ? `${b.faits}/${b.total}` : 'à vérifier'));
-    const appareils = aCocher(c).filter(articleBiomed).map((a) => {
-      const etatA = !v ? 'afaire' : (manquants.has(a.id) ? 'manquant' : 'present');
-      const libelle = { afaire: 'pas encore vérifié aujourd\'hui', manquant: 'noté manquant', present: 'présent' }[etatA];
-      return el('li', { classe: `inv-tb-appareil ${etatA}`, title: `${nomArticle(a)} : ${libelle}` },
-        nomArticle(a), etatA === 'present' ? null : el('small', { texte: etatA === 'manquant' ? ' manquant' : ' à vérifier' }));
-    });
-    // Appareils scannés : le n° relevé aujourd'hui, ou à défaut le dernier connu (« à vérifier »).
-    const derniere = etat.verifs[c.id];
-    aCocher(c).filter(appareilScanne).forEach((a) => {
-      const val = String((v && v.valeurs && v.valeurs[a.id]) || (derniere && derniere.valeurs && derniere.valeurs[a.id]) || '').trim();
-      const nom = val ? `${nomArticle(a).replace(/\s*(n°|no|num(éro)?)\.?\s*$/i, '')} n° ${val}` : nomArticle(a);
-      const etatA = !v ? 'afaire' : (manquants.has(a.id) || !(v.valeurs && v.valeurs[a.id]) ? 'manquant' : 'present');
-      const libelle = { afaire: val ? 'dernier n° relevé, pas encore vérifié aujourd\'hui' : 'jamais relevé', manquant: 'non relevé ou différent de l\'attendu', present: 'relevé aujourd\'hui' }[etatA];
-      appareils.push(el('li', { classe: `inv-tb-appareil ${etatA}`, title: `${nom} : ${libelle}` },
-        nom, etatA === 'present' ? null : el('small', { texte: etatA === 'manquant' ? ' anomalie' : ' à vérifier' })));
-    });
-    const fils = enfants(c.id).map((f) => cadreTableau(f, niveau + 1, vus)).filter(Boolean);
-    return el('div', { classe: `inv-tb-cadre ${b.classe}${niveau === 0 ? ' inv-tb-primaire' : ''}${scelle ? ' inv-tb-scelle' : ''}${niveau % 2 ? ' inv-tb-impair' : ''}` },
-      el('div', { classe: 'inv-tb-tete' },
-        scelle ? logoCadenas() : null,
-        el('a', { classe: `inv-tb-nom${biomed ? ' inv-tb-biomed' : ''}`, href: lien(c.id), title: place && cle(place) !== cle(c.nom) ? `Emplacement : ${place}` : null, texte: c.nom }),
-        etatTexte ? el('span', { classe: 'inv-tb-etat', title: b.texte, texte: etatTexte }) : null,
-        manquants.size ? el('span', { classe: 'inv-badge alerte', title: v.manquants.map((m) => m.nom).join(' ; '), texte: pluriel(manquants.size, 'manquant') }) : null),
-      appareils.length ? el('ul', { classe: 'inv-tb-appareils' }, ...appareils) : null,
-      fils.length ? el('div', { classe: 'inv-tb-contenu' }, ...fils) : null);
+    const r = resumeTableau(c);
+    const fils = enfants(c.id).map((f) => tuileTableau(f, niveau + 1, vus)).filter(Boolean);
+    return el('div', { classe: `inv-tb-tuile ${r.classe}${fils.length ? ' parent' : ''}${niveau === 0 ? ' inv-tb-primaire' : ''}` },
+      el('button', { type: 'button', classe: 'inv-tb-tete', 'aria-haspopup': 'dialog', title: place && cle(place) !== cle(c.nom) ? `Emplacement : ${place}` : null, surclick: () => detailTableau(c, place) },
+        el('span', { classe: `inv-tb-nom${r.biomed ? ' inv-tb-biomed' : ''}`, texte: c.nom }),
+        el('span', { classe: 'inv-tb-pictos' }, ...r.pictos)),
+      fils.length ? el('div', { classe: 'inv-tb-grille' }, ...fils) : null);
   }
   function vueTableau() {
     const primaires = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'primaire' && !dansUnModele(c.id))
       .sort((x, y) => x.ordre - y.ordre || x.nom.localeCompare(y.nom, 'fr'));
+    const legende = (p, texte) => el('li', {}, p, texte);
     return [
-      el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' }, el('a', { href: lien(''), texte: 'Inventaires' })),
+      barreHaut({ titre: 'Inventaires', h1: false, bande: false, retour: () => aller('') }),
       el('div', { classe: 'inv-entete' }, el('h1', { tabindex: '-1', texte: 'Tableau de bord des contenants' })),
       ligneSynchro(), ligneAvis(),
-      el('ul', { classe: 'inv-tb-legende', 'aria-label': 'Légende' },
-        el('li', {}, el('span', { classe: 'inv-tb-pastille fait' }), 'vérifié aujourd\'hui'),
-        el('li', {}, el('span', { classe: 'inv-tb-pastille afaire' }), 'à vérifier ou en cours'),
-        el('li', {}, logoCadenas(), 'scellé, non ouvert'),
-        el('li', {}, el('strong', { texte: 'En gras' }), ' : matériel biomédical'),
-        el('li', {}, el('span', { classe: 'inv-tb-pastille avide' }), 'emplacement à identifier')),
+      el('details', { classe: 'inv-tb-legende' }, el('summary', { texte: 'Légende' }),
+        el('ul', {},
+          legende(picto('ok', '', 'vert'), 'vérifié aujourd\'hui'), legende(picto('afaire', '', 'orange'), 'à vérifier'),
+          legende(el('span', { classe: 'inv-tb-compte', texte: '2/5' }), 'en cours'), legende(picto('anomalie', '', 'rouge'), 'anomalie (manquant, contrôle)'),
+          legende(picto('perime', '', 'rouge'), 'périmé'), legende(picto('proche', '', 'orange'), 'bientôt périmé'), legende(picto('date', '', 'gris'), 'date à saisir'),
+          legende(pictoBatterie(0.6, '', 'vert'), 'batterie'), legende(picto('branchement', '', 'vert'), 'branché'), legende(picto('debranche', '', 'rouge'), 'non branché'),
+          legende(logoCadenas(), 'scellé, non ouvert'), legende(picto('identifier', '', 'orange'), 'emplacement à identifier'),
+          legende(el('strong', { texte: 'Gras' }), 'matériel biomédical'))),
       ...(() => {
         if (!primaires.length) return [el('p', { classe: 'consigne', texte: 'Aucun contenant primaire pour l\'instant.' })];
         let choisi = '';
         try { choisi = localStorage.getItem(CLE_TABLEAU) || ''; } catch (e) { /* stockage indisponible */ }
         const actuel = primaires.find((c) => c.id === choisi) || primaires[0];
         const onglets = el('div', { classe: 'inv-tb-onglets', role: 'tablist', 'aria-label': 'Contenant primaire' }, ...primaires.map((c) => {
-          const b = bilan(c.id);
-          return el('button', { type: 'button', role: 'tab', classe: `inv-tb-onglet ${b.classe}`, 'aria-selected': String(c.id === actuel.id), title: b.texte,
+          const r = resumeTableau(c);
+          return el('button', { type: 'button', role: 'tab', classe: `inv-tb-onglet ${r.classe}`, 'aria-selected': String(c.id === actuel.id), title: r.b.texte,
             surclick: () => { try { localStorage.setItem(CLE_TABLEAU, c.id); } catch (e) { /* stockage indisponible */ } rendre({ garderPosition: true }); } },
-            el('span', { classe: `inv-tb-pastille ${b.classe}`, 'aria-hidden': 'true' }), c.nom);
+            el('span', { classe: `inv-tb-pastille ${r.classe}`, 'aria-hidden': 'true' }), c.nom);
         }));
-        return [onglets, el('div', { classe: 'inv-tb', role: 'tabpanel' }, cadreTableau(actuel))];
+        return [onglets, el('div', { classe: 'inv-tb', role: 'tabpanel' }, tuileTableau(actuel))];
       })(),
-      el('div', { classe: 'inv-pied' }, el('a', { classe: 'lien', href: lien(''), texte: '← Tous les inventaires' })),
     ];
   }
 
@@ -2201,7 +2464,7 @@ const Inventaires = (() => {
       }));
     }
     return [
-      el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' }, el('a', { href: lien(''), texte: 'Inventaires' })),
+      barreHaut({ titre: 'Inventaires', h1: false, bande: false, retour: () => aller('') }),
       el('div', { classe: 'inv-entete' }, el('h1', { tabindex: '-1', texte: 'Base des articles' }),
         admin && baseOuverte !== 'nouvelle' ? el('button', { type: 'button', classe: 'cfg-bouton', texte: '＋ Nouvel article', surclick: () => { baseOuverte = 'nouvelle'; rendre({ garderPosition: true, focus: '.inv-fiche input' }); } }) : null),
       ligneSynchro(), ligneAvis(),
@@ -2612,14 +2875,16 @@ const Inventaires = (() => {
   function vueContenant(c) {
     const fils = enfants(c.id);
     const b = bilan(c.id);
-    const parents = chemin(c.id).slice(0, -1);
     const v = verifDuJour(c.id);
+    // Le nom est dans la barre du haut ; en administration, il se modifie juste en dessous.
     const titre = edition
       ? el('div', { classe: 'champ inv-champ-nom' }, el('label', { for: 'inv-nom', texte: 'Nom' }),
         el('input', { id: 'inv-nom', maxlength: '80', valeur: c.nom, surchange: (e) => { const t = e.target.value.trim(); if (t) { c.nom = t; marquer(c.id); } else e.target.value = c.nom; } }))
-      : el('h1', { tabindex: '-1' }, c.nom, c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null);
+      : null;
+    // Ouvert depuis une recherche par le nom, sans dire où l'on est : consultation seule.
+    const consultation = !edition && contexte.consultation;
     // Check-list d'un contenant scellable pas encore vérifié aujourd'hui : on demande d'abord s'il est scellé.
-    const questionScelle = !edition && !dansUnModele(c.id) && c.scellable && !b.complet && !reponsesScelle.has(c.id);
+    const questionScelle = !edition && !consultation && !dansUnModele(c.id) && c.scellable && !b.complet && !reponsesScelle.has(c.id);
     const caseScellable = idChamp();
     const caseModele = idChamp();
     const groupeCategorie = idChamp();
@@ -2633,12 +2898,12 @@ const Inventaires = (() => {
         })),
       el('p', { classe: 'aide-question', texte: c.categorie ? `${CATEGORIES_CONTENANT[c.categorie].nom} : ${CATEGORIES_CONTENANT[c.categorie].aide}.${c.categorie === 'primaire' ? ' Affiché sur la page des inventaires.' : ' S\'ouvre par recherche, QR code ou NFC, ou depuis son contenant.'}` : 'Seuls les contenants primaires sont affichés sur la page des inventaires.' })) : null;
     const modele = dansUnModele(c.id);
+    const verification = c.emplacement || questionScelle || edition || modele ? null
+      : (consultation ? blocConsultation(c) : blocVerification(c));
     return [
-      el('nav', { classe: 'inv-fil', 'aria-label': 'Emplacement' },
-        el('a', { href: lien(''), texte: 'Inventaires' }),
-        ...parents.flatMap((p) => [el('span', { 'aria-hidden': 'true', texte: ' › ' }), el('a', { href: lien(p.id), texte: p.nom })])),
+      barreContenant(c, { h1: !edition }),
       bandeauGestion(),
-      el('div', { classe: 'inv-entete' }, titre, boutonEdition()),
+      titre ? el('div', { classe: 'inv-entete' }, titre, boutonEdition()) : null,
       choixCategorie,
       edition ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseScellable },
         el('input', { type: 'checkbox', id: caseScellable, checked: c.scellable, surchange: (e) => { c.scellable = e.target.checked; marquer(c.id); } }),
@@ -2663,11 +2928,11 @@ const Inventaires = (() => {
             occ ? `Actuellement : « ${occ.nom} ».` : 'Vide pour l\'instant : le modèle et l\'exemplaire seront identifiés en check-list.');
         }
         return el('p', { classe: 'note-parc inv-note-emplacement' }, el('strong', { texte: 'Emplacement. ' }),
-          'Attend un exemplaire de l\'inventaire type ', type ? el('a', { href: lien(type.id), texte: type.nom }) : '(supprimé)', '. ',
+          `Attend : ${type ? type.nom : '(supprimé)'}. `,
           occ ? `Actuellement : « ${occ.nom} ».` : 'Vide pour l\'instant : l\'exemplaire sera identifié en check-list.');
       })() : null,
       c.desaffecte && !c.parent ? el('p', { classe: 'note-parc anomalie' }, el('strong', { texte: 'Désaffecté — à retrouver. ' }),
-        `Était dans ${c.desaffecte.deNom || '?'}. Pour le réaffecter, identifiez-le depuis le contenant où il se trouve (« Un contenant mobile se trouve ici »). `,
+        `Était dans ${c.desaffecte.deNom || '?'}. Il sera réaffecté dès qu'on l'identifiera à sa place lors d'une vérification. `,
         el('button', { type: 'button', classe: 'lien', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) })) : null,
       ...(questionScelle ? [blocQuestionScelle(c)] : []),
       edition || modele ? null : el('p', { classe: `inv-statut ${b.classe}` },
@@ -2676,22 +2941,56 @@ const Inventaires = (() => {
         el('span', { classe: 'inv-badges' }, ...badges(b))),
       questionScelle ? null : blocPhoto(c, fils),
       questionScelle ? null : blocEnfants(c, fils),
-      !edition && !modele && !questionScelle ? el('button', { type: 'button', classe: 'lien inv-mobile-ici', texte: '＋ Un contenant mobile se trouve ici', surclick: () => { identification = `dans:${c.id}`; rendre(); } }) : null,
-      c.emplacement || questionScelle ? null : (edition ? blocArticles(c) : (modele ? blocContenuModele(c) : blocVerification(c))),
+      c.emplacement || questionScelle ? null : (edition ? blocArticles(c) : (modele ? blocContenuModele(c) : null)),
+      ...(verification ? [].concat(verification) : []),
       !edition && !aCocher(c).length && !fils.length ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : menu > Administration > Gestion des inventaires pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
-      !edition && !aCocher(c).length ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
+      !edition && (!aCocher(c).length || consultation) ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
       edition ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
       edition ? blocAcces(c) : null,
-      el('div', { classe: 'inv-pied' },
-        el('a', { classe: 'lien', href: lien(c.parent), texte: parents.length ? `← Retour à ${parents[parents.length - 1].nom}` : '← Tous les inventaires' }),
-        edition ? null : el('button', { type: 'button', classe: 'lien', texte: 'Imprimer la liste', surclick: () => imprimerListe(c) })),
+      // La liste papier reste possible depuis l'administration.
+      edition ? el('div', { classe: 'inv-pied' }, el('button', { type: 'button', classe: 'lien', texte: 'Imprimer la liste', surclick: () => imprimerListe(c) })) : null,
     ];
+  }
+
+  /** Consultation seule (recherche par le nom sans contenant primaire) : le contenu, sans case à cocher. */
+  function blocConsultation(c) {
+    const articles = aCocher(c);
+    if (!articles.length) return null;
+    const p = primaireDe(c.id);
+    return el('section', { classe: 'inv-section inv-consultation' },
+      el('div', { classe: 'inv-liste-entete' }, el('h2', {}, 'Contenu ', el('span', { classe: 'inv-compte', texte: String(articles.length) }))),
+      el('p', { classe: 'aide-question', texte: p
+        ? `Consultation seule. Pour vérifier : touchez « Je suis dans ${p.nom} » en haut, ou scannez l'étiquette sur place.`
+        : 'Consultation seule. Pour vérifier : scannez l\'étiquette sur place.' }),
+      el('ul', { classe: 'inv-liste-modele' }, ...c.articles.map((a) => {
+        if (a.separateur) return el('li', { classe: 'inv-separation', texte: a.nom });
+        const date = suiviPeremption(a) ? datePeremption(c.id, a.id) : '';
+        const pe = suiviPeremption(a) ? etatPeremption(date) : null;
+        return el('li', { classe: pe ? pe.niveau : '' }, nomArticle(a),
+          a.quantite ? el('span', { classe: 'inv-qte-attendue', texte: ` × ${a.quantite}` }) : null,
+          date ? el('small', { classe: 'inv-consultation-date', texte: ` · pér. ${afficherDate(date)}${pe.texte ? ` (${pe.texte})` : ''}` }) : null);
+      })));
   }
 
   function rendre({ garderPosition = false, focus = '' } = {}) {
     if (!zone || zone.hidden) return;
-    const id = idCourant();
-    const c = contenant(id);
+    let id = idCourant();
+    let c = contenant(id);
+    // Check-list : un emplacement n'est pas un inventaire. On ouvre le contenant qui l'occupe ;
+    // s'il est vide, on demande depuis le contenant du dessus lequel se trouve là.
+    let identifierEmplacement = '';
+    if (c && !gestion && c.emplacement) {
+      const occ = enfants(c.id)[0];
+      const dessus = parentVisible(c);
+      if (occ) id = occ.id;
+      else if (dessus) { id = dessus.id; if (!contexte.consultation && c.parent === dessus.id) identifierEmplacement = `emp:${c.id}`; }
+      if (id !== c.id) { history.replaceState(null, '', lien(id)); c = contenant(id); }
+    }
+    // Contenant primaire où l'on est : celui du contenant ouvert. La page des inventaires remet à zéro la consultation.
+    if (!gestion) {
+      if (!id) fixerContexte(contexte.primaire, false);
+      else if (c && !contexte.consultation) { const p = primaireDe(c.id); if (p) fixerContexte(p.id, false); }
+    }
     const nouveau = dernierAffiche !== id;
     dernierAffiche = id;
     if (nouveau) {
@@ -2706,6 +3005,7 @@ const Inventaires = (() => {
       creation = null;
       ajoutSousOuvert = false;
     }
+    if (identifierEmplacement) identification = identifierEmplacement;
     zone.innerHTML = '';
     const empId = identification.startsWith('emp:') ? identification.slice(4) : '';
     if (empId && contenant(empId) && contenant(empId).parent === id) {
@@ -2728,8 +3028,19 @@ const Inventaires = (() => {
     } else {
       const contenu = (c ? vueContenant(c) : vueRacine()).filter(Boolean);
       const arbre = c ? blocArborescence(c) : null;
-      if (arbre) zone.append(el('div', { classe: 'inv-mise-en-page' }, el('div', { classe: 'inv-corps' }, ...contenu), arbre));
-      else zone.append(...contenu);
+      // Les barres du haut et du bas restent hors de la grille (pleine largeur, collées au bord de l'écran).
+      const haut = contenu.filter((n) => n.classList && n.classList.contains('inv-barre-haut'));
+      const bas = contenu.filter((n) => n.classList && n.classList.contains('inv-barre-bas'));
+      const corps = contenu.filter((n) => !haut.includes(n) && !bas.includes(n));
+      if (arbre) zone.append(...haut, el('div', { classe: 'inv-mise-en-page' }, el('div', { classe: 'inv-corps' }, ...corps), arbre), ...bas);
+      else zone.append(...haut, ...corps, ...bas);
+    }
+    document.body.classList.toggle('inv-avec-valider', Boolean(zone.querySelector('.inv-barre-bas')));
+    // Une fois : l'appui long sur la flèche permet de remonter de plusieurs étages.
+    if (nouveau && c && !gestion && etagesAuDessus(c).length > 1) {
+      let vue = true;
+      try { vue = localStorage.getItem(CLE_ASTUCE) === '1'; if (!vue) localStorage.setItem(CLE_ASTUCE, '1'); } catch (e) { /* stockage indisponible */ }
+      if (!vue) alerteBreve('Astuce : maintenez la flèche ← pour remonter de plusieurs étages d\'un coup.');
     }
     if (focus && zone.querySelector(focus)) zone.querySelector(focus).focus();
     else if (nouveau && !garderPosition) {
@@ -2898,12 +3209,12 @@ const Inventaires = (() => {
       const m = /^#inv=([a-z0-9]{6,16})$/.exec(a.getAttribute('href'));
       const cible = m && contenant(m[1]);
       // Check-list : ouvrir un contenant mobile depuis son contenant demande d'abord lequel est réellement là.
-      if (cible && !gestion && cible.emplacement && cible.parent === idCourant()) {
+      if (cible && !gestion && !contexte.consultation && cible.emplacement && cible.parent === idCourant()) {
         identification = `emp:${cible.id}`;
         rendre();
         return;
       }
-      if (cible && !gestion && cible.categorie === 'mobile' && cible.parent && cible.parent === idCourant()) {
+      if (cible && !gestion && !contexte.consultation && cible.categorie === 'mobile' && cible.parent && cible.parent === idCourant()) {
         identification = cible.id;
         rendre();
         return;
@@ -2926,7 +3237,7 @@ const Inventaires = (() => {
   }
   function masquer() {
     if (zone) zone.hidden = true;
-    document.body.classList.remove('vue-inv-checklist');
+    document.body.classList.remove('vue-inv-checklist', 'inv-avec-valider');
   }
   /** Après un envoi de la file d'attente (app.js) : met à jour la ligne d'état. */
   function surEnvoi() {
@@ -2938,7 +3249,8 @@ const Inventaires = (() => {
   function scanRapide(type) {
     const dispo = type === 'nfc' ? 'NDEFReader' in window : ('BarcodeDetector' in window && navigator.mediaDevices);
     if (!dispo) { alerteBreve(type === 'nfc' ? 'NFC non disponible : Chrome sur Android requis, NFC activé.' : 'Lecture de QR code non disponible sur ce navigateur.'); return; }
-    scanner({ qr: type === 'qr', nfc: type === 'nfc' }, (id) => { location.hash = lien(id); });
+    // Étiquette lue sur place : on est là, l'inventaire s'ouvre pour être vérifié.
+    scanner({ qr: type === 'qr', nfc: type === 'nfc' }, (id) => { fixerContexte(contexte.primaire, false); location.hash = lien(id); });
   }
   function alerteBreve(texte) {
     const p = el('p', { classe: 'barre-scan-avis', role: 'status', texte });
