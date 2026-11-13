@@ -52,10 +52,18 @@ const Utilisateurs = (() => {
 
   function visibles() {
     const f = sansAccent(filtre);
+    // Étudiants : par défaut, seulement ceux en stage aujourd'hui. Les autres apparaissent avec les filtres
+    // « à venir », « passés », « tous les étudiants », en recherchant leur nom, ou si leur fiche est ouverte.
+    const PERIODES_FILTRE = { 'etudiants-a-venir': 'a-venir', 'etudiants-passes': 'terminee' };
+    const garder = (a) => {
+      if (filtreRole.startsWith('etudiants-')) return a.etudiant && (!PERIODES_FILTRE[filtreRole] || a.periode === PERIODES_FILTRE[filtreRole]);
+      if (a.etudiant && a.periode !== 'en-cours' && !f && ouvert !== a.cri) return false;
+      if (filtreRole === 'inactif') return !a.compteActif;
+      if (filtreRole === 'droits') return a.role === 'admin' || a.droits.length > 0;
+      return !filtreRole || a.role === filtreRole;
+    };
     return agents.filter((a) => {
-      if (filtreRole === 'inactif' ? a.compteActif
-        : filtreRole === 'droits' ? !(a.role === 'admin' || a.droits.length)
-          : (filtreRole && a.role !== filtreRole)) return false;
+      if (!garder(a)) return false;
       return !f || sansAccent(a.nom).includes(f) || a.cri.includes(f) || sansAccent(a.fonction).includes(f);
     });
   }
@@ -428,7 +436,7 @@ const Utilisateurs = (() => {
       surinput: (e) => { filtre = e.target.value; rendreListe(); },
     });
     const choixRole = el('select', { id: 'usr-filtre', surchange: (e) => { filtreRole = e.target.value; rendreListe(); } },
-      ...[['', 'Tous'], ['ambulancier', 'Ambulanciers'], ['iade', 'IADE'], ['etudiant-iade', 'Étudiants IADE'], ['medecin', 'Médecins'], ['interne', 'Internes'], ['cadre', 'Cadres'], ['chef', 'Chefs d\'unité'],
+      ...[['', 'Tous'], ['ambulancier', 'Ambulanciers'], ['iade', 'IADE'], ['etudiant-iade', 'Étudiants en stage'], ['etudiants-a-venir', 'Étudiants à venir'], ['etudiants-passes', 'Étudiants passés'], ['etudiants-tous', 'Tous les étudiants'], ['medecin', 'Médecins'], ['interne', 'Internes'], ['cadre', 'Cadres'], ['chef', 'Chefs d\'unité'],
         ['admin', 'Administrateurs principaux'], ['droits', 'Avec des droits d\'administration'], ['inactif', 'Jamais connectés']]
         .map(([v, t]) => el('option', { value: v, texte: t, selected: v === filtreRole })));
 
