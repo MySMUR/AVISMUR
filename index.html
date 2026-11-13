@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=68">
+  <link rel="stylesheet" href="style.css?v=69">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -24,6 +24,11 @@
           <p class="app-lieu">AVIGNON</p>
         </div>
       </div>
+      <p id="meteo" class="meteo" role="img" hidden>
+        <span class="meteo-picto" aria-hidden="true"></span>
+        <span class="meteo-temp"></span>
+        <span class="meteo-vent"></span>
+      </p>
       <p id="hors-ligne" class="hors-ligne" role="status" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false">
           <path d="M1 1l22 22"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/>
@@ -298,6 +303,7 @@
   <script src="materiel.js?v=6"></script>
   <script src="profil.js?v=4"></script>
   <script src="annuaire.js?v=3"></script>
+  <script src="meteo.js?v=1"></script>
   <nav id="barre-scan" class="barre-scan" aria-label="Accès rapide aux inventaires">
     <button type="button" data-scan="qr" aria-label="Scanner un QR code" title="QR code"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM5 5v3h3V5zM14 3h7v7h-7zm2 2v3h3V5zM3 14h7v7H3zm2 2v3h3v-3zM14 14h3v3h-3zM18 18h3v3h-3zM14 18h3v3h-3zM18 14h3v3h-3z" fill="currentColor"/></svg><span>QR code</span></button>
     <button type="button" data-scan="nfc" aria-label="Lire une puce NFC" title="NFC"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 4v10h2V11l4 6h2V7h-2v6l-4-6z" fill="currentColor"/></svg><span>NFC</span></button>

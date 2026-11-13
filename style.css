@@ -124,6 +124,31 @@ body {
 .bouton-menu[aria-expanded="true"] { background: #fff; color: var(--bleu); }
 .hors-ligne:not([hidden]) + .bouton-menu { margin-left: 0; }
 
+/* Météo d'Avignon (meteo.js), poussée à droite ; le voyant hors ligne et le menu se rangent à sa suite. */
+.meteo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: none;
+  margin: 0 0 0 auto;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  color: #fff;
+  background: rgb(255 255 255 / 0.12);
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.meteo[hidden] { display: none; }
+.meteo-picto { font-size: 1.15rem; line-height: 1; }
+.meteo-vent { font-weight: 400; font-size: 0.8rem; opacity: 0.85; }
+.meteo-vent::before { content: '💨 '; }
+.meteo-vent-fort .meteo-vent { opacity: 1; font-weight: 700; }
+.meteo-perimee { opacity: 0.6; }
+.meteo:not([hidden]) ~ .hors-ligne,
+.meteo:not([hidden]) ~ .bouton-menu { margin-left: 0; }
+@media (max-width: 420px) { .meteo-vent { display: none; } }
+
 /* Agent connecté : nom prénom, puis fonction. */
 .utilisateur {
   position: relative;
