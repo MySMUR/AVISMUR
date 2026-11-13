@@ -105,8 +105,9 @@ function reprendreSession() {
       if (rep.ok) {
         session.ecrire({
           jeton: rep.jeton, identifiant: rep.identifiant, role: rep.role, nom: rep.nom, prenom: rep.prenom, fonction: rep.fonction, debut: Date.now(),
-          finAcces: rep.finAcces || 0,
+          finAcces: rep.finAcces || 0, droits: rep.droits || [],
         });
+        majDroits(rep.droits || []);
         appareil.ecrire({
           ...enregistre, identifiant: rep.identifiant, role: rep.role, nom: rep.nom, prenom: rep.prenom, fonction: rep.fonction, finAcces: rep.finAcces || 0,
         });
@@ -148,7 +149,7 @@ function memoriserAppareil(rep, resterConnecte) {
   if (resterConnecte && rep.jetonAppareil) {
     appareil.ecrire({
       jetonAppareil: rep.jetonAppareil, identifiant: rep.identifiant, role: rep.role, nom: rep.nom, prenom: rep.prenom, fonction: rep.fonction,
-      finAcces: rep.finAcces || 0,
+      finAcces: rep.finAcces || 0, droits: rep.droits || [],
     });
     return true;
   }
@@ -197,16 +198,18 @@ function afficherApplication(infos) {
     session.ecrire({
       jeton, identifiant: infos.identifiant, role: infos.role, nom: infos.nom, prenom: infos.prenom, fonction: infos.fonction, debut,
       finAcces: infos.finAcces || (jeton === precedente.jeton && precedente.finAcces) || 0,
+      droits: infos.droits || (jeton === precedente.jeton && precedente.droits) || [],
     });
   }
   afficher('ecran-checklist');
   roleCourant = infos.role;
+  majDroits(infos.droits || (session.lire() || {}).droits || (infos.role === 'admin' ? null : []));
   afficherAgent(infos);
   // Rubriques du menu selon le rôle : l'IADE n'a pas de véhicule, l'ambulancier pas d'inventaire,
   // l'administration est réservée aux administrateurs.
   $('rubrique-vehicules').hidden = !accesVehicules();
   $('rubrique-inventaires').hidden = !accesInventaires();
-  $('rubrique-admin').hidden = roleCourant !== 'admin';
+  majMenuAdmin();
   // Arrivée par un QR code ou une puce NFC (« …/#inv=<id> ») : on ouvre directement l'inventaire.
   // Arrivée par une notification (« …/#info=<id> ») : le mur, sur l'information concernée.
   // Sinon : la page d'accueil, le mur d'informations.
@@ -636,6 +639,33 @@ const PROFILS_IADE = ['iade', 'etudiant-iade', 'medecin', 'interne'];
 const profilIade = () => PROFILS_IADE.includes(roleCourant);
 const estEtudiant = () => roleCourant === 'etudiant-iade';
 const accesVehicules = () => !profilIade();
+
+// ---------- Droits d'administration ----------
+// Administrateur principal (rôle « admin », propriété ADMINS du backend) : tous les droits.
+// Sinon, droits délégués (Droits.gs) : GRANT, UTILISATEURS, ETUDIANTS, VEHICULES, INVENTAIRES, ARTICLES, MATERIEL, COMMUNICATION, EXPORT.
+let droitsCourants = [];
+const aDroit = (code) => roleCourant === 'admin' || droitsCourants.includes(code);
+const aUnDroit = (...codes) => codes.some(aDroit);
+function majDroits(droits) {
+  droitsCourants = Array.isArray(droits) ? droits : [];
+  if (typeof majMenuAdmin === 'function' && roleCourant) majMenuAdmin();
+}
+/** Menu Administration : chaque lien n'apparaît qu'avec son droit (data-droits), la rubrique s'il en reste un. */
+function majMenuAdmin() {
+  let visibles = 0;
+  document.querySelectorAll('#rubrique-admin [data-droits]').forEach((li) => {
+    li.hidden = !aUnDroit(...li.dataset.droits.split(' '));
+    if (!li.hidden) visibles += 1;
+  });
+  document.querySelectorAll('#rubrique-admin .tiroir-groupe').forEach((g) => {
+    g.hidden = !g.querySelector('[data-droits]:not([hidden])');
+  });
+  $('rubrique-admin').hidden = !visibles;
+}
+// Vues d'administration et droit(s) nécessaire(s).
+const DROITS_VUES = {
+  configuration: ['VEHICULES'], utilisateurs: ['UTILISATEURS', 'ETUDIANTS', 'GRANT'], 'types-infos': ['COMMUNICATION'], 'gestion-inventaires': ['INVENTAIRES'],
+};
 const accesInventaires = () => roleCourant !== 'ambulancier';
 
 /** Vue correspondant au lien « #inv… » de l'adresse. */
@@ -650,8 +680,10 @@ const vueDuLien = () => (location.hash === '#inv-base' ? 'base-articles' : (gest
 
 function vueAutorisee(vue) {
   if (VUES_VEHICULES[vue] && !accesVehicules()) return 'aujourdhui';
-  if ((vue === 'inventaires' || vue === 'base-articles' || vue === 'suivi-materiel') && !accesInventaires()) return 'aujourdhui';
-  if ((vue === 'configuration' || vue === 'utilisateurs' || vue === 'types-infos' || vue === 'gestion-inventaires') && roleCourant !== 'admin') return 'accueil';
+  if (vue === 'base-articles' && !accesInventaires() && !aDroit('ARTICLES')) return 'aujourdhui';
+  if (vue === 'suivi-materiel' && !accesInventaires() && !aDroit('MATERIEL')) return 'aujourdhui';
+  if (vue === 'inventaires' && !accesInventaires()) return 'aujourdhui';
+  if (DROITS_VUES[vue] && !aUnDroit(...DROITS_VUES[vue])) return 'accueil';
   return vue;
 }
 
@@ -671,7 +703,7 @@ function ouvrirVue(demandee) {
   if (parc) Parc.afficher();
   else Parc.masquer();
 
-  if (vue === 'gestion-inventaires') majGestion(roleCourant === 'admin');
+  if (vue === 'gestion-inventaires') majGestion(aDroit('INVENTAIRES'));
   else if (vue !== 'base-articles') majGestion(false);
   const inventaires = vue === 'inventaires' || vue === 'gestion-inventaires' || vue === 'base-articles' || (vue === 'aujourdhui' && profilIade());
   if (inventaires) {
@@ -771,7 +803,7 @@ menu.addEventListener('click', (e) => {
   fermerMenu();
   // Inventaires : on repart de la liste des inventaires (ou de la base des articles) ;
   // le changement de lien « #inv… » rouvre la vue (voir « hashchange » plus bas).
-  if (vue === 'inventaires' || vue === 'gestion-inventaires') majGestion(vue === 'gestion-inventaires' && roleCourant === 'admin');
+  if (vue === 'inventaires' || vue === 'gestion-inventaires') majGestion(vue === 'gestion-inventaires' && aDroit('INVENTAIRES'));
   if ((vue === 'inventaires' || vue === 'gestion-inventaires') && accesInventaires() && location.hash && location.hash !== '#inv') {
     location.hash = '#inv';
     return;
@@ -808,6 +840,7 @@ Infos.initialiser({
   retirerDeFile,
   ouvrirVue,
   role: () => roleCourant,
+  aDroit,
   accesVehicules: () => accesVehicules(),
   agent: () => (session.lire() || appareil.lire() || {}).identifiant || '',
   fileAttente: () => fileAttente.lire(),
@@ -819,6 +852,7 @@ Inventaires.initialiser({
   publierSurMur: (prerempli) => Infos.publier(prerempli),
   mettreEnFile,
   role: () => roleCourant,
+  aDroit,
   agent: () => (session.lire() || appareil.lire() || {}).identifiant || '',
   fileAttente: () => fileAttente.lire(),
   retirerDeFile,
@@ -842,9 +876,9 @@ function ouvrirAppareilDuLien(lien) {
 }
 Parc.initialiser({ appeler });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });
-Utilisateurs.initialiser({ appeler });
+Utilisateurs.initialiser({ appeler, aDroit, estPrincipal: () => roleCourant === 'admin' });
 Materiel.demarrer({
-  appeler, mettreEnFile, retirerDeFile, lireFile: () => fileAttente.lire(), estAdmin: () => roleCourant === 'admin',
+  appeler, mettreEnFile, retirerDeFile, lireFile: () => fileAttente.lire(), estAdmin: () => aDroit('MATERIEL'),
 });
 
 $('enregistrer').addEventListener('click', enregistrerAmbulancier);

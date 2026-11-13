@@ -379,7 +379,7 @@ const Infos = (() => {
     const liens = [];
     if (App.accesVehicules ? App.accesVehicules() : App.role() !== 'iade') liens.push(['Check-list des véhicules', 'checklist-ambulancier']);
     if (App.role() !== 'ambulancier') liens.push(['Check-list des inventaires', 'inventaires']);
-    if (App.role() === 'admin') liens.push(['Gérer les types d\'informations', 'types-infos']);
+    if (App.aDroit('COMMUNICATION')) liens.push(['Gérer les types d\'informations', 'types-infos']);
     return el('nav', { classe: 'mur-liens', 'aria-label': 'Accès rapides' },
       liens.map(([texte, v]) => el('button', { type: 'button', classe: 'lien', texte: `${texte} →`, surclick: () => App.ouvrirVue(v) })));
   }
@@ -600,7 +600,7 @@ const Infos = (() => {
   function filCommentaires(info, commentaires) {
     const b = brouillon(info.id);
     const idTexte = nouvelId();
-    const admin = App.role() === 'admin';
+    const admin = App.aDroit('COMMUNICATION'); // retrait des commentaires des autres
     const zoneTexte = el('textarea', {
       id: idTexte, rows: '2', maxlength: '1000', placeholder: 'Votre commentaire…', valeur: b.texte,
       surinput: (e) => { b.texte = e.target.value; },

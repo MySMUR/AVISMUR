@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=62">
+  <link rel="stylesheet" href="style.css?v=63">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -246,18 +246,18 @@
         <section id="rubrique-admin" class="rubrique rubrique-admin" aria-labelledby="titre-rubrique-admin" hidden>
           <h2 id="titre-rubrique-admin"><button type="button" class="rubrique-titre" aria-expanded="false" aria-controls="liste-rubrique-admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/></svg>Administration<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg></button></h2>
           <ul id="liste-rubrique-admin" hidden>
-          <li><button type="button" class="tiroir-lien" data-vue="utilisateurs">Gestion des utilisateurs<small>Comptes, mots de passe, administrateurs</small></button></li>
-          <li><button type="button" class="tiroir-lien" data-vue="configuration">Gestion des véhicules<small>Véhicules et questions des check-lists</small></button></li>
-          <li><button type="button" class="tiroir-lien" data-vue="gestion-inventaires">Gestion des inventaires<small>Créer et modifier les inventaires, inventaires types</small></button></li>
+          <li data-droits="UTILISATEURS ETUDIANTS GRANT"><button type="button" class="tiroir-lien" data-vue="utilisateurs">Gestion des utilisateurs<small>Comptes, mots de passe, administrateurs</small></button></li>
+          <li data-droits="VEHICULES"><button type="button" class="tiroir-lien" data-vue="configuration">Gestion des véhicules<small>Véhicules et questions des check-lists</small></button></li>
+          <li data-droits="INVENTAIRES"><button type="button" class="tiroir-lien" data-vue="gestion-inventaires">Gestion des inventaires<small>Créer et modifier les inventaires, inventaires types</small></button></li>
           <li class="tiroir-groupe"><span class="tiroir-groupe-titre">Gestion des catalogues</span>
             <ul>
-            <li><button type="button" class="tiroir-lien" data-vue="base-articles">Base des articles<small>Fiches des articles des inventaires</small></button></li>
-            <li><button type="button" class="tiroir-lien" data-vue="suivi-materiel">Base du matériel<small>Appareils biomédicaux, interventions, répercussion</small></button></li>
+            <li data-droits="ARTICLES"><button type="button" class="tiroir-lien" data-vue="base-articles">Base des articles<small>Fiches des articles des inventaires</small></button></li>
+            <li data-droits="MATERIEL"><button type="button" class="tiroir-lien" data-vue="suivi-materiel">Base du matériel<small>Appareils biomédicaux, interventions, répercussion</small></button></li>
             </ul>
           </li>
           <li class="tiroir-groupe"><span class="tiroir-groupe-titre">Gestion de la communication</span>
             <ul>
-            <li><button type="button" class="tiroir-lien" data-vue="types-infos">Types d'informations<small>Catégories du mur d'accueil</small></button></li>
+            <li data-droits="COMMUNICATION"><button type="button" class="tiroir-lien" data-vue="types-infos">Types d'informations<small>Catégories du mur d'accueil</small></button></li>
             </ul>
           </li>
           </ul>
@@ -281,16 +281,16 @@
   <script src="ambulancier.js?v=25"></script>
   <script src="actions.js?v=11"></script>
   <script src="config-admin.js?v=6"></script>
-  <script src="utilisateurs.js?v=3"></script>
+  <script src="utilisateurs.js?v=4"></script>
   <script src="parc.js?v=7"></script>
   <script src="lib/qrcode.js?v=1"></script>
-  <script src="inventaires.js?v=33"></script>
-  <script src="infos.js?v=3"></script>
+  <script src="inventaires.js?v=34"></script>
+  <script src="infos.js?v=4"></script>
   <script src="materiel.js?v=6"></script>
   <nav id="barre-scan" class="barre-scan" aria-label="Accès rapide aux inventaires">
     <button type="button" data-scan="qr" aria-label="Scanner un QR code" title="QR code"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM5 5v3h3V5zM14 3h7v7h-7zm2 2v3h3V5zM3 14h7v7H3zm2 2v3h3v-3zM14 14h3v3h-3zM18 18h3v3h-3zM14 18h3v3h-3zM18 14h3v3h-3z" fill="currentColor"/></svg><span>QR code</span></button>
     <button type="button" data-scan="nfc" aria-label="Lire une puce NFC" title="NFC"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 4v10h2V11l4 6h2V7h-2v6l-4-6z" fill="currentColor"/></svg><span>NFC</span></button>
   </nav>
-  <script src="app.js?v=42"></script>
+  <script src="app.js?v=43"></script>
 </body>
 </html>

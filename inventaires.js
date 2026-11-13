@@ -102,7 +102,9 @@ const Inventaires = (() => {
     return Array.from(crypto.getRandomValues(new Uint8Array(8)), (o) => alphabet[o % alphabet.length]).join('');
   }
   const pluriel = (n, mot, mots) => `${n} ${n > 1 ? (mots || `${mot}s`) : mot}`;
-  const estAdmin = () => App && App.role() === 'admin';
+  // Droit INVENTAIRES (gestion des inventaires) ; la base des articles dépend du droit ARTICLES (vueBase).
+  const aDroitApp = (code) => Boolean(App && (App.aDroit ? App.aDroit(code) : App.role() === 'admin'));
+  const estAdmin = () => aDroitApp('INVENTAIRES');
   const heure = (iso) => new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
   // ---------- Dates ----------
@@ -2559,7 +2561,7 @@ const Inventaires = (() => {
 
   /** Base des articles : recherche, filtre par catégorie, création et modification des fiches. */
   function vueBase() {
-    const admin = estAdmin();
+    const admin = aDroitApp('ARTICLES');
     const usages = utilisations();
     const liste = el('ul', { classe: 'inv-base-liste' });
     const compte = el('p', { classe: 'aide-question', role: 'status' });

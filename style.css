@@ -2184,3 +2184,9 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .usr-dates { display: flex; flex-wrap: wrap; gap: 0 1rem; }
 .usr-dates .cfg-champ { flex: 0 1 14rem; }
 .usr-apercu { font-weight: 700; color: var(--bleu); }
+.usr-droits { margin: 1rem 0 0; padding: 0.6rem 0.9rem; border: 1px solid var(--trait); border-radius: var(--rayon); background: #F6F9FD; }
+.usr-droits legend { font-weight: 700; padding: 0 0.3rem; }
+.usr-droit { align-items: flex-start; }
+.usr-droit span { display: flex; flex-direction: column; }
+.usr-droit small { color: var(--gris); }
+.usr-indispo { opacity: 0.55; }

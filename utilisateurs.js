@@ -7,7 +7,12 @@ const Utilisateurs = (() => {
   let zone;
   let appelerServeur;
   let agents = [];
-  let fonctions = []; // fonctions reconnues par le serveur : { code, libelle, onglet }
+  let fonctions = [];
+  let catalogueDroits = []; // droits d'administration : { code, libelle, detail } (Droits.gs)
+  let mesDroits = [];
+  let moi = ''; // CRI de l'administrateur connecté
+  let aDroit = () => false;
+  let brouillonDroits = null; // { cri, codes: Set } : droits en cours de modification // fonctions reconnues par le serveur : { code, libelle, onglet }
   let edition = null; // fiche en cours de saisie : { ancienCri, nom, cri, code, telephone } (ancienCri vide : ajout)
   let filtre = '';
   let filtreRole = '';
@@ -46,7 +51,9 @@ const Utilisateurs = (() => {
   function visibles() {
     const f = sansAccent(filtre);
     return agents.filter((a) => {
-      if (filtreRole === 'inactif' ? a.compteActif : (filtreRole && a.role !== filtreRole)) return false;
+      if (filtreRole === 'inactif' ? a.compteActif
+        : filtreRole === 'droits' ? !(a.role === 'admin' || a.droits.length)
+          : (filtreRole && a.role !== filtreRole)) return false;
       return !f || sansAccent(a.nom).includes(f) || a.cri.includes(f) || sansAccent(a.fonction).includes(f);
     });
   }
@@ -68,13 +75,14 @@ const Utilisateurs = (() => {
     const deplie = ouvert === a.cri;
     const entete = el('button', {
       type: 'button', classe: 'usr-entete', 'aria-expanded': String(deplie),
-      surclick: () => { ouvert = deplie ? '' : a.cri; aConfirmer = ''; edition = null; rendre(); },
+      surclick: () => { ouvert = deplie ? '' : a.cri; aConfirmer = ''; edition = null; brouillonDroits = null; rendre(); },
     },
     el('span', { classe: 'usr-nom', texte: a.nom }),
     el('span', {
       classe: 'usr-role',
       texte: a.etudiant ? `Étudiant IADE · stage du ${dateFr(a.debut)} au ${dateFr(a.fin)}`
-        : (a.admin ? `${a.fonction || ROLES[a.role]} · admin` : (a.fonction || ROLES[a.role])),
+        : (a.role === 'admin' ? `${a.fonction || ROLES[a.role]} · administrateur principal`
+          : `${a.fonction || ROLES[a.role]}${a.droits.length ? ` · droits : ${a.droits.length}` : ''}`),
     }),
     etatCompte(a));
     const corps = deplie ? (edition && edition.ancienCri === a.cri ? rendreFormulaire() : rendreFiche(a)) : null;
@@ -93,10 +101,14 @@ const Utilisateurs = (() => {
       ligneInfo('Rôle dans l\'appli', ROLES[a.role] || a.role),
       ligneInfo('Mot de passe', a.compteActif ? 'Créé' : 'Pas encore créé'),
       ligneInfo('Téléphone', a.telephone ? a.numero : (a.numero ? `${a.numero} (invalide)` : 'Absent : pas de SMS possible')),
-      ligneInfo('Appareils « rester connecté »', String(a.appareils)));
+      ligneInfo('Appareils « rester connecté »', String(a.appareils)),
+      a.etudiant ? null : ligneInfo('Droits d\'administration', a.role === 'admin' ? 'Tous (administrateur principal)'
+        : (a.droits.length ? a.droits.map(libelleDroit).join(', ') : 'Aucun')));
 
-    const actions = el('div', { classe: 'usr-actions' },
-      el('button', {
+    const gerable = aDroit(a.etudiant ? 'ETUDIANTS' : 'UTILISATEURS');
+    const actions = el('div', { classe: 'usr-actions' });
+    if (gerable) {
+      actions.append(el('button', {
         type: 'button', classe: 'cfg-bouton', texte: 'Modifier la fiche',
         surclick: () => {
           edition = {
@@ -106,18 +118,20 @@ const Utilisateurs = (() => {
           aConfirmer = ''; rendre();
         },
       }));
-    if (a.compteActif) {
+    }
+    if (gerable && a.compteActif) {
       actions.append(boutonAction(a, 'reinitialiserMdp', 'Réinitialiser le mot de passe',
         'Appuyez de nouveau : le mot de passe sera effacé et l\'agent déconnecté partout. Il en recréera un via le SMS.'));
     }
-    if (a.appareils > 0 || a.compteActif) {
+    if (gerable && (a.appareils > 0 || a.compteActif)) {
       actions.append(boutonAction(a, 'deconnecterAppareils', 'Déconnecter tous ses appareils',
         'Appuyez de nouveau pour déconnecter cet agent de tous ses appareils.'));
     }
-    if (a.role && !a.etudiant) {
-      actions.append(a.admin
-        ? boutonAction(a, 'retirerAdmin', 'Retirer les droits d\'administrateur', 'Appuyez de nouveau pour retirer les droits d\'administrateur.')
-        : boutonAction(a, 'nommerAdmin', 'Nommer administrateur', 'Appuyez de nouveau : cet agent aura accès à toute l\'administration.'));
+    // Administrateur principal (propriété ADMINS) : seul un administrateur principal en nomme un autre.
+    if (a.role && !a.etudiant && estPrincipal() && a.cri !== moi) {
+      actions.append(a.role === 'admin'
+        ? boutonAction(a, 'retirerAdmin', 'Retirer « administrateur principal »', 'Appuyez de nouveau : il gardera seulement ses droits délégués.')
+        : boutonAction(a, 'nommerAdmin', 'Nommer administrateur principal', 'Appuyez de nouveau : cet agent aura tous les droits, sans restriction.'));
     }
 
     const notes = [];
@@ -126,7 +140,54 @@ const Utilisateurs = (() => {
     if (a.etudiant && a.periode === 'terminee') notes.push('Stage terminé : l\'étudiant ne peut plus se connecter. Pour prolonger, modifiez la date de fin.');
     if (!a.telephone) notes.push('Sans numéro de portable valide, l\'agent ne peut ni créer ni réinitialiser son mot de passe.');
     return el('div', { classe: 'usr-fiche' }, infos,
-      ...notes.map((t) => el('p', { classe: 'note-parc', texte: t })), actions);
+      ...notes.map((t) => el('p', { classe: 'note-parc', texte: t })), actions, rendreDroits(a));
+  }
+
+  // ---------- Droits d'administration (GRANT) ----------
+
+  let estPrincipalApp = () => false;
+  const estPrincipal = () => estPrincipalApp();
+  const libelleDroit = (code) => (catalogueDroits.find((d) => d.code === code) || { libelle: code }).libelle;
+
+  function rendreDroits(a) {
+    if (a.etudiant || !a.role || !aDroit('GRANT')) return null;
+    const bloc = el('fieldset', { classe: 'usr-droits' }, el('legend', { texte: 'Droits d\'administration' }));
+    if (a.role === 'admin') {
+      bloc.append(el('p', { classe: 'aide-question', texte: 'Administrateur principal (propriété ADMINS) : tous les droits, non modifiables ici.' }));
+      return bloc;
+    }
+    if (a.cri === moi) {
+      bloc.append(el('p', { classe: 'aide-question', texte: 'Vous ne pouvez pas modifier vos propres droits.' }));
+      return bloc;
+    }
+    if (!brouillonDroits || brouillonDroits.cri !== a.cri) brouillonDroits = { cri: a.cri, codes: new Set(a.droits) };
+    const b = brouillonDroits;
+    bloc.append(el('p', { classe: 'aide-question', texte: 'Vous ne pouvez attribuer ou retirer que les droits que vous possédez vous-même.' }));
+    catalogueDroits.forEach((d) => {
+      const possede = mesDroits.includes(d.code);
+      const id = `usr-droit-${d.code}`;
+      bloc.append(el('label', { classe: `cfg-case usr-droit${possede ? '' : ' usr-indispo'}`, for: id },
+        el('input', {
+          type: 'checkbox', id, checked: b.codes.has(d.code), disabled: !possede,
+          surchange: (e) => { if (e.target.checked) b.codes.add(d.code); else b.codes.delete(d.code); },
+        }),
+        el('span', {}, el('strong', { texte: d.code === 'GRANT' ? `${d.libelle} (GRANT)` : d.libelle }), el('small', { texte: d.detail }))));
+    });
+    bloc.append(el('div', { classe: 'usr-actions' },
+      el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Enregistrer les droits', surclick: () => enregistrerDroits(a) })));
+    return bloc;
+  }
+
+  async function enregistrerDroits(a) {
+    message('Enregistrement des droits…');
+    try {
+      const rep = await appelerServeur('enregistrerDroits', { cri: a.cri, droits: [...brouillonDroits.codes] });
+      if (!rep.ok) { message(rep.erreur || 'Refusé par le serveur.', 'erreur'); return; }
+      brouillonDroits = null;
+      await charger(`${rep.message} Il sera reconnecté automatiquement avec ses nouveaux droits.`);
+    } catch (err) {
+      message('Le serveur ne répond pas : droits non enregistrés. Réessayez avec du réseau.', 'erreur');
+    }
   }
 
   // ---------- Ajout / modification ----------
@@ -143,7 +204,8 @@ const Utilisateurs = (() => {
       el('label', { for: id, texte: libelle }),
       el('input', { id, valeur: e[cle] || '', surinput: (ev) => { e[cle] = ev.target.value; if (surSaisie) surSaisie(); }, ...attrs }));
     // Un étudiant (sans CRI) et un agent (avec CRI) sont des comptes distincts : pas de passage de l'un à l'autre.
-    const proposees = ajout ? fonctions : fonctions.filter((f) => (f.code === 'ETUDIANT IADE') === etudiant);
+    const autorisee = (f) => aDroit(f.code === 'ETUDIANT IADE' ? 'ETUDIANTS' : 'UTILISATEURS');
+    const proposees = (ajout ? fonctions : fonctions.filter((f) => (f.code === 'ETUDIANT IADE') === etudiant)).filter(autorisee);
     const choix = el('select', {
       id: 'usr-f-fonction', disabled: !ajout && etudiant,
       surchange: (ev) => {
@@ -271,7 +333,7 @@ const Utilisateurs = (() => {
     });
     const choixRole = el('select', { id: 'usr-filtre', surchange: (e) => { filtreRole = e.target.value; rendreListe(); } },
       ...[['', 'Tous'], ['ambulancier', 'Ambulanciers'], ['iade', 'IADE'], ['etudiant-iade', 'Étudiants IADE'], ['medecin', 'Médecins'], ['interne', 'Internes'], ['cadre', 'Cadres'], ['chef', 'Chefs d\'unité'],
-        ['admin', 'Administrateurs'], ['inactif', 'Jamais connectés']]
+        ['admin', 'Administrateurs principaux'], ['droits', 'Avec des droits d\'administration'], ['inactif', 'Jamais connectés']]
         .map(([v, t]) => el('option', { value: v, texte: t, selected: v === filtreRole })));
 
     zone.innerHTML = '';
@@ -285,6 +347,7 @@ const Utilisateurs = (() => {
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Actualiser', surclick: () => charger() }),
         el('button', {
           type: 'button', classe: 'cfg-bouton usr-ajouter', texte: '+ Nouveau compte', disabled: !fonctions.length,
+          hidden: !aDroit('UTILISATEURS') && !aDroit('ETUDIANTS'),
           surclick: () => {
             edition = { ancienCri: '', nom: '', cri: '', code: '', telephone: '', nomSeul: '', prenom: '', debut: '', fin: '' };
             ouvert = ''; aConfirmer = ''; message(''); rendre();
@@ -313,8 +376,11 @@ const Utilisateurs = (() => {
     try {
       const rep = await appelerServeur('lireUtilisateurs');
       if (!rep.ok) { message(rep.erreur || 'Refusé par le serveur.', 'erreur'); rendre(); return; }
-      agents = rep.agents || [];
+      agents = (rep.agents || []).map((a) => ({ ...a, droits: a.droits || [] }));
       fonctions = rep.fonctions || [];
+      catalogueDroits = rep.droits || [];
+      mesDroits = rep.mesDroits || [];
+      moi = rep.moi || '';
       message(texteSucces || '', texteSucces ? 'succes' : '');
     } catch (err) {
       message('Le serveur ne répond pas. La gestion des utilisateurs nécessite le réseau.', 'erreur');
@@ -337,6 +403,8 @@ const Utilisateurs = (() => {
   function initialiser(options) {
     zone = document.getElementById('zone-utilisateurs');
     appelerServeur = options.appeler;
+    aDroit = options.aDroit || aDroit;
+    estPrincipalApp = options.estPrincipal || (() => false);
   }
 
   return { initialiser, ouvrir, masquer };
