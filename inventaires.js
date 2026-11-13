@@ -3511,6 +3511,9 @@ const Inventaires = (() => {
     const ratio = gras ? 0.6 : 0.52; // largeur moyenne d'un caractère / taille de police
     const mots = String(texte || '').split(/\s+/).filter(Boolean);
     if (!mots.length) return { lignes: [], police: 0 };
+    // Meilleure police pour chaque nombre de lignes ; on ne coupe en plus de lignes que si le gain est net
+    // (évite « Ampoulier / A »).
+    const meilleur = {};
     for (let police = maxPolice; police >= 1; police -= 0.1) {
       const parLigne = Math.max(1, Math.floor(largeur / (police * ratio)));
       const lignes = [];
@@ -3519,8 +3522,13 @@ const Inventaires = (() => {
         if (der !== undefined && (`${der} ${m}`).length <= parLigne) lignes[lignes.length - 1] = `${der} ${m}`;
         else lignes.push(m);
       });
-      if (lignes.length <= maxLignes && lignes.every((l) => l.length <= parLigne) && lignes.length * police * 1.15 <= hauteur) return { lignes, police };
+      if (lignes.length <= maxLignes && lignes.every((l) => l.length <= parLigne) && lignes.length * police * 1.15 <= hauteur
+        && !meilleur[lignes.length]) meilleur[lignes.length] = { lignes, police };
     }
+    const choix = Object.keys(meilleur).map(Number).sort((x, y) => x - y);
+    const plusGrande = Math.max(0, ...choix.map((nb) => meilleur[nb].police));
+    const retenu = choix.find((nb) => meilleur[nb].police >= plusGrande * 0.8);
+    if (retenu) return meilleur[retenu];
     return { lignes: [texte], police: 1 };
   }
 
@@ -3568,8 +3576,8 @@ const Inventaires = (() => {
       const hTrace = Math.min(H * 0.22, l / 4.6);
       zoneTrace = { x: x0, y: H - ecart - hTrace, l, h: hTrace };
       const hTexte = zoneTrace.y - ecart - ep;
-      zoneNom = { x: x0, y: ecart + ep * 0.5, l, h: hTexte * (sous ? 0.66 : 1), lignes: 3, centre: false };
-      if (sous) zoneSous = { x: x0, y: zoneNom.y + zoneNom.h, l, h: hTexte * 0.34, lignes: 2, centre: false };
+      zoneNom = { x: x0, y: ecart + ep * 0.5, l, h: hTexte * (sous ? 0.66 : 1), lignes: 3, centre: true };
+      if (sous) zoneSous = { x: x0, y: zoneNom.y + zoneNom.h, l, h: hTexte * 0.34, lignes: 2, centre: true };
     } else if (mode === 'portrait') {
       const S = W - 2 * ecart;
       qr = { x: ecart, y: ecart, s: S };
@@ -3591,19 +3599,32 @@ const Inventaires = (() => {
       else zoneTrace = { x: coin * 0.6 + ep, y: yBas + hb * 0.2, l: W - 2 * (coin * 0.6 + ep), h: hb * 0.72 };
     }
 
-    // Puce NFC collée au dos : pictogramme bien visible sur le côté (jamais sur le QR code).
+    // Puce NFC collée au dos : pictogramme bien visible, accolé au QR code (jamais dessus).
     let badge = null;
     if (reglage.logo === 'nfc') {
-      if (mode !== 'carre') { // en bout de tracé, en bas à droite
-        const b = Math.min(8, zoneTrace.l * 0.3, Math.max(zoneTrace.h * (mode === 'paysage' ? 1.1 : 1.4), 3.5));
-        badge = { x: zoneTrace.x + zoneTrace.l - b, y: zoneTrace.y + zoneTrace.h - b, b };
-        zoneTrace.l -= b + ep;
+      if (mode === 'paysage') { // au pied de la colonne de texte, contre le QR ; le tracé part après
+        const b = Math.min(8, zoneTrace.l * 0.3, Math.max(zoneTrace.h * 1.1, 3.5));
+        badge = { x: zoneTrace.x, y: qr.y + qr.s - b - 0.4, b };
+        zoneTrace.x += b + ep; zoneTrace.l -= b + ep;
+      } else if (mode === 'portrait') { // juste sous le QR, centré ; le nom descend d'autant
+        const b = Math.min(8, W * 0.28, Math.max(3.5, zoneNom.h * 0.35));
+        badge = { x: (W - b) / 2, y: qr.y + qr.s + ep * 0.4, b };
+        const decale = b + ep * 0.8;
+        zoneNom.y += decale; zoneNom.h -= decale * (zoneSous ? 0.62 : 1);
+        if (zoneSous) { zoneSous.y += decale * 0.62; zoneSous.h -= decale * 0.38; }
       } else {
-        const z = zoneSous || zoneTrace;
+        const cote = (W - qr.s) / 2 - ecart; // place libre à droite du QR
+        // (le filet orange de la zone calme est à 0,4 mm du QR : le pictogramme reste à l'extérieur)
         const hb = qr.y - ecart;
-        const b = Math.min(8, hb * 0.92);
-        badge = { x: W - (coin * 0.5 + ep) - b, y: qr.y + qr.s + (hb - b) / 2, b };
-        z.l = badge.x - ep - z.x;
+        if (cote - 0.4 - ep * 0.9 >= 3) { // à droite du QR, calé sur son bas
+          const b = Math.min(8, cote - 0.4 - ep * 0.9);
+          badge = { x: qr.x + qr.s + 0.4 + ep * 0.6, y: qr.y + qr.s - b, b };
+        } else { // sous le QR, calé sur son bord droit
+          const z = zoneSous || zoneTrace;
+          const b = Math.min(8, hb * 0.92);
+          badge = { x: qr.x + qr.s - b, y: qr.y + qr.s + (hb - b) / 2, b };
+          z.l = badge.x - ep - z.x;
+        }
       }
     }
 
@@ -3641,7 +3662,8 @@ const Inventaires = (() => {
     // Textes
     const ecrire = (zone, texte, gras, plafond = 99) => {
       if (!zone || !texte) return 0;
-      const max = Math.min(plafond, mode === 'carre' ? zone.h * 0.72 : 99, gras ? Math.min(6, petit * 0.13) : Math.min(4.5, petit * 0.1));
+      // Le nom prend toute la place disponible ; le primaire reste discret.
+      const max = Math.min(plafond, mode === 'carre' ? zone.h * 0.8 : zone.h, gras ? petit * 0.3 : Math.min(4.5, petit * 0.1));
       const { lignes, police } = ajusterTexte(texte, zone.l, zone.h, max, zone.lignes, gras);
       const total = lignes.length * police * 1.15;
       const y0 = zone.y + (zone.h - total) / 2 + police * 0.88;
