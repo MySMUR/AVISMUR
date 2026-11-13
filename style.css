@@ -2042,3 +2042,6 @@ details.inv-tb-legende li { display: inline-flex; align-items: center; gap: 0.35
 .inv-tb-rubrique li.rouge { color: var(--erreur); }
 .inv-tb-rubrique li.orange { color: #8A4B00; }
 .inv-tb-rubrique small { color: var(--gris); }
+
+/* Inventaires : qui a validé et à quelle heure (détail seulement) */
+.inv-mention-validation { margin: .15rem 0 .4rem; font-size: .72rem; color: #8a8f98; }

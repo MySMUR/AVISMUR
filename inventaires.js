@@ -1981,6 +1981,9 @@ const Inventaires = (() => {
     return { b, classe, pictos, detail, biomed: contenantBiomed(c) };
   }
   /** Pop-up d'une tuile : le détail, et l'accès à l'inventaire. */
+  /** Qui a validé l'inventaire et à quelle heure : en tout petit, grisé, seulement dans les détails. */
+  const mentionValidation = (v) => (v ? el('p', { classe: 'inv-mention-validation',
+    texte: `Validé${v.scelle ? ' (scellé)' : ''} à ${heure(v.date)}${v.agent ? ` par ${v.agent}` : ''}` }) : null);
   function detailTableau(c, place = '') {
     const r = resumeTableau(c);
     const v = aCocher(c).length ? verifDuJour(c.id) : null;
@@ -1997,7 +2000,8 @@ const Inventaires = (() => {
       el('p', { classe: 'fenetre-resume', texte: [...etagesAuDessus(c).reverse().map((x) => x.nom), place && cle(place) !== cle(c.nom) ? `emplacement « ${place} »` : ''].filter(Boolean).join(' › ') }),
       el('p', { classe: `inv-tb-statut ${r.classe}` }, el('span', { classe: 'inv-tb-pictos' }, ...r.pictos),
         el('strong', { texte: sousScelle(c) ? 'Scellé : non ouvert aujourd\'hui' : r.b.texte }),
-        v ? ` — à ${heure(v.date)} par ${v.agent}` : '', sous ? ` · ${pluriel(sous, 'sous-inventaire')}` : ''),
+        sous ? ` · ${pluriel(sous, 'sous-inventaire')}` : ''),
+      mentionValidation(v),
       rubrique('Manquants', r.detail.manquants.map((x) => el('li', { classe: 'rouge' }, x.nom, ou(x)))),
       rubrique('Péremptions', r.detail.peremptions.map((x) => el('li', { classe: x.pe.niveau === 'perime' ? 'rouge' : 'orange' }, `${x.nom} : ${afficherDate(x.date)} (${x.pe.texte})`, ou(x)))),
       rubrique('Appareils', r.detail.appareils.map((x) => el('li', { classe: x.ok ? '' : 'rouge' }, el('strong', { texte: x.nom }), ou(x)))),
@@ -2960,7 +2964,6 @@ const Inventaires = (() => {
       ...(questionScelle ? [blocQuestionScelle(c)] : []),
       edition || modele ? null : el('p', { classe: `inv-statut ${b.classe}` },
         el('strong', { texte: `${b.complet ? '✓ ' : ''}${b.texte}` }),
-        v ? ` — cet inventaire à ${heure(v.date)} par ${v.agent}` : '',
         el('span', { classe: 'inv-badges' }, ...badges(b))),
       questionScelle ? null : blocPhoto(c, fils),
       questionScelle ? null : blocEnfants(c, fils),
