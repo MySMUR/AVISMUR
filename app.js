@@ -85,7 +85,18 @@ async function requete(action, charge) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ action, jeton: actuelle && actuelle.jeton, ...charge }),
   });
-  return r.json();
+  // Le serveur a répondu, mais pas en JSON (page d'erreur Google : script en échec, déploiement, quota…) :
+  // ce n'est pas un problème de réseau, on remonte l'extrait pour l'afficher.
+  const texte = await r.text();
+  try {
+    return JSON.parse(texte);
+  } catch (e) {
+    const titre = (texte.match(/<title>([^<]*)<\/title>/i) || [])[1] || '';
+    const corps = texte.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const err = new Error(`Le serveur a renvoyé une erreur (HTTP ${r.status}) : ${(titre || corps).slice(0, 200)}`);
+    err.serveur = true;
+    throw err;
+  }
 }
 
 /**

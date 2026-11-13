@@ -242,7 +242,7 @@ const Utilisateurs = (() => {
       stageEdite = null;
       await charger(rep.message);
     } catch (err) {
-      message('Le serveur ne répond pas : stage non enregistré. Réessayez avec du réseau.', 'erreur');
+      message(err.serveur ? err.message : 'Le serveur ne répond pas : stage non enregistré. Réessayez avec du réseau.', 'erreur');
     }
   }
 
@@ -289,7 +289,7 @@ const Utilisateurs = (() => {
       brouillonDroits = null;
       await charger(`${rep.message} Il sera reconnecté automatiquement avec ses nouveaux droits.`);
     } catch (err) {
-      message('Le serveur ne répond pas : droits non enregistrés. Réessayez avec du réseau.', 'erreur');
+      message(err.serveur ? err.message : 'Le serveur ne répond pas : droits non enregistrés. Réessayez avec du réseau.', 'erreur');
     }
   }
 
@@ -394,7 +394,7 @@ const Utilisateurs = (() => {
       edition = null;
       await charger(rep.message);
     } catch (err) {
-      message('Le serveur ne répond pas : fiche non enregistrée. Réessayez avec du réseau.', 'erreur');
+      message(err.serveur ? err.message : 'Le serveur ne répond pas : fiche non enregistrée. Réessayez avec du réseau.', 'erreur');
     }
   }
 
@@ -425,7 +425,7 @@ const Utilisateurs = (() => {
       if (!rep.ok) { message(rep.erreur || 'Refusé par le serveur.', 'erreur'); rendre(); return; }
       await charger(rep.message);
     } catch (err) {
-      message('Le serveur ne répond pas : action non effectuée. Réessayez avec du réseau.', 'erreur');
+      message(err.serveur ? err.message : 'Le serveur ne répond pas : action non effectuée. Réessayez avec du réseau.', 'erreur');
       rendre();
     }
   }
@@ -492,7 +492,7 @@ const Utilisateurs = (() => {
       ifias = rep.ifias || [];
       message(texteSucces || '', texteSucces ? 'succes' : '');
     } catch (err) {
-      message('Le serveur ne répond pas. La gestion des utilisateurs nécessite le réseau.', 'erreur');
+      message(err.serveur ? err.message : 'Le serveur ne répond pas. La gestion des utilisateurs nécessite le réseau.', 'erreur');
     }
     rendre();
   }
