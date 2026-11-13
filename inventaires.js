@@ -368,6 +368,28 @@ const Inventaires = (() => {
     return liste;
   }
   const datePeremption = (idContenant, idArticle) => (etat.peremptions[`${idContenant}/${idArticle}`] || {}).date || '';
+  /*
+   * Contenants mobiles pointés aujourd'hui. L'inventaire repart de zéro chaque matin : le contenant identifié
+   * la veille dans un emplacement n'est pas repris d'office, il faut le pointer de nouveau (QR, NFC ou liste).
+   * Pointé = identifié aujourd'hui sur cet appareil, ou déjà vérifié aujourd'hui (par n'importe quel agent).
+   */
+  function brouillonsDuJour() {
+    if (brouillons.jour !== jour()) brouillons = { jour: jour(), liste: {}, pointes: {} };
+    if (!brouillons.pointes) brouillons.pointes = {};
+    return brouillons;
+  }
+  function noterPointage(idEmplacement, idMobile) {
+    const e = contenant(idEmplacement);
+    if (!e || !e.emplacement) return;
+    brouillonsDuJour().pointes[idEmplacement] = idMobile;
+    sauverBrouillons();
+  }
+  /** Occupant d'un emplacement, seulement s'il a été pointé aujourd'hui (sinon null : « à identifier »). */
+  function occupantDuJour(e) {
+    const occ = enfants(e.id)[0];
+    if (!occ) return null;
+    return brouillonsDuJour().pointes[e.id] === occ.id || verifDuJour(occ.id) ? occ : null;
+  }
   const verifDuJour = (id) => {
     const v = etat.verifs[id];
     return v && jour(new Date(v.date)) === jour() ? v : null;
@@ -378,7 +400,7 @@ const Inventaires = (() => {
     const b = { total: 0, faits: 0, manquants: 0, perimes: 0, proches: 0, sansDate: 0 };
     descendants(id).forEach((c) => {
       if (dansUnModele(c.id)) return; // un inventaire type ne se vérifie pas
-      if (c.emplacement && !enfants(c.id).length) { b.total += 1; b.vides = (b.vides || 0) + 1; }
+      if (c.emplacement && !occupantDuJour(c)) { b.total += 1; b.vides = (b.vides || 0) + 1; }
       if (aCocher(c).length) {
         b.total += 1;
         const v = verifDuJour(c.id);
@@ -721,7 +743,7 @@ const Inventaires = (() => {
 
   // ---------- Brouillon de vérification ----------
   function brouillon(c) {
-    if (brouillons.jour !== jour()) brouillons = { jour: jour(), liste: {} };
+    brouillonsDuJour();
     if (!brouillons.liste[c.id]) {
       const v = verifDuJour(c.id);
       const coches = {};
@@ -833,7 +855,7 @@ const Inventaires = (() => {
       else obtenirPhoto(c.photo).then(vignette);
     }
     const sous = c.emplacement ? 0 : enfants(c.id).length;
-    const occupant = c.emplacement ? enfants(c.id)[0] : null;
+    const occupant = c.emplacement ? (gestion ? enfants(c.id)[0] : occupantDuJour(c)) : null;
     // Check-list : un emplacement occupé se présente sous le nom du contenant qui l'occupe (pas celui de l'inventaire type).
     if (c.emplacement && !gestion) {
       return el('a', { classe: `inv-carte ${b.classe}`, href: lien(c.id) }, repere,
@@ -1735,8 +1757,8 @@ const Inventaires = (() => {
   function confirmerIdentification(y, idX, dans = '') {
     const x = contenant(idX);
     if (!x) { messageVue('Inventaire inconnu : vérifiez l\'étiquette ou la saisie.', 'erreur'); return; }
-    if (y && x.id === y.id) { identification = ''; aller(y.id); return; }
-    if (!y && x.parent === dans) { identification = ''; aller(x.id); return; }
+    if (y && x.id === y.id) { noterPointage(y.parent, y.id); identification = ''; aller(y.id); return; }
+    if (!y && x.parent === dans) { noterPointage(dans, x.id); identification = ''; aller(x.id); return; }
     if (x.categorie !== 'mobile' || dansUnModele(x.id)) { messageVue(`« ${x.nom} » n'est pas un contenant mobile : choisissez celui qui se trouve réellement ici.`, 'erreur'); return; }
     const vers = y ? y.parent : dans;
     const emp = contenant(vers) && contenant(vers).emplacement ? contenant(vers) : null;
@@ -1753,6 +1775,7 @@ const Inventaires = (() => {
     const ok = App.mettreEnFile({ action: 'deplacerContenant', contenant: x.id, ...(y ? { place: y.id } : { dans }), vers, date });
     if (!ok) { messageVue('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur'); return; }
     affecterLocal(x, y, date, dans);
+    noterPointage(vers, x.id);
     identification = '';
     avis = `« ${x.nom} » est maintenant dans « ${parent ? parent.nom : '?'} »${ancien ? ` (il était dans « ${ancien.nom} »)` : (retrouve ? ' : il est retrouvé' : '')}.`
       + (y ? ` « ${y.nom} » est désaffecté : à retrouver, il est signalé sur la page des inventaires.` : '');
@@ -1807,7 +1830,7 @@ const Inventaires = (() => {
           el('strong', { texte: c.nom }), el('small', { classe: c.desaffecte ? 'inv-desaffecte' : '', texte: ou ? `actuellement dans ${chemin(ou.id).map((z) => z.nom).join(' › ')}` : (c.desaffecte ? 'désaffecté : à retrouver' : 'hors contenant') }))));
       });
     };
-    const saisie = el('input', { id: champ, type: 'search', autocomplete: 'off', placeholder: y ? `ex. ${y.nom}` : 'ex. ampoulier, sacoche', surinput: (e) => filtrer(e.target.value) });
+    const saisie = el('input', { id: champ, type: 'search', autocomplete: 'off', placeholder: y ? `ex. ${y.nom.replace(/\s*n°\s*\d+$/i, '')}` : 'ex. ampoulier, sacoche', surinput: (e) => filtrer(e.target.value) });
     filtrer('');
     const qr = 'BarcodeDetector' in window;
     const nfc = 'NDEFReader' in window;
@@ -1822,7 +1845,7 @@ const Inventaires = (() => {
           el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !nfc, surclick: () => scanner({ qr: false, nfc: true }, choisir) }, logoNfc(), el('span', { texte: 'Lire sa puce NFC' }))),
         el('label', { for: champ, classe: 'inv-libelle-recherche inv-libelle-identif', texte: 'Ou choisissez-le :' }), saisie, resultats),
       el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
-      el('p', { classe: 'aide-question', texte: y ? `Prévu ici : « ${y.nom} ». Si c'en est un autre, il prend sa place et « ${y.nom} » est désaffecté jusqu'à ce qu'on le retrouve ailleurs.` : `Le contenant choisi sera rangé dans « ${parent ? parent.nom : ''} ». S'il était désaffecté, il est retrouvé.` }),
+      el('p', { classe: 'aide-question', texte: y ? `Identifié ici la dernière fois : « ${y.nom} » — à pointer de nouveau chaque jour. Si c'en est un autre, il prend sa place et « ${y.nom} » est désaffecté jusqu'à ce qu'on le retrouve ailleurs.` : `Le contenant choisi sera rangé dans « ${parent ? parent.nom : ''} ». S'il était désaffecté, il est retrouvé.` }),
     ];
   }
 
@@ -1842,7 +1865,7 @@ const Inventaires = (() => {
       // Check-list : un emplacement ne s'affiche pas, son occupant prend sa place (sinon « à identifier »).
       let x = x0;
       if (!gestion && x.emplacement) {
-        const occ = enfants(x.id)[0];
+        const occ = occupantDuJour(x);
         if (!occ) return el('li', {}, el('span', { classe: 'inv-arbre-lien inv-arbre-vide' }, el('span', { classe: 'inv-arbre-nom', texte: `${x.nom} · à identifier` })));
         x = occ;
       }
@@ -1994,7 +2017,7 @@ const Inventaires = (() => {
     if (vus.has(c.id)) return null;
     vus.add(c.id);
     if (c.emplacement) {
-      const occupant = enfants(c.id)[0];
+      const occupant = gestion ? enfants(c.id)[0] : occupantDuJour(c);
       if (occupant) return tuileTableau(occupant, niveau, vus, c.nom);
       return el('div', { classe: 'inv-tb-tuile avide' },
         el('button', { type: 'button', classe: 'inv-tb-tete', 'aria-haspopup': 'dialog', surclick: () => aller(c.id) },
@@ -2980,7 +3003,8 @@ const Inventaires = (() => {
     // s'il est vide, on demande depuis le contenant du dessus lequel se trouve là.
     let identifierEmplacement = '';
     if (c && !gestion && c.emplacement) {
-      const occ = enfants(c.id)[0];
+      // Pointé aujourd'hui ; sinon, à identifier de nouveau (sauf en consultation : rien à vérifier).
+      const occ = occupantDuJour(c) || (contexte.consultation ? enfants(c.id)[0] : null);
       const dessus = parentVisible(c);
       if (occ) id = occ.id;
       else if (dessus) { id = dessus.id; if (!contexte.consultation && c.parent === dessus.id) identifierEmplacement = `emp:${c.id}`; }
@@ -3197,7 +3221,7 @@ const Inventaires = (() => {
     const etatGarde = lireJson(CLE_ETAT, null);
     if (etatGarde && etatGarde.verifs && etatGarde.peremptions) etat = etatGarde;
     brouillons = lireJson(CLE_BROUILLONS, brouillons);
-    if (!brouillons.liste) brouillons = { jour: '', liste: {} };
+    if (!brouillons.liste) brouillons = { jour: '', liste: {}, pointes: {} };
     const modifsGardees = lireJson(CLE_MODIFS, null);
     if (modifsGardees && modifsGardees.ids) modifs = { fiches: {}, reglages: false, ...modifsGardees };
     window.addEventListener('online', synchroniser);
