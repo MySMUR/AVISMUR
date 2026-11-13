@@ -3443,6 +3443,14 @@ const Inventaires = (() => {
     if (modifsGardees && modifsGardees.ids) modifs = { fiches: {}, reglages: false, ...modifsGardees };
     window.addEventListener('online', synchroniser);
     // Les liens internes passent par aller() (voir la pile ci-dessus).
+    // Champs de péremption : le « / » s'ajoute tout seul après les deux chiffres du mois (ou du jour).
+    zone.addEventListener('input', (e) => {
+      const t = e.target;
+      if (!t.classList || !t.classList.contains('inv-date') || (e.inputType || '').startsWith('delete')) return;
+      let n = t.value.replace(/[^\d/]/g, '').replace(/^(\d{2})(\d)/, '$1/$2');
+      if (/^\d{2}$/.test(n)) n += '/';
+      if (n !== t.value) t.value = n;
+    });
     zone.addEventListener('click', (e) => {
       const a = e.target.closest('a[href^="#inv"]');
       if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
