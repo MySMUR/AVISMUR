@@ -170,7 +170,6 @@ const Infos = (() => {
   }
 
   function porteeEffective() {
-    if (filtre.portee) return filtre.portee;
     return mur.metier && mur.metier !== 'encadrement' ? 'moi' : 'tous';
   }
 
@@ -220,12 +219,9 @@ const Infos = (() => {
 
     zone.innerHTML = '';
     ajouter(
-      el('div', { classe: 'mur-entete' },
-        el('div', {},
-          el('h1', { texte: 'Informations et rappels' }),
-          el('p', { classe: 'mur-sous-titre', texte: resumeDuJour(encours.length, urgentes.length) })),
-        el('button', { type: 'button', classe: 'principal mur-publier', surclick: () => formulaire() },
-          el('span', { 'aria-hidden': 'true', texte: '+' }), ' Nouvelle information')),
+      // Bouton flottant, fixé en bas à droite de l'écran.
+      el('button', { type: 'button', classe: 'mur-publier', 'aria-label': 'Nouvelle information', title: 'Nouvelle information', surclick: () => formulaire() },
+        el('span', { 'aria-hidden': 'true', texte: '+' })),
       blocNotifications(),
       avis.texte ? el('p', { classe: `message ${avis.classe}`, role: 'status', texte: avis.texte }) : null,
       barreFiltres(visibles, aujourdhui, portee),
@@ -248,6 +244,7 @@ const Infos = (() => {
     }
     zone.append(liensRapides());
 
+    if (cible && !deplies.has(cible)) { deplies.add(cible); rendre(); return; }
     if (cible) {
       const c = zone.querySelector(`[data-id="${CSS.escape(cible)}"]`);
       if (c) {
@@ -292,12 +289,13 @@ const Infos = (() => {
       rendre();
     };
     return el('div', { classe: 'mur-filtres' },
-      mur.metier ? el('div', { classe: 'mur-portee', role: 'group', 'aria-label': 'Informations affichées' },
-        bouton('Pour moi', portee === 'moi', () => choisirPortee('moi')),
-        bouton('Tout le service', portee === 'tous', () => choisirPortee('tous'))) : null,
+      // Pictogramme + nombre seulement ; toucher le type actif retire le filtre.
       typesPresents.length > 1 || filtre.type ? el('div', { classe: 'mur-types', role: 'group', 'aria-label': 'Filtrer par type' },
-        bouton('Tous les types', !filtre.type, () => { filtre.type = ''; rendre(); }),
-        typesPresents.map((t) => bouton(t.libelle, filtre.type === t.id, () => { filtre.type = filtre.type === t.id ? '' : t.id; rendre(); }, compte(t.id), t.icone))) : null);
+        typesPresents.map((t) => el('button', {
+          type: 'button', classe: `mur-filtre mur-filtre-icone${filtre.type === t.id ? ' actif' : ''}`, 'aria-pressed': String(filtre.type === t.id),
+          'aria-label': `${t.libelle} : ${compte(t.id)}`, title: t.libelle,
+          surclick: () => { filtre.type = filtre.type === t.id ? '' : t.id; rendre(); },
+        }, icone(t.icone, 'mur-filtre-picto'), el('span', { classe: 'mur-filtre-n', texte: String(compte(t.id)) })))) : null);
   }
 
   function periode(info, aujourdhui) {
@@ -325,6 +323,8 @@ const Infos = (() => {
     const commentaires = info.enAttente ? [] : commentairesDe(info);
     const ouvert = !info.enAttente && ouverts.has(info.id);
     const n = commentaires.length;
+    const nbCom = n;
+    const deplie = deplies.has(info.id);
     const boutonCommentaires = info.enAttente ? null : el('button', {
       type: 'button', classe: `info-bouton info-bouton-commentaires${ouvert ? ' actif' : ''}`, 'aria-expanded': String(ouvert),
       surclick: () => {
@@ -335,12 +335,19 @@ const Infos = (() => {
     }, el('span', { 'aria-hidden': 'true', texte: '💬 ' }), n ? `${n} commentaire${n > 1 ? 's' : ''}` : 'Commenter');
 
     return el('article', {
-      classe: `info info-${info.importance} info-${st}`, 'data-id': info.id, tabindex: '-1', 'aria-label': `${type.libelle} : ${info.titre}`,
+      classe: `info info-${info.importance} info-${st}${deplie ? ' deplie' : ''}`, 'data-id': info.id, tabindex: '-1', 'aria-label': `${type.libelle} : ${info.titre}`,
     },
+    // Repliée : seul le titre est visible ; un toucher déplie la carte.
+    el('h3', { classe: 'info-titre' }, el('button', {
+      type: 'button', classe: 'info-deplier', 'aria-expanded': String(deplie),
+      surclick: () => { if (deplie) deplies.delete(info.id); else deplies.add(info.id); rendre(); },
+    }, icone(type.icone), el('span', { classe: 'info-titre-texte', texte: info.titre }),
+    nbCom ? el('span', { classe: 'info-nb-com', 'aria-label': `${nbCom} commentaire${nbCom > 1 ? 's' : ''}`, texte: `💬 ${nbCom}` }) : null,
+    el('span', { classe: 'info-chevron', 'aria-hidden': 'true', texte: '▾' }))),
+    !deplie ? null : el('div', { classe: 'info-corps' },
     el('div', { classe: 'info-haut' },
       el('span', { classe: 'info-type' }, icone(type.icone), type.libelle),
       el('span', { classe: 'info-pastilles' }, pastilles)),
-    el('h3', { classe: 'info-titre', texte: info.titre }),
     info.texte ? el('p', { classe: 'info-texte', texte: info.texte }) : null,
     affichagePieces(info.pieces),
     el('p', { classe: 'info-periode' }, icone('calendrier', 'info-mini-picto'), periode(info, aujourdhui)),
@@ -359,7 +366,7 @@ const Infos = (() => {
         st === 'terminee' ? null : el('button', {
           type: 'button', classe: 'info-bouton', surclick: () => { confirmerFin = info.id; rendre(); focaliser(`[data-id="${CSS.escape(info.id)}"] .info-confirmation .danger`); },
         }, info.enAttente ? 'Annuler la publication' : 'Plus d\'actualité')),
-    ouvert ? filCommentaires(info, commentaires) : null);
+    ouvert ? filCommentaires(info, commentaires) : null));
   }
 
   function focaliser(selecteur) {
@@ -575,6 +582,7 @@ const Infos = (() => {
   }
 
   // ---------- Commentaires ----------
+  const deplies = new Set(); // cartes dépliées (repliées par défaut : titre seul)
   const ouverts = new Set(); // informations dont le fil de commentaires est déplié
   const brouillons = new Map(); // id d'information → { texte, pieces } (garde la saisie entre deux affichages)
   const brouillon = (id) => { if (!brouillons.has(id)) brouillons.set(id, { texte: '', pieces: [] }); return brouillons.get(id); };
@@ -1015,6 +1023,7 @@ const Infos = (() => {
       filtre = { portee: '', type: '' };
       etatPush = '';
       ouverts.clear();
+      deplies.clear();
       brouillons.clear();
       cachePieces.clear();
       try { localStorage.removeItem(CLE_MUR); localStorage.removeItem(CLE_FILTRE); } catch (e) { /* rien */ }
