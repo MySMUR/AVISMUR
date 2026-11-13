@@ -890,10 +890,18 @@ document.addEventListener('visibilitychange', () => {
 // Barre du bas (téléphone) : QR code et NFC toujours à portée de pouce.
 document.querySelectorAll('#barre-scan [data-scan]').forEach((b) => b.addEventListener('click', () => Inventaires.scanRapide(b.dataset.scan)));
 
-// ----- Numéro de version (pied du menu) : lu dans le nom du cache du service worker (sw.js, « avismur-vNNN ») -----
-if ('caches' in window) {
-  caches.keys().then((cles) => {
-    const v = cles.filter((c) => /^avismur-v\d+$/.test(c)).map((c) => Number(c.split('-v')[1])).sort((a, b) => b - a)[0];
-    if (v) document.getElementById('version-appli').textContent = 'Version ' + v;
-  }).catch(() => {});
-}
+// ----- Numéro de version (pied du menu) : nom du cache du service worker (sw.js, « avismur-vNNN »),
+// lu dans les caches de l'appareil, sinon directement dans sw.js (rechargement forcé, cache vide).
+(async () => {
+  let v = 0;
+  try {
+    if ('caches' in window) {
+      v = (await caches.keys()).filter((c) => /^avismur-v\d+$/.test(c)).map((c) => Number(c.split('-v')[1])).sort((a, b) => b - a)[0] || 0;
+    }
+    if (!v) {
+      const m = (await (await fetch('sw.js', { cache: 'no-store' })).text()).match(/avismur-v(\d+)/);
+      if (m) v = Number(m[1]);
+    }
+  } catch (e) { /* hors ligne sans cache : pas de numéro */ }
+  if (v) document.getElementById('version-appli').textContent = 'Version ' + v;
+})();
