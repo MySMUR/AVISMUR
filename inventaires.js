@@ -354,7 +354,18 @@ const Inventaires = (() => {
   const primaireDe = (id) => chemin(id).find((x) => x.categorie === 'primaire' && !x.modele) || null;
   // Consultation seule : demandée (recherche par le nom), ou aucun contenant primaire connu
   // (ex. contenant mobile désaffecté scanné sans avoir dit où l'on est) : rien à cocher ni à dater.
-  const enConsultation = (c) => contexte.consultation || Boolean(c && !primaireDe(c.id) && !contenant(contexte.primaire));
+  /** Le contenant est (ou est rangé dans) un contenant mobile : il ne dit pas dans quel contenant primaire on se trouve. */
+  const dansUnMobile = (c) => Boolean(c) && chemin(c.id).some((x) => x.categorie === 'mobile');
+  // Consultation seule (inventaire impossible) : demandée (recherche par le nom) ; contenant mobile ouvert sans avoir
+  // dit où l'on est, ou enregistré dans un autre contenant primaire que celui où l'on est ; aucun contenant primaire connu.
+  const enConsultation = (c) => {
+    if (contexte.consultation) return true;
+    if (!c) return false;
+    const ici = contenant(contexte.primaire);
+    const structurel = primaireDe(c.id);
+    if (!ici) return dansUnMobile(c) || !structurel;
+    return dansUnMobile(c) && (!structurel || structurel.id !== ici.id);
+  };
   /**
    * Niveau du dessus, pour la flèche retour et l'arborescence : en check-list, un emplacement
    * (« ici, un exemplaire de tel inventaire type ») s'efface derrière le contenant qui l'occupe.
@@ -673,8 +684,11 @@ const Inventaires = (() => {
     // État : entre l'appareil (vérifications pas encore envoyées) et le serveur, le plus récent l'emporte.
     const recent = Date.now() - 2 * 86400000;
     const verifs = { ...rep.etat.verifs };
+    // Une vérification absente du serveur n'est gardée que si elle attend encore d'être envoyée :
+    // sinon elle a été retirée (réinitialisation du jour) et ne doit pas réapparaître sur cet appareil.
+    const enAttente = new Set(App.fileAttente().filter((x) => x.action === 'verifierInventaire').map((x) => x.contenant));
     Object.entries(etat.verifs).forEach(([id, v]) => {
-      if (verifs[id] ? v.date > verifs[id].date : new Date(v.date).getTime() > recent) verifs[id] = v;
+      if (verifs[id] ? v.date > verifs[id].date : (enAttente.has(id) && new Date(v.date).getTime() > recent)) verifs[id] = v;
     });
     const peremptions = { ...rep.etat.peremptions };
     Object.entries(etat.peremptions).forEach(([cle, p]) => {
@@ -1093,6 +1107,12 @@ const Inventaires = (() => {
   function bandeauPrimaire(c) {
     if (gestion) return null;
     const structurel = c ? primaireDe(c.id) : null;
+    const ici = contenant(contexte.primaire);
+    if (enConsultation(c) && ici && structurel && structurel.id !== ici.id && !contexte.consultation) {
+      // Contenant mobile enregistré ailleurs : on reste où l'on est ; il se vérifie une fois identifié à sa place ici.
+      return el('div', { classe: 'inv-bande-primaire consultation', role: 'status' }, picto('lieu'),
+        el('span', { classe: 'inv-bande-texte' }, 'Vous êtes dans ', el('strong', { texte: ici.nom }), ` · enregistré dans ${structurel.nom}`));
+    }
     if (enConsultation(c)) {
       // Sans contenant primaire connu : l'agent dit dans lequel il se trouve pour pouvoir vérifier.
       const choix = structurel ? null : (() => {
@@ -1106,7 +1126,7 @@ const Inventaires = (() => {
         el('span', { classe: 'inv-bande-texte' }, el('strong', { texte: 'Consultation seule' }), structurel ? ` · ${structurel.nom}` : ''),
         structurel ? el('button', { type: 'button', classe: 'inv-bande-action', texte: `Je suis dans ${structurel.nom}`, surclick: () => { fixerContexte(structurel.id, false); rendre({ garderPosition: true }); } }) : choix);
     }
-    const p = structurel || contenant(contexte.primaire);
+    const p = contenant(contexte.primaire) || structurel;
     return el('div', { classe: `inv-bande-primaire${p ? '' : ' aucun'}`, role: 'status' }, picto('lieu'),
       el('span', { classe: 'inv-bande-texte' }, p ? 'Vous vérifiez actuellement ' : '', el('strong', { texte: p ? p.nom : 'Aucun contenant primaire' })));
   }
@@ -1274,6 +1294,7 @@ const Inventaires = (() => {
     }
     Object.keys(etat.verifs).forEach((id) => { if (jour(new Date(etat.verifs[id].date)) === jour()) delete etat.verifs[id]; });
     brouillons = { jour: jour(), liste: {}, pointes: {} };
+    reponsesScelle.clear();
     aIdentifier = '';
     identification = '';
     sauverEtat();
@@ -3148,10 +3169,14 @@ const Inventaires = (() => {
     const articles = aCocher(c);
     if (!articles.length) return null;
     const p = primaireDe(c.id);
-    const datesModifiables = c.categorie === 'mobile';
+    const datesModifiables = dansUnMobile(c);
+    const ici = contenant(contexte.primaire);
+    const ailleurs = ici && p && p.id !== ici.id && !contexte.consultation;
     return el('section', { classe: 'inv-section inv-consultation' },
       el('div', { classe: 'inv-liste-entete' }, el('h2', {}, 'Contenu ', el('span', { classe: 'inv-compte', texte: String(articles.length) }))),
-      el('p', { classe: 'aide-question', texte: p
+      el('p', { classe: 'aide-question', texte: ailleurs
+        ? `Consultation seule : ce contenant est enregistré dans ${p.nom}. Pour le vérifier dans ${ici.nom}, ouvrez sa place dans ${ici.nom} et identifiez-le (QR code, NFC ou liste).`
+        : p
         ? `Consultation seule. Pour vérifier : touchez « Je suis dans ${p.nom} » en haut, ou scannez l'étiquette sur place.`
         : 'Consultation seule. Pour vérifier : choisissez en haut le contenant primaire où vous êtes.' }),
       datesModifiables && articles.some(suiviPeremption) ? el('p', { classe: 'aide-question', texte: 'Les dates de péremption restent modifiables : chaque date est enregistrée dès sa saisie.' }) : null,
@@ -3202,7 +3227,8 @@ const Inventaires = (() => {
     // Contenant primaire où l'on est : celui du contenant ouvert. La page des inventaires remet à zéro la consultation.
     if (!gestion) {
       if (!id) fixerContexte(contexte.primaire, false);
-      else if (c && !contexte.consultation) { const p = primaireDe(c.id); if (p) fixerContexte(p.id, false); }
+      // Seul un contenant fixe (pièce, véhicule, tiroir…) dit où l'on est ; un contenant mobile peut être ailleurs.
+      else if (c && !contexte.consultation && !dansUnMobile(c)) { const p = primaireDe(c.id); if (p) fixerContexte(p.id, false); }
     }
     const nouveau = dernierAffiche !== id;
     dernierAffiche = id;
@@ -3465,7 +3491,42 @@ const Inventaires = (() => {
     const dispo = type === 'nfc' ? 'NDEFReader' in window : ('BarcodeDetector' in window && navigator.mediaDevices);
     if (!dispo) { alerteBreve(type === 'nfc' ? 'NFC non disponible : Chrome sur Android requis, NFC activé.' : 'Lecture de QR code non disponible sur ce navigateur.'); return; }
     // Étiquette lue sur place : on est là, l'inventaire s'ouvre pour être vérifié.
-    scanner({ qr: type === 'qr', nfc: type === 'nfc' }, (id) => { fixerContexte(contexte.primaire, false); location.hash = lien(id); });
+    scanner({ qr: type === 'qr', nfc: type === 'nfc' }, (id) => {
+      fixerContexte(contexte.primaire, false);
+      if (zone && !zone.hidden && !gestion && identificationEnCours()) { identificationEnCours()(id); return; }
+      const place = placeIci(contenant(id));
+      if (place) { confirmerIdentification(place.y, id, place.dans); return; }
+      location.hash = lien(id);
+    });
+  }
+  /** Écran « Quel … se trouve ici ? » affiché : la fonction qui confirme l'identification, sinon null. */
+  function identificationEnCours() {
+    const id = idCourant();
+    const empId = identification.startsWith('emp:') ? identification.slice(4) : '';
+    if (empId && contenant(empId) && contenant(empId).parent === id) {
+      const occ = enfants(empId)[0];
+      return (x) => confirmerIdentification(occ || null, x, occ ? '' : empId);
+    }
+    if (identification === `dans:${id}`) return (x) => confirmerIdentification(null, x, id);
+    if (identification && contenant(identification) && contenant(identification).parent === id) return (x) => confirmerIdentification(contenant(identification), x);
+    return null;
+  }
+  /**
+   * Contenant mobile scanné depuis le contenant affiché (dans le contenant primaire où l'on est), alors qu'il est
+   * enregistré ailleurs : s'il a ici une seule place possible (emplacement de son modèle, ou mobile du même modèle),
+   * c'est là qu'il se trouve. Retourne { y, dans } pour confirmerIdentification, sinon null.
+   */
+  function placeIci(x) {
+    const cour = contenant(idCourant());
+    const ici = contenant(contexte.primaire);
+    if (!x || !cour || !ici || gestion || x.categorie !== 'mobile' || dansUnModele(x.id) || x.parent === cour.id) return null;
+    if (!primaireDe(cour.id) || primaireDe(cour.id).id !== ici.id || chemin(cour.id).some((z) => z.id === x.id)) return null;
+    const pos = enfants(cour.id).filter((f) => !f.supprime && f.id !== x.id && f.id !== x.parent
+      && ((f.emplacement && modelesEmplacement(f).includes(x.source)) || (f.categorie === 'mobile' && !f.emplacement && x.source && f.source === x.source)));
+    if (pos.length !== 1) return null;
+    const f = pos[0];
+    if (f.emplacement) { const occ = enfants(f.id)[0]; return occ ? { y: occ, dans: '' } : { y: null, dans: f.id }; }
+    return { y: f, dans: '' };
   }
   function alerteBreve(texte) {
     const p = el('p', { classe: 'barre-scan-avis', role: 'status', texte });
