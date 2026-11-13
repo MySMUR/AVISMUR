@@ -170,11 +170,13 @@ const Inventaires = (() => {
       nomVue: c.nomVue || '',
       scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
       categorie: CATEGORIES_CONTENANT[c.categorie] ? c.categorie : '', // primaire, immobile ou mobile
-      // Étiquette QR : côté imprimé (mm) et logo central (puce NFC collée au dos, logo SMUR ou aucun).
-      ...(c.etiquette ? { etiquette: {
-        taille: Math.min(100, Math.max(20, Number(c.etiquette.taille) || 40)),
-        logo: ['nfc', 'smur'].includes(c.etiquette.logo) ? c.etiquette.logo : '',
-      } } : {}),
+      // Étiquette QR : largeur × hauteur imprimées (mm) et logo central (puce NFC au dos, croix SMUR ou aucun).
+      ...(c.etiquette ? { etiquette: (() => {
+        const mm = (v, d) => Math.min(150, Math.max(15, Math.round(Number(v) || d)));
+        const largeur = mm(c.etiquette.largeur || c.etiquette.taille, 40);
+        return { largeur, hauteur: mm(c.etiquette.hauteur || c.etiquette.taille, largeur),
+          logo: ['nfc', 'smur'].includes(c.etiquette.logo) ? c.etiquette.logo : '' };
+      })() } : {}),
       ...(c.modele ? { modele: true } : {}),
       ...(c.desaffecte ? { desaffecte: c.desaffecte } : {}), // mobile dont la place a été prise : à retrouver
       // Emplacement : attend un exemplaire d'un inventaire type (ex. un « Ampoulier A » dans chaque sac) ;
@@ -2852,19 +2854,26 @@ const Inventaires = (() => {
     // Étiquette : aperçu et réglages (taille imprimée, logo central), propres à ce contenant.
     const apercu = el('div', { classe: 'inv-etiquette-apercu' }, etiquetteSvg(c));
     const regler = (champ, valeur) => {
-      c.etiquette = { ...reglageEtiquette(c), [champ]: valeur };
-      c.etiquette = normaliser(c).etiquette;
+      c.etiquette = normaliser({ etiquette: { ...reglageEtiquette(c), [champ]: valeur } }).etiquette;
       marquer(c.id);
       apercu.replaceChildren(etiquetteSvg(c));
     };
     const r0 = reglageEtiquette(c);
+    const champMm = (champ, libelle) => el('label', {}, el('span', { texte: libelle }),
+      el('input', { type: 'number', min: 15, max: 150, step: 1, valeur: r0[champ], inputmode: 'numeric', surchange: (e) => regler(champ, e.target.value) }));
+    const formats = [[40, 40], [30, 30], [60, 30], [50, 25], [70, 35], [25, 50]];
     const reglages = el('div', { classe: 'inv-etiquette-reglages' },
-      el('label', {}, el('span', { texte: 'Taille imprimée (mm)' }),
-        el('input', { type: 'number', min: 20, max: 100, step: 5, valeur: r0.taille, inputmode: 'numeric',
-          surchange: (e) => regler('taille', e.target.value) })),
+      champMm('largeur', 'Largeur (mm)'), champMm('hauteur', 'Hauteur (mm)'),
       el('label', {}, el('span', { texte: 'Logo central' }),
         el('select', { surchange: (e) => regler('logo', e.target.value) },
-          ...[['', 'Aucun'], ['nfc', 'NFC (puce collée au dos)'], ['smur', 'Croix SMUR']].map(([v, t]) => el('option', { value: v, selected: r0.logo === v, texte: t })))));
+          ...[['', 'Aucun'], ['nfc', 'NFC (puce collée au dos)'], ['smur', 'Croix SMUR']].map(([v, t]) => el('option', { value: v, selected: r0.logo === v, texte: t })))),
+      el('div', { classe: 'inv-etiquette-formats' }, el('span', { texte: 'Formats courants :' }),
+        ...formats.map(([l, h]) => el('button', { type: 'button', classe: 'cfg-mini', texte: `${l}×${h}`, surclick: () => {
+          c.etiquette = normaliser({ etiquette: { ...reglageEtiquette(c), largeur: l, hauteur: h } }).etiquette;
+          marquer(c.id); rendre({ garderPosition: true });
+        } }))),
+      el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Aperçu taille réelle', surclick: () => apercuTailleReelle(c) }),
+      c.modele ? el('p', { classe: 'aide-question', texte: 'Format répercuté sur les exemplaires avec les autres modifications de l\'inventaire type.' }) : null);
     const supprimer = el('button', {
       type: 'button', classe: 'cfg-bouton danger', texte: 'Supprimer cet inventaire',
       surclick: () => {
@@ -2927,7 +2936,7 @@ const Inventaires = (() => {
   /** Instantané d'un contenant du modèle : ce que ses exemplaires doivent reproduire. */
   function instantane(m) {
     return {
-      nom: m.nom, ordre: m.ordre, photo: m.photo, scellable: m.scellable, categorie: m.categorie,
+      nom: m.nom, ordre: m.ordre, photo: m.photo, scellable: m.scellable, categorie: m.categorie, etiquette: m.etiquette,
       points: m.points.map((p) => ({ cible: p.cible, x: p.x, y: p.y })),
       nomVue: m.nomVue,
       vues: m.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map((p) => ({ cible: p.cible, x: p.x, y: p.y })) })),
@@ -2939,7 +2948,7 @@ const Inventaires = (() => {
   function vueExemplaire(e) {
     const versModele = (id) => (contenant(id) || {}).source || id;
     return {
-      nom: e.nom, ordre: e.ordre, photo: e.photo, scellable: e.scellable, categorie: e.categorie,
+      nom: e.nom, ordre: e.ordre, photo: e.photo, scellable: e.scellable, categorie: e.categorie, etiquette: e.etiquette,
       points: e.points.map((p) => ({ cible: versModele(p.cible), x: p.x, y: p.y })),
       nomVue: e.nomVue,
       vues: e.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map((p) => ({ cible: versModele(p.cible), x: p.x, y: p.y })) })),
@@ -2948,7 +2957,7 @@ const Inventaires = (() => {
     };
   }
   const sansNoms = (articles) => (articles || []).map(({ refNom, ...a }) => a);
-  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', nomVue: 'nom de la vue', vues: 'vues', scellable: 'scellable', categorie: 'catégorie', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
+  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', nomVue: 'nom de la vue', vues: 'vues', scellable: 'scellable', categorie: 'catégorie', etiquette: 'format d\'étiquette', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
   /** Champs d'un contenant d'exemplaire modifiés localement depuis la dernière répercussion. */
   function personnalisations(e) {
     if (!e.base) return [];
@@ -3013,7 +3022,7 @@ const Inventaires = (() => {
     const v = vueExemplaire(e);
     const nm = instantane(m);
     const avant = canonique(e);
-    ['nom', 'ordre', 'photo', 'nomVue', 'scellable', 'categorie'].forEach((k) => {
+    ['nom', 'ordre', 'photo', 'nomVue', 'scellable', 'categorie', 'etiquette'].forEach((k) => {
       if (racine && (k === 'nom' || k === 'ordre')) return; // le sac garde son nom et sa place
       if (forcer || egal(v[k], base[k])) e[k] = copieProfonde(m[k]);
       else if (!egal(v[k], nm[k])) bilanR.conserves += 1;
@@ -3480,65 +3489,195 @@ const Inventaires = (() => {
       el('svg:rect', { width: '100%', height: '100%', fill: '#fff' }), el('svg:path', { d: trace, fill: '#000' }));
   }
 
-  /** Réglages d'étiquette d'un contenant (valeurs par défaut : 40 mm, sans logo). */
-  const reglageEtiquette = (c) => ({ taille: 40, logo: '', ...(c.etiquette || {}) });
+  /** Réglages d'étiquette d'un contenant (par défaut : carré de 40 mm, sans logo). */
+  const reglageEtiquette = (c) => ({ largeur: 40, hauteur: 40, logo: '', ...(c.etiquette || {}) });
   const COULEURS_ETIQUETTE = { bleu: '#1D4F9F', fonce: '#163E7E', rhone: '#1E8C82', encre: '#13294B', orange: '#E07A12' };
   const LOGOS_ETIQUETTE = {
     nfc: (k) => [el('svg:rect', { x: 3, y: 2, width: 18, height: 20, rx: 3, fill: 'none', stroke: k.bleu, 'stroke-width': 1.8 }),
       el('svg:path', { d: 'M8 16V8l8 8V8', fill: 'none', stroke: k.bleu, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })],
     smur: (k) => [el('svg:path', { d: 'M12 3v18M3 12h18', stroke: k.rhone, 'stroke-width': 4, 'stroke-linecap': 'round' })],
   };
+  // Identité graphique de l'appli (bandeau, index.html) : complexe QRS et silhouette d'Avignon
+  // (pont Saint-Bénézet, rocher des Doms, Palais des Papes). Ligne de base à y = 38, hauteur utile ≈ 0–60.
+  const TRACE_QRS = { l: 96, d: 'M0 38 l8 -6 l8 6 h10 l6 6 l10 -40 l10 52 l8 -18 h16 q10 -14 20 0' };
+  const TRACE_AVIGNON = { l: 260, d: 'M0 38 H12 V31 l2 -3 H40 V23 h3 V19 h3 V23 l5 -3 l5 3 V28 H94 V20 h3 v-2.5 h3 v2.5 h3 v-2.5 h3 v2.5 V26 H110 L120 21 H124 V11 H126 V7 H128 V5 l0.5 -1.5 a1 1 0 1 1 1 0 l0.5 1.5 V7 H132 V11 H134 V21 H140 V6 h3 v-2.5 h3 v2.5 h3 v-2.5 h3 v2.5 V13 h2 v-2 h3 v2 h4 v-2 h3 v2 h2 V10 l2 -5 l2 5 H178 l2 -5 l2 5 V13 H188 V3 h3 v-2.5 h3 v2.5 h3 v-2.5 h3 v2.5 h3 v-2.5 h3 v2.5 V15 h2 v-2 h3 v2 h4 v-2 h3 v2 h2 V8 h3 v-2.5 h3 v2.5 h3 v-2.5 h3 v2.5 V20 L242 28 V38 H260',
+    details: 'M12 38 H16 Q25 29 34 38 H38 Q47 29 56 38 H59 Q67 29 76 38 H79 Q87 29 95 38 M156 21 V17 Q160 11 164 17 V21 M191 21 V12 Q197 4 203 12 V21 M209 21 V18 Q213 12 217 18 V21 M223 21 V15 Q226 10 229 15 V21' };
+
+  /** Coupe un texte en lignes et choisit la plus grande police (mm) qui tient dans le cadre donné. */
+  function ajusterTexte(texte, largeur, hauteur, maxPolice, maxLignes, gras = true) {
+    const ratio = gras ? 0.6 : 0.52; // largeur moyenne d'un caractère / taille de police
+    const mots = String(texte || '').split(/\s+/).filter(Boolean);
+    if (!mots.length) return { lignes: [], police: 0 };
+    for (let police = maxPolice; police >= 1; police -= 0.1) {
+      const parLigne = Math.max(1, Math.floor(largeur / (police * ratio)));
+      const lignes = [];
+      mots.forEach((m) => {
+        const der = lignes[lignes.length - 1];
+        if (der !== undefined && (`${der} ${m}`).length <= parLigne) lignes[lignes.length - 1] = `${der} ${m}`;
+        else lignes.push(m);
+      });
+      if (lignes.length <= maxLignes && lignes.every((l) => l.length <= parLigne) && lignes.length * police * 1.15 <= hauteur) return { lignes, police };
+    }
+    return { lignes: [texte], police: 1 };
+  }
+
   /**
-   * Étiquette QR carrée aux couleurs de l'appli. La zone calme (4 modules blancs) reste intacte : le décor
-   * (cadre bleu, coins verts, filet orange) et les textes sont à l'extérieur. Nom du contenant en gras en haut ;
-   * pour un immobile, son contenant primaire en italique en bas. Correction H : le logo central reste lisible.
+   * Étiquette QR aux couleurs de l'appli, carrée ou rectangulaire (dimensions réelles en mm : le viewBox est en mm).
+   * La zone calme (4 modules blancs) reste intacte : cadre bleu, coins verts, filet orange, textes et tracé sont autour.
+   * Agencement selon les proportions :
+   *  - carré : nom en gras en haut, primaire (immobile) en italique en bas ou, à défaut, tracé ECG + Avignon ;
+   *  - paysage : QR à gauche, textes à droite sur plusieurs lignes, tracé en pied de la colonne de texte ;
+   *  - portrait : QR en haut, textes dessous, tracé en pied.
+   * Correction d'erreur H : le logo central reste lisible.
    */
   function etiquetteSvg(c, reglage = reglageEtiquette(c)) {
     const k = COULEURS_ETIQUETTE;
+    const W = reglage.largeur, H = reglage.hauteur, petit = Math.min(W, H);
     const q = qrcode(0, 'H');
     q.addData(adresse(c.id));
     q.make();
     const n = q.getModuleCount();
     const primaire = c.categorie === 'immobile' ? chemin(c.id)[0] : null;
-    const haut = c.nom || '';
-    const bas = primaire && primaire.id !== c.id ? primaire.nom : '';
-    const Z = 4, B = 7, T = n + 2 * Z, W = T + 2 * B, o = B + Z;
+    const nom = c.nom || '';
+    const sous = primaire && primaire.id !== c.id ? primaire.nom : '';
+    const ratio = W / H;
+    const mode = ratio > 1.3 ? 'paysage' : (ratio < 0.77 ? 'portrait' : 'carre');
+
+    const ep = Math.min(1.4, Math.max(0.5, petit * 0.025)); // épaisseur du cadre
+    const marge = ep * 1.6; // du bord au cadre intérieur
+    const coin = Math.min(7, petit * 0.18);
+    const enfants = [
+      el('svg:rect', { width: W, height: H, fill: '#fff' }),
+      el('svg:rect', { x: ep / 2 + 0.3, y: ep / 2 + 0.3, width: W - ep - 0.6, height: H - ep - 0.6, rx: Math.min(3, petit * 0.07), fill: 'none', stroke: k.bleu, 'stroke-width': ep }),
+    ];
+    const a = ep / 2 + 0.3, cr = Math.min(3, petit * 0.07);
+    [[a, a, 1, 1], [W - a, a, -1, 1], [a, H - a, 1, -1], [W - a, H - a, -1, -1]].forEach(([x, y, sx, sy]) => enfants.push(el('svg:path', {
+      d: `M${x} ${y + sy * coin}V${y + sy * cr}Q${x} ${y} ${x + sx * cr} ${y}H${x + sx * coin}`,
+      fill: 'none', stroke: k.rhone, 'stroke-width': ep * 1.7, 'stroke-linecap': 'round' })));
+
+    // Emplacement du QR (zone calme comprise) et des zones de texte.
+    let qr, zoneNom, zoneSous, zoneTrace;
+    const ecart = marge + ep;
+    if (mode === 'paysage') {
+      const S = H - 2 * ecart;
+      qr = { x: ecart, y: ecart, s: S };
+      const x0 = ecart + S + ep * 2.5, l = W - x0 - ecart;
+      const hTrace = Math.min(H * 0.22, l / 4.6);
+      zoneTrace = { x: x0, y: H - ecart - hTrace, l, h: hTrace };
+      const hTexte = zoneTrace.y - ecart - ep;
+      zoneNom = { x: x0, y: ecart + ep * 0.5, l, h: hTexte * (sous ? 0.66 : 1), lignes: 3, centre: false };
+      if (sous) zoneSous = { x: x0, y: zoneNom.y + zoneNom.h, l, h: hTexte * 0.34, lignes: 2, centre: false };
+    } else if (mode === 'portrait') {
+      const S = W - 2 * ecart;
+      qr = { x: ecart, y: ecart, s: S };
+      const y0 = ecart + S + ep * 0.5, l = W - 2 * ecart;
+      const hTrace = Math.min((H - y0) * 0.28, l / 4.6);
+      zoneTrace = { x: ecart, y: H - ecart - hTrace, l, h: hTrace };
+      const hTexte = zoneTrace.y - y0 - ep * 0.5;
+      zoneNom = { x: ecart, y: y0, l, h: hTexte * (sous ? 0.62 : 1), lignes: 3, centre: true };
+      if (sous) zoneSous = { x: ecart, y: y0 + zoneNom.h, l, h: hTexte * 0.38, lignes: 2, centre: true };
+    } else {
+      const bande = petit * 0.15;
+      const S = Math.min(W - 2 * ecart, H - 2 * (marge + bande));
+      qr = { x: (W - S) / 2, y: (H - S) / 2, s: S };
+      // Bandeaux entre le cadre et la zone calme : texte en haut, primaire ou tracé en bas.
+      const hb = qr.y - ecart;
+      zoneNom = { x: coin * 0.5 + ep, y: ecart, l: W - 2 * (coin * 0.5 + ep), h: hb, lignes: 1, centre: true };
+      const yBas = qr.y + S + 0.3;
+      if (sous) zoneSous = { x: coin * 0.5 + ep, y: yBas, l: W - 2 * (coin * 0.5 + ep), h: hb, lignes: 1, centre: true };
+      else zoneTrace = { x: coin * 0.6 + ep, y: yBas + hb * 0.2, l: W - 2 * (coin * 0.6 + ep), h: hb * 0.72 };
+    }
+
+    // QR code
+    const mod = qr.s / (n + 8);
+    const o = 4 * mod;
     const L = reglage.logo ? (Math.round(n * 0.2) | 1) : 0, l0 = (n - L) / 2;
     let trace = '';
     for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) {
       if (L && r >= l0 - 0.5 && r < l0 + L && col >= l0 - 0.5 && col < l0 + L) continue;
-      if (q.isDark(r, col)) trace += `M${col + o} ${r + o}h1v1h-1z`;
+      if (q.isDark(r, col)) trace += `M${col} ${r}h1v1h-1z`;
     }
-    const a = B * 0.35, cr = 3, coin = Math.min(8, W / 5), ep = a * 0.9;
-    const enfants = [
-      el('svg:rect', { width: W, height: W, fill: '#fff' }),
-      el('svg:rect', { x: a, y: a, width: W - 2 * a, height: W - 2 * a, rx: cr, fill: 'none', stroke: k.bleu, 'stroke-width': ep }),
-      ...[[a, a, 1, 1], [W - a, a, -1, 1], [a, W - a, 1, -1], [W - a, W - a, -1, -1]].map(([x, y, sx, sy]) => el('svg:path', {
-        d: `M${x} ${y + sy * coin}V${y + sy * cr}Q${x} ${y} ${x + sx * cr} ${y}H${x + sx * coin}`,
-        fill: 'none', stroke: k.rhone, 'stroke-width': ep * 1.6, 'stroke-linecap': 'round' })),
-      el('svg:rect', { x: B - 0.6, y: B - 0.6, width: T + 1.2, height: T + 1.2, rx: 1.5, fill: 'none', stroke: k.orange, 'stroke-width': 0.35, 'stroke-dasharray': '1.2 0.8' }),
-      el('svg:rect', { x: B, y: B, width: T, height: T, fill: '#fff' }),
-      el('svg:path', { d: trace, fill: k.encre }),
-    ];
+    enfants.push(
+      el('svg:rect', { x: qr.x - 0.4, y: qr.y - 0.4, width: qr.s + 0.8, height: qr.s + 0.8, rx: 1, fill: 'none', stroke: k.orange, 'stroke-width': Math.max(0.2, ep * 0.3), 'stroke-dasharray': `${ep} ${ep * 0.7}` }),
+      el('svg:g', { transform: `translate(${qr.x + o} ${qr.y + o}) scale(${mod})` }, el('svg:path', { d: trace, fill: k.encre })));
     if (L) {
-      const p = L + 1, x = o + l0 - 0.5;
-      enfants.push(el('svg:rect', { x, y: x, width: p, height: p, rx: 1.4, fill: '#fff', stroke: k.bleu, 'stroke-width': 0.35 }),
-        el('svg:svg', { x: x + p * 0.12, y: x + p * 0.12, width: p * 0.76, height: p * 0.76, viewBox: '0 0 24 24' }, ...LOGOS_ETIQUETTE[reglage.logo](k)));
+      const p = (L + 1) * mod, x = qr.x + o + (l0 - 0.5) * mod, y = qr.y + o + (l0 - 0.5) * mod;
+      enfants.push(el('svg:rect', { x, y, width: p, height: p, rx: p * 0.12, fill: '#fff', stroke: k.bleu, 'stroke-width': mod * 0.35 }),
+        el('svg:svg', { x: x + p * 0.12, y: y + p * 0.12, width: p * 0.76, height: p * 0.76, viewBox: '0 0 24 24' }, ...LOGOS_ETIQUETTE[reglage.logo](k)));
     }
-    // Texte réduit pour tenir dans le cartouche (≈ 0,55 module par caractère en gras).
-    const police = (texte, base, largeur) => Math.min(base, largeur / Math.max(1, texte.length * 0.55));
-    const fs = B * 0.55;
-    if (haut) {
-      const larg = W * 0.76;
-      enfants.push(el('svg:rect', { x: (W - larg) / 2, y: a * 0.55, width: larg, height: B * 0.95, rx: 2, fill: '#fff' }),
-        el('svg:text', { x: W / 2, y: B * 0.72, 'text-anchor': 'middle', 'font-family': 'system-ui, sans-serif', 'font-weight': 800, 'font-size': police(haut, fs, larg - 2), fill: k.fonce, texte: haut }));
+
+    // Textes
+    const ecrire = (zone, texte, gras, plafond = 99) => {
+      if (!zone || !texte) return 0;
+      const max = Math.min(plafond, mode === 'carre' ? zone.h * 0.72 : 99, gras ? Math.min(6, petit * 0.13) : Math.min(4.5, petit * 0.1));
+      const { lignes, police } = ajusterTexte(texte, zone.l, zone.h, max, zone.lignes, gras);
+      const total = lignes.length * police * 1.15;
+      const y0 = zone.y + (zone.h - total) / 2 + police * 0.88;
+      enfants.push(el('svg:text', {
+        x: zone.centre ? zone.x + zone.l / 2 : zone.x, y: y0, 'text-anchor': zone.centre ? 'middle' : 'start',
+        'font-family': 'system-ui, sans-serif', 'font-size': police, fill: gras ? k.fonce : k.rhone,
+        ...(gras ? { 'font-weight': 800 } : { 'font-style': 'italic' }),
+      }, ...lignes.map((t, i) => el('svg:tspan', { x: zone.centre ? zone.x + zone.l / 2 : zone.x, dy: i ? police * 1.15 : 0, texte: t }))));
+      return police;
+    };
+    const policeNom = ecrire(zoneNom, nom, true);
+    ecrire(zoneSous, sous, false, policeNom ? policeNom * 0.85 : 99); // le primaire reste plus discret que le nom
+
+    // Tracé ECG prolongé par Avignon : la ville seulement s'il y a la place.
+    if (zoneTrace) {
+      // Avec la ville si elle tient avec une hauteur lisible (≥ 3,5 mm), sinon le complexe QRS seul.
+      const eVille = Math.min(zoneTrace.h / 60, (zoneTrace.l * 0.94) / (TRACE_QRS.l * 0.8 + TRACE_AVIGNON.l));
+      const avecVille = eVille * 60 >= 3.5;
+      const e = avecVille ? eVille : zoneTrace.h / 60; // échelle du tracé (hauteur de référence 60)
+      const lq = TRACE_QRS.l * e * 0.8, la = TRACE_AVIGNON.l * e;
+      const yBase = zoneTrace.y + zoneTrace.h - 60 * e; // tracé calé en bas de sa zone
+      const ligne = { fill: 'none', stroke: k.rhone, 'stroke-width': Math.max(0.25, ep * 0.45), 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
+      const x0 = zoneTrace.x, x1 = zoneTrace.x + zoneTrace.l, yl = yBase + 38 * e;
+      const xq = avecVille ? x0 + zoneTrace.l * 0.03 : x0 + (zoneTrace.l - lq) / 2;
+      const xv = x1 - la;
+      enfants.push(el('svg:path', { ...ligne, d: `M${x0} ${yl} H${xq}` }),
+        el('svg:path', { ...ligne, 'stroke-width': ligne['stroke-width'] / e, transform: `translate(${xq} ${yBase}) scale(${e * 0.8} ${e})`, d: TRACE_QRS.d }),
+        el('svg:path', { ...ligne, d: `M${xq + lq} ${yl} H${avecVille ? xv : x1}` }));
+      if (avecVille) {
+        enfants.push(el('svg:path', { ...ligne, 'stroke-width': ligne['stroke-width'] / e, transform: `translate(${xv} ${yBase}) scale(${e})`, d: TRACE_AVIGNON.d }),
+          el('svg:path', { ...ligne, 'stroke-width': ligne['stroke-width'] * 0.7 / e, transform: `translate(${xv} ${yBase}) scale(${e})`, d: TRACE_AVIGNON.details }));
+      }
     }
-    if (bas) {
-      const larg = W * 0.7;
-      enfants.push(el('svg:rect', { x: (W - larg) / 2, y: W - B * 0.95 - a * 0.55, width: larg, height: B * 0.95, rx: 2, fill: '#fff' }),
-        el('svg:text', { x: W / 2, y: W - B * 0.33, 'text-anchor': 'middle', 'font-family': 'system-ui, sans-serif', 'font-style': 'italic', 'font-size': police(bas, fs * 0.85, larg - 2), fill: k.rhone, texte: bas }));
-    }
-    return el('svg:svg', { classe: 'inv-etiquette-qr', viewBox: `0 0 ${W} ${W}`, role: 'img', 'aria-label': `Étiquette QR : ${haut}` }, ...enfants);
+    return el('svg:svg', {
+      classe: 'inv-etiquette-qr', viewBox: `0 0 ${W} ${H}`, width: `${W}mm`, height: `${H}mm`, role: 'img',
+      'aria-label': `Étiquette QR ${W} × ${H} mm : ${nom}`, 'data-module': mod.toFixed(2),
+    }, ...enfants);
+  }
+
+  // ---------- Aperçu en taille réelle ----------
+  // Un « mm » CSS n'est juste que sur un écran à 96 ppp : on étalonne une fois avec une carte bancaire (85,6 mm).
+  const CLE_ECHELLE = 'avismur-echelle-mm';
+  function apercuTailleReelle(c) {
+    const r = reglageEtiquette(c);
+    let echelle = Number(lireJson(CLE_ECHELLE, 1)) || 1;
+    const svg = etiquetteSvg(c, r);
+    const carte = el('div', { classe: 'inv-carte-etalon', 'aria-hidden': 'true' }, el('span', { texte: 'carte bancaire' }));
+    const appliquer = () => {
+      svg.setAttribute('width', `${r.largeur * echelle}mm`);
+      svg.setAttribute('height', `${r.hauteur * echelle}mm`);
+      carte.style.width = `${85.6 * echelle}mm`;
+      carte.style.height = `${53.98 * echelle}mm`;
+    };
+    const curseur = el('input', { type: 'range', min: 0.6, max: 1.8, step: 0.005, valeur: echelle, 'aria-label': 'Étalonnage de l\'écran',
+      surinput: (e) => { echelle = Number(e.target.value); ecrireJson(CLE_ECHELLE, echelle); appliquer(); } });
+    const module = Number(svg.getAttribute('data-module'));
+    const fermer = () => fond.remove();
+    const fond = el('div', { classe: 'inv-apercu-reel', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Aperçu taille réelle', surclick: (e) => { if (e.target === fond) fermer(); } },
+      el('div', { classe: 'inv-apercu-reel-boite' },
+        el('h2', { texte: `Taille réelle : ${r.largeur} × ${r.hauteur} mm` }),
+        el('div', { classe: 'inv-apercu-reel-etiquette' }, svg),
+        module < 0.33 ? el('p', { classe: 'message erreur', texte: `QR code très dense (module de ${module.toFixed(2)} mm) : lecture difficile. Agrandissez l'étiquette ou retirez le logo.` }) : null,
+        el('details', {}, el('summary', { texte: 'Étalonner l\'écran (une fois par appareil)' }),
+          el('p', { classe: 'aide-question', texte: 'Posez une carte bancaire sur l\'écran et réglez le curseur jusqu\'à ce que le rectangle ait exactement sa taille.' }),
+          curseur, carte),
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Fermer', surclick: fermer })));
+    appliquer();
+    document.body.append(fond);
   }
 
   async function ecrireNfc(url, sortie) {
@@ -3573,7 +3712,7 @@ const Inventaires = (() => {
   function imprimerEtiquettes(liste) {
     lancerImpression(liste.map((c) => {
       const r = reglageEtiquette(c);
-      return el('div', { classe: 'imp-etiquette', style: `width:${r.taille}mm;height:${r.taille}mm` }, etiquetteSvg(c, r));
+      return el('div', { classe: 'imp-etiquette', style: `width:${r.largeur}mm;height:${r.hauteur}mm` }, etiquetteSvg(c, r));
     }), 'imp-etiquettes');
   }
 

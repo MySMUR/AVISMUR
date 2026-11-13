@@ -909,7 +909,7 @@ body.fenetre-ouverte { overflow: hidden; }
 .reponse.manquant dd { color: var(--erreur); }
 .champ-photo { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin: 0.6rem 0; }
 .champ-photo .bouton-photo { min-height: 2.8rem; cursor: pointer; }
-.photo-apercu { display: block; max-width: 100%; max-height: 14rem; border-radius: 8px; border: 1px solid var(--trait); }
+.photo-apercu { display: block; max-width: 100%; max-height: 14rem; max-width: 100%; border-radius: 8px; border: 1px solid var(--trait); }
 
 /* Vérification extérieure */
 .faces { margin: 0.6rem 0; }
@@ -1299,10 +1299,18 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .inv-ajout-articles .cfg-bouton { align-self: flex-start; }
 .inv-acces { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; margin-bottom: 1.2rem; }
 .inv-etiquette-apercu { width: 11rem; flex-shrink: 0; }
-.inv-etiquette-qr { display: block; width: 100%; height: auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(19, 41, 75, .15); }
+.inv-etiquette-qr { display: block; width: 100%; height: auto; max-height: 14rem; max-width: 100%; border-radius: 6px; box-shadow: 0 2px 8px rgba(19, 41, 75, .15); }
 .inv-etiquette-reglages { display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
 .inv-etiquette-reglages label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; color: var(--gris); }
 .inv-etiquette-reglages input { width: 6rem; }
+.inv-etiquette-formats { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; width: 100%; font-size: .85rem; color: var(--gris); }
+.inv-apercu-reel { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(19, 41, 75, .55); }
+.inv-apercu-reel-boite { display: flex; flex-direction: column; gap: .8rem; max-width: 100%; max-height: 100%; overflow: auto; padding: 1rem; background: #fff; border-radius: 12px; }
+.inv-apercu-reel-boite h2 { margin: 0; font-size: 1.05rem; }
+.inv-apercu-reel-etiquette { display: flex; justify-content: center; padding: 1rem; background: var(--ciel); border-radius: 8px; overflow: auto; }
+.inv-apercu-reel-etiquette .inv-etiquette-qr { width: auto; max-height: none; flex: none; }
+.inv-carte-etalon { display: flex; align-items: flex-end; justify-content: flex-end; margin-top: .6rem; padding: .3rem; border: 2px dashed var(--bleu); border-radius: 3.2mm; font-size: .75rem; color: var(--gris); }
+.inv-apercu-reel input[type=range] { width: 100%; }
 .inv-qr { width: 9.5rem; height: 9.5rem; flex-shrink: 0; border: 1px solid var(--trait); border-radius: 8px; }
 .inv-acces-actions { flex: 1 1 14rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
 .inv-url { margin: 0; font-size: 0.85rem; color: var(--gris); overflow-wrap: anywhere; }
@@ -1327,7 +1335,7 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
   body.impression-inventaire #inv-impression { display: block; color: #000; font-size: 11pt; }
   .imp-etiquettes { display: flex !important; flex-wrap: wrap; align-items: flex-start; gap: 4mm; }
   .imp-etiquette { flex: none; break-inside: avoid; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  .imp-etiquette .inv-etiquette-qr { width: 100%; height: 100%; box-shadow: none; border-radius: 0; }
+  .imp-etiquette .inv-etiquette-qr { width: 100%; height: 100%; max-height: none; box-shadow: none; border-radius: 0; }
   .imp-entete { display: flex; align-items: center; gap: 6mm; margin-bottom: 5mm; padding-bottom: 3mm; border-bottom: 2px solid #000; }
   .imp-entete .inv-qr { width: 26mm; height: 26mm; border: 0; }
   .imp-entete p { margin: 0 0 1.5mm; }
