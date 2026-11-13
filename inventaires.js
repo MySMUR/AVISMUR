@@ -1203,6 +1203,8 @@ const Inventaires = (() => {
         el('ul', { classe: 'inv-liste' }, ...modeles.map((c) => el('li', {}, carte(c)))));
     }
 
+    if (gestion) noeuds.push(blocReinitialisationDev());
+
     if (edition) {
       const champ = idChamp();
       noeuds.push(formulaireAjout(null),
@@ -1223,6 +1225,48 @@ const Inventaires = (() => {
           tous.length ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer toutes les étiquettes QR', surclick: () => imprimerEtiquettes(tous) }) : null));
     }
     return noeuds;
+  }
+
+  // ----- Développement : réinitialiser les inventaires du jour pour rejouer des tests -----
+  function blocReinitialisationDev() {
+    const enAttente = confirmer === 'reinit-jour';
+    return el('div', { classe: 'cfg-section inv-dev' },
+      el('h2', { texte: 'Développement' }),
+      el('p', { classe: 'aide-question', texte: 'Efface les vérifications d\'aujourd\'hui (tous agents, tous appareils) et les contenants mobiles pointés, pour rejouer les tests. Les péremptions saisies et les contenants désaffectés ne sont pas annulés. Les lignes retirées sont rangées dans l\'onglet InventairesVerifsAnnulees.' }),
+      el('button', {
+        type: 'button', classe: `cfg-bouton${enAttente ? ' danger' : ''}`,
+        texte: enAttente ? 'Confirmer la réinitialisation' : 'Réinitialiser les inventaires du jour',
+        surclick: (e) => {
+          if (!enAttente) { confirmer = 'reinit-jour'; rendre({ garderPosition: true }); return; }
+          e.target.disabled = true;
+          e.target.textContent = 'Réinitialisation…';
+          reinitialiserJour();
+        },
+      }));
+  }
+  async function reinitialiserJour() {
+    confirmer = '';
+    // Vérifications pas encore envoyées : on les retire de la file, sinon elles repartiraient au serveur.
+    if (App.retirerDeFile) {
+      App.fileAttente().filter((x) => x.action === 'verifierInventaire' && jour(new Date(x.date)) === jour())
+        .forEach((x) => App.retirerDeFile(x.id));
+    }
+    let rep;
+    try { rep = await App.appeler('reinitialiserInventairesJour'); } catch (err) { rep = { ok: false, erreur: 'pas de réseau' }; }
+    if (!rep || !rep.ok) {
+      avis = `Réinitialisation impossible : ${(rep && rep.erreur) || 'erreur inconnue'}${rep && rep.erreur === 'Action inconnue' ? ' (déployez la nouvelle version du serveur)' : ''}.`;
+      rendre({ garderPosition: true });
+      return;
+    }
+    Object.keys(etat.verifs).forEach((id) => { if (jour(new Date(etat.verifs[id].date)) === jour()) delete etat.verifs[id]; });
+    brouillons = { jour: jour(), liste: {}, pointes: {} };
+    aIdentifier = '';
+    identification = '';
+    sauverEtat();
+    sauverBrouillons();
+    avis = `Inventaires du jour réinitialisés (${pluriel(rep.retirees || 0, 'vérification retirée', 'vérifications retirées')} du serveur).`;
+    rendre({ garderPosition: true });
+    synchroniser();
   }
 
   // ----- Un contenant -----

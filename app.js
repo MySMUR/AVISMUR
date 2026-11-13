@@ -804,6 +804,7 @@ Inventaires.initialiser({
   role: () => roleCourant,
   agent: () => (session.lire() || appareil.lire() || {}).identifiant || '',
   fileAttente: () => fileAttente.lire(),
+  retirerDeFile,
 });
 
 // Liens « #inv=<id> » : QR code, puce NFC, et navigation d'un inventaire à l'autre
