@@ -352,6 +352,9 @@ const Inventaires = (() => {
   }
   /** Contenant primaire (véhicule, réserve) qui renferme ce contenant, lui compris. */
   const primaireDe = (id) => chemin(id).find((x) => x.categorie === 'primaire' && !x.modele) || null;
+  // Consultation seule : demandée (recherche par le nom), ou aucun contenant primaire connu
+  // (ex. contenant mobile désaffecté scanné sans avoir dit où l'on est) : rien à cocher ni à dater.
+  const enConsultation = (c) => contexte.consultation || Boolean(c && !primaireDe(c.id) && !contenant(contexte.primaire));
   /**
    * Niveau du dessus, pour la flèche retour et l'arborescence : en check-list, un emplacement
    * (« ici, un exemplaire de tel inventaire type ») s'efface derrière le contenant qui l'occupe.
@@ -792,6 +795,7 @@ const Inventaires = (() => {
   const dateCourante = (c, a, b) => (b.dates[a.id] !== undefined ? b.dates[a.id] : datePeremption(c.id, a.id));
 
   function valider(c) {
+    if (enConsultation(c)) { messageVue('Consultation seule : indiquez d\'abord le contenant primaire où vous êtes.', 'erreur'); return; }
     const b = brouillon(c);
     if (aCocher(c).some((a) => b.invalides[a.id])) {
       messageVue('Une date de péremption n\'est pas reconnue : corrigez-la (ex. 03/2027 ou 15/03/2027).', 'erreur');
@@ -1089,10 +1093,18 @@ const Inventaires = (() => {
   function bandeauPrimaire(c) {
     if (gestion) return null;
     const structurel = c ? primaireDe(c.id) : null;
-    if (contexte.consultation) {
+    if (enConsultation(c)) {
+      // Sans contenant primaire connu : l'agent dit dans lequel il se trouve pour pouvoir vérifier.
+      const choix = structurel ? null : (() => {
+        const primaires = Object.values(structure.contenants).filter((x) => !x.supprime && x.categorie === 'primaire' && !dansUnModele(x.id))
+          .sort((x, y) => x.nom.localeCompare(y.nom, 'fr'));
+        if (!primaires.length) return null;
+        return el('select', { classe: 'inv-bande-action', 'aria-label': 'Je suis dans…', surchange: (e) => { if (e.target.value) { fixerContexte(e.target.value, false); rendre({ garderPosition: true }); } } },
+          el('option', { value: '', texte: 'Je suis dans…' }), ...primaires.map((x) => el('option', { value: x.id, texte: x.nom })));
+      })();
       return el('div', { classe: 'inv-bande-primaire consultation', role: 'status' }, picto('consultation'),
         el('span', { classe: 'inv-bande-texte' }, el('strong', { texte: 'Consultation seule' }), structurel ? ` · ${structurel.nom}` : ''),
-        structurel ? el('button', { type: 'button', classe: 'inv-bande-action', texte: `Je suis dans ${structurel.nom}`, surclick: () => { fixerContexte(structurel.id, false); rendre({ garderPosition: true }); } }) : null);
+        structurel ? el('button', { type: 'button', classe: 'inv-bande-action', texte: `Je suis dans ${structurel.nom}`, surclick: () => { fixerContexte(structurel.id, false); rendre({ garderPosition: true }); } }) : choix);
     }
     const p = structurel || contenant(contexte.primaire);
     return el('div', { classe: `inv-bande-primaire${p ? '' : ' aucun'}`, role: 'status' }, picto('lieu'),
@@ -1123,7 +1135,7 @@ const Inventaires = (() => {
     const etages = [...dessus.map((p) => ({ nom: p.nom, primaire: p.categorie === 'primaire', aller: () => aller(p.id) })),
       { nom: gestion ? 'Gestion des inventaires' : 'Tous les inventaires', aller: () => aller('') }];
     const parent = contenant(c.parent);
-    const changeable = !gestion && !contexte.consultation && c.categorie === 'mobile' && !dansUnModele(c.id) && parent && dessus.length;
+    const changeable = !gestion && !enConsultation(c) && c.categorie === 'mobile' && !dansUnModele(c.id) && parent && dessus.length;
     return barreHaut({ c, titre, h1, etages, retour: retour || (() => aller(dessus.length ? dessus[0].id : '')),
       libelleRetour: libelleRetour || (dessus.length ? dessus[0].nom : (gestion ? 'Gestion des inventaires' : 'Tous les inventaires')),
       changer: changeable ? () => changerContenant(c) : null });
@@ -3053,7 +3065,7 @@ const Inventaires = (() => {
         el('input', { id: 'inv-nom', maxlength: '80', valeur: c.nom, surchange: (e) => { const t = e.target.value.trim(); if (t) { c.nom = t; marquer(c.id); } else e.target.value = c.nom; } }))
       : null;
     // Ouvert depuis une recherche par le nom, sans dire où l'on est : consultation seule.
-    const consultation = !edition && contexte.consultation;
+    const consultation = !edition && enConsultation(c);
     // Check-list d'un contenant scellable pas encore vérifié aujourd'hui : on demande d'abord s'il est scellé.
     const questionScelle = !edition && !consultation && !dansUnModele(c.id) && c.scellable && !b.complet && !reponsesScelle.has(c.id);
     const caseScellable = idChamp();
@@ -3131,7 +3143,7 @@ const Inventaires = (() => {
       el('div', { classe: 'inv-liste-entete' }, el('h2', {}, 'Contenu ', el('span', { classe: 'inv-compte', texte: String(articles.length) }))),
       el('p', { classe: 'aide-question', texte: p
         ? `Consultation seule. Pour vérifier : touchez « Je suis dans ${p.nom} » en haut, ou scannez l'étiquette sur place.`
-        : 'Consultation seule. Pour vérifier : scannez l\'étiquette sur place.' }),
+        : 'Consultation seule. Pour vérifier : choisissez en haut le contenant primaire où vous êtes.' }),
       el('ul', { classe: 'inv-liste-modele' }, ...c.articles.map((a) => {
         if (a.separateur) return el('li', { classe: 'inv-separation', texte: a.nom });
         const date = suiviPeremption(a) ? datePeremption(c.id, a.id) : '';
@@ -3382,12 +3394,12 @@ const Inventaires = (() => {
       const cible = m && contenant(m[1]);
       // Check-list : ouvrir un contenant mobile depuis son contenant demande d'abord lequel est réellement là.
       // … sauf s'il a déjà été pointé aujourd'hui (l'icône « changer » permet de corriger).
-      if (cible && !gestion && !contexte.consultation && cible.emplacement && cible.parent === idCourant() && !occupantDuJour(cible)) {
+      if (cible && !gestion && !enConsultation(cible) && cible.emplacement && cible.parent === idCourant() && !occupantDuJour(cible)) {
         identification = `emp:${cible.id}`;
         rendre();
         return;
       }
-      if (cible && !gestion && !contexte.consultation && cible.categorie === 'mobile' && cible.parent && cible.parent === idCourant() && !mobilePointe(cible)) {
+      if (cible && !gestion && !enConsultation(cible) && cible.categorie === 'mobile' && cible.parent && cible.parent === idCourant() && !mobilePointe(cible)) {
         identification = cible.id;
         rendre();
         return;
