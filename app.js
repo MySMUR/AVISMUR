@@ -105,8 +105,11 @@ function reprendreSession() {
       if (rep.ok) {
         session.ecrire({
           jeton: rep.jeton, identifiant: rep.identifiant, role: rep.role, nom: rep.nom, prenom: rep.prenom, fonction: rep.fonction, debut: Date.now(),
+          finAcces: rep.finAcces || 0,
         });
-        appareil.ecrire({ ...enregistre, identifiant: rep.identifiant, role: rep.role, nom: rep.nom, prenom: rep.prenom, fonction: rep.fonction });
+        appareil.ecrire({
+          ...enregistre, identifiant: rep.identifiant, role: rep.role, nom: rep.nom, prenom: rep.prenom, fonction: rep.fonction, finAcces: rep.finAcces || 0,
+        });
         return 'ok';
       }
       if (rep.oublierAppareil) {
@@ -145,6 +148,7 @@ function memoriserAppareil(rep, resterConnecte) {
   if (resterConnecte && rep.jetonAppareil) {
     appareil.ecrire({
       jetonAppareil: rep.jetonAppareil, identifiant: rep.identifiant, role: rep.role, nom: rep.nom, prenom: rep.prenom, fonction: rep.fonction,
+      finAcces: rep.finAcces || 0,
     });
     return true;
   }
@@ -192,6 +196,7 @@ function afficherApplication(infos) {
   if (jeton) {
     session.ecrire({
       jeton, identifiant: infos.identifiant, role: infos.role, nom: infos.nom, prenom: infos.prenom, fonction: infos.fonction, debut,
+      finAcces: infos.finAcces || (jeton === precedente.jeton && precedente.finAcces) || 0,
     });
   }
   afficher('ecran-checklist');
@@ -419,8 +424,8 @@ async function soumettre(idEcran, action, charge) {
 // Liens de navigation entre les écrans de connexion.
 document.querySelectorAll('[data-aller]').forEach((lien) => {
   lien.addEventListener('click', () => {
-    if (lien.dataset.aller === 'ecran-sms' && /^\d{6}$/.test($('cri').value || parcours.cri)) {
-      $('cri-sms').value = parcours.cri || $('cri').value;
+    if (lien.dataset.aller === 'ecran-sms' && ($('cri').value.trim() || parcours.cri)) {
+      $('cri-sms').value = parcours.cri || $('cri').value.trim();
     }
     afficher(lien.dataset.aller);
   });
@@ -867,7 +872,18 @@ if ('serviceWorker' in navigator) {
 
 // Au chargement : reprendre la session si elle est encore valide, sinon le jeton d'appareil
 // (« rester connecté »). Hors ligne, on reprend l'utilisateur connu ; la saisie reste possible.
+/** Étudiant IADE : passé le dernier jour de stage, l'appli se ferme, même hors ligne. */
+function stageTermine() {
+  const actuelle = session.lire() || appareil.lire();
+  if (!actuelle || !actuelle.finAcces || Date.now() <= actuelle.finAcces) return false;
+  session.effacer();
+  appareil.effacer();
+  afficher('ecran-connexion', 'Votre stage est terminé : l\'accès à l\'application est fermé.');
+  return true;
+}
+
 (async () => {
+  if (stageTermine()) return;
   const actuelle = session.lire() || appareil.lire();
   if (!actuelle) return afficher('ecran-connexion');
   try {
@@ -889,6 +905,7 @@ if ('serviceWorker' in navigator) {
 // on la renouvelle tout de suite avec le jeton d'appareil, avant la première action de l'agent.
 const RENOUVELER_APRES_MS = 5 * 3600 * 1000;
 document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && stageTermine()) return;
   if (document.visibilityState !== 'visible' || !navigator.onLine || !appareil.lire()) return;
   const actuelle = session.lire();
   if (actuelle && actuelle.debut && Date.now() - actuelle.debut < RENOUVELER_APRES_MS) return;

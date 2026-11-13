@@ -55,8 +55,12 @@ const Utilisateurs = (() => {
     return el('span', { classe: `usr-pastille ${classe}`, texte });
   }
 
+  const dateFr = (iso) => (iso ? iso.split('-').reverse().join('/') : '?');
+  const PERIODES = { 'a-venir': 'Stage à venir', terminee: 'Stage terminé', inconnue: 'Dates manquantes' };
+
   function etatCompte(a) {
     if (!a.role) return pastille('Non autorisé', 'usr-gris');
+    if (a.etudiant && a.periode !== 'en-cours') return pastille(PERIODES[a.periode] || a.periode, a.periode === 'terminee' ? 'usr-gris' : 'usr-orange');
     return a.compteActif ? pastille('Compte actif', 'usr-vert') : pastille('Jamais connecté', 'usr-orange');
   }
 
@@ -67,7 +71,11 @@ const Utilisateurs = (() => {
       surclick: () => { ouvert = deplie ? '' : a.cri; aConfirmer = ''; edition = null; rendre(); },
     },
     el('span', { classe: 'usr-nom', texte: a.nom }),
-    el('span', { classe: 'usr-role', texte: a.admin ? `${a.fonction || ROLES[a.role]} · admin` : (a.fonction || ROLES[a.role]) }),
+    el('span', {
+      classe: 'usr-role',
+      texte: a.etudiant ? `Étudiant IADE · stage du ${dateFr(a.debut)} au ${dateFr(a.fin)}`
+        : (a.admin ? `${a.fonction || ROLES[a.role]} · admin` : (a.fonction || ROLES[a.role])),
+    }),
     etatCompte(a));
     const corps = deplie ? (edition && edition.ancienCri === a.cri ? rendreFormulaire() : rendreFiche(a)) : null;
     return el('li', { classe: `usr-agent${deplie ? ' ouvert' : ''}` }, entete, corps);
@@ -79,7 +87,8 @@ const Utilisateurs = (() => {
 
   function rendreFiche(a) {
     const infos = el('dl', { classe: 'usr-infos' },
-      ligneInfo('Code CRI', a.cri),
+      a.etudiant ? ligneInfo('Identifiant de connexion', a.identifiant) : ligneInfo('Code CRI', a.cri),
+      a.etudiant ? ligneInfo('Stage', `du ${dateFr(a.debut)} au ${dateFr(a.fin)}`) : null,
       ligneInfo('Fonction (DB_SMUR)', `${a.fonction || '—'} · onglet ${a.onglet}`),
       ligneInfo('Rôle dans l\'appli', ROLES[a.role] || a.role),
       ligneInfo('Mot de passe', a.compteActif ? 'Créé' : 'Pas encore créé'),
@@ -89,7 +98,13 @@ const Utilisateurs = (() => {
     const actions = el('div', { classe: 'usr-actions' },
       el('button', {
         type: 'button', classe: 'cfg-bouton', texte: 'Modifier la fiche',
-        surclick: () => { edition = { ancienCri: a.cri, nom: a.nom, cri: a.cri, code: a.code, telephone: a.numero }; aConfirmer = ''; rendre(); },
+        surclick: () => {
+          edition = {
+            ancienCri: a.cri, nom: a.nom, cri: a.etudiant ? '' : a.cri, code: a.code, telephone: a.numero,
+            nomSeul: a.nomSeul || '', prenom: a.prenom || '', debut: a.debut || '', fin: a.fin || '', identifiant: a.identifiant || '',
+          };
+          aConfirmer = ''; rendre();
+        },
       }));
     if (a.compteActif) {
       actions.append(boutonAction(a, 'reinitialiserMdp', 'Réinitialiser le mot de passe',
@@ -99,7 +114,7 @@ const Utilisateurs = (() => {
       actions.append(boutonAction(a, 'deconnecterAppareils', 'Déconnecter tous ses appareils',
         'Appuyez de nouveau pour déconnecter cet agent de tous ses appareils.'));
     }
-    if (a.role) {
+    if (a.role && !a.etudiant) {
       actions.append(a.admin
         ? boutonAction(a, 'retirerAdmin', 'Retirer les droits d\'administrateur', 'Appuyez de nouveau pour retirer les droits d\'administrateur.')
         : boutonAction(a, 'nommerAdmin', 'Nommer administrateur', 'Appuyez de nouveau : cet agent aura accès à toute l\'administration.'));
@@ -107,6 +122,8 @@ const Utilisateurs = (() => {
 
     const notes = [];
     if (!a.role) notes.push('Fonction non reconnue : cet agent ne peut pas se connecter. « Modifier la fiche » pour lui attribuer une fonction.');
+    if (a.etudiant && a.periode === 'a-venir') notes.push(`Connexion possible à partir du ${dateFr(a.debut)} : identifiant « ${a.identifiant} », puis « Recevoir un code par SMS ».`);
+    if (a.etudiant && a.periode === 'terminee') notes.push('Stage terminé : l\'étudiant ne peut plus se connecter. Pour prolonger, modifiez la date de fin.');
     if (!a.telephone) notes.push('Sans numéro de portable valide, l\'agent ne peut ni créer ni réinitialiser son mot de passe.');
     return el('div', { classe: 'usr-fiche' }, infos,
       ...notes.map((t) => el('p', { classe: 'note-parc', texte: t })), actions);
@@ -114,16 +131,31 @@ const Utilisateurs = (() => {
 
   // ---------- Ajout / modification ----------
 
+  /** Aperçu de l'identifiant généré (le serveur ajoute « _1 », « _2 »… en cas d'homonyme). */
+  const morceau = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[\s'’.]+/g, '').replace(/[^a-z-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '');
+
   function rendreFormulaire() {
     const e = edition;
     const ajout = !e.ancienCri;
-    const champTexte = (id, libelle, cle, attrs = {}) => el('div', { classe: 'champ cfg-champ' },
+    const etudiant = e.code === 'ETUDIANT IADE';
+    const champTexte = (id, libelle, cle, attrs = {}, surSaisie) => el('div', { classe: 'champ cfg-champ' },
       el('label', { for: id, texte: libelle }),
-      el('input', { id, valeur: e[cle] || '', surinput: (ev) => { e[cle] = ev.target.value; }, ...attrs }));
-    const choix = el('select', { id: 'usr-f-fonction', surchange: (ev) => { e.code = ev.target.value; majAvis(); } },
-      el('option', { value: '', texte: 'Choisir…', selected: !e.code }),
-      ...fonctions.map((f) => el('option', { value: f.code, texte: f.libelle, selected: f.code === e.code })));
+      el('input', { id, valeur: e[cle] || '', surinput: (ev) => { e[cle] = ev.target.value; if (surSaisie) surSaisie(); }, ...attrs }));
+    // Un étudiant (sans CRI) et un agent (avec CRI) sont des comptes distincts : pas de passage de l'un à l'autre.
+    const proposees = ajout ? fonctions : fonctions.filter((f) => (f.code === 'ETUDIANT IADE') === etudiant);
+    const choix = el('select', {
+      id: 'usr-f-fonction', disabled: !ajout && etudiant,
+      surchange: (ev) => {
+        const avant = e.code === 'ETUDIANT IADE';
+        e.code = ev.target.value;
+        if (avant !== (e.code === 'ETUDIANT IADE')) rendre(); else majAvis();
+      },
+    },
+    el('option', { value: '', texte: 'Choisir…', selected: !e.code }),
+    ...proposees.map((f) => el('option', { value: f.code, texte: f.libelle, selected: f.code === e.code })));
     const avis = el('p', { classe: 'note-parc', hidden: true });
+    const apercu = el('p', { classe: 'aide-question usr-apercu' });
     const agentActuel = agents.find((a) => a.cri === e.ancienCri);
     function majAvis() {
       const f = fonctions.find((x) => x.code === e.code);
@@ -132,36 +164,64 @@ const Utilisateurs = (() => {
       if (f && ajout) texte.push(`Ajout dans l'onglet ${f.onglet} de DB_SMUR.`);
       avis.textContent = texte.join(' ');
       avis.hidden = !texte.length;
+      if (etudiant) {
+        apercu.textContent = ajout
+          ? (morceau(e.nomSeul) && morceau(e.prenom) ? `Identifiant : ${morceau(e.nomSeul)}-${morceau(e.prenom)} (« _1 » ajouté si homonyme)` : 'Identifiant : nom-prenom, généré à l\'enregistrement')
+          : `Identifiant : ${e.identifiant} (ne change pas)`;
+      }
     }
+
+    const champs = etudiant ? [
+      champTexte('usr-f-nomseul', 'Nom', 'nomSeul', { autocomplete: 'off', maxlength: 40 }, majAvis),
+      champTexte('usr-f-prenom', 'Prénom', 'prenom', { autocomplete: 'off', maxlength: 40 }, majAvis),
+      apercu,
+      champTexte('usr-f-tel', 'Téléphone portable (obligatoire : code de première connexion par SMS)', 'telephone', { type: 'tel', inputmode: 'tel', autocomplete: 'off', placeholder: '06 12 34 56 78' }),
+      el('div', { classe: 'usr-dates' },
+        champTexte('usr-f-debut', 'Début de stage', 'debut', { type: 'date' }),
+        champTexte('usr-f-fin', 'Fin de stage', 'fin', { type: 'date' })),
+      el('p', { classe: 'aide-question', texte: 'En dehors de ces dates, l\'étudiant ne peut pas se connecter (contrôlé aussi hors ligne). Droits d\'un IADE, sans les stupéfiants.' }),
+    ] : [
+      champTexte('usr-f-nom', 'Nom et prénom', 'nom', { autocomplete: 'off', placeholder: 'NOM Prénom', maxlength: 80 }),
+      champTexte('usr-f-cri', 'Code CRI (6 chiffres)', 'cri', { inputmode: 'numeric', maxlength: 6, autocomplete: 'off' }),
+      champTexte('usr-f-tel', 'Téléphone portable (pour le SMS de connexion)', 'telephone', { type: 'tel', inputmode: 'tel', autocomplete: 'off', placeholder: '06 12 34 56 78' }),
+      el('p', { classe: 'aide-question', texte: 'Changer le code CRI ou la fonction déconnecte l\'agent de ses sessions en cours.' }),
+    ];
     majAvis();
     return el('form', {
       classe: 'usr-fiche usr-formulaire', novalidate: true,
       sursubmit: (ev) => { ev.preventDefault(); enregistrerFiche(); },
     },
-    el('h2', { texte: ajout ? 'Nouvel agent' : 'Modifier la fiche' }),
-    champTexte('usr-f-nom', 'Nom et prénom', 'nom', { autocomplete: 'off', placeholder: 'NOM Prénom', maxlength: 80 }),
+    el('h2', { texte: ajout ? 'Nouveau compte' : 'Modifier la fiche' }),
     el('div', { classe: 'champ cfg-champ' }, el('label', { for: 'usr-f-fonction', texte: 'Fonction' }), choix),
-    champTexte('usr-f-cri', 'Code CRI (6 chiffres)', 'cri', { inputmode: 'numeric', maxlength: 6, autocomplete: 'off' }),
-    champTexte('usr-f-tel', 'Téléphone portable (pour le SMS de connexion)', 'telephone', { type: 'tel', inputmode: 'tel', autocomplete: 'off', placeholder: '06 12 34 56 78' }),
+    ...champs,
     avis,
-    el('p', { classe: 'aide-question', texte: 'Changer le code CRI ou la fonction déconnecte l\'agent de ses sessions en cours.' }),
     el('div', { classe: 'usr-actions' },
-      el('button', { type: 'submit', classe: 'principal usr-enregistrer', texte: ajout ? 'Ajouter l\'agent' : 'Enregistrer' }),
+      el('button', { type: 'submit', classe: 'principal usr-enregistrer', texte: ajout ? 'Créer le compte' : 'Enregistrer' }),
       el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Annuler', surclick: () => { edition = null; message(''); rendre(); } })));
   }
 
   async function enregistrerFiche() {
     const e = edition;
-    if (!e.nom.trim()) { message('Indiquez le nom et le prénom.', 'erreur'); return; }
+    const etudiant = e.code === 'ETUDIANT IADE';
+    const cri = String(e.cri || '').replace(/\s/g, '');
+    let charge;
     if (!e.code) { message('Choisissez une fonction.', 'erreur'); return; }
-    if (!/^\d{6}$/.test(String(e.cri).replace(/\s/g, ''))) { message('Le code CRI comporte 6 chiffres.', 'erreur'); return; }
+    if (etudiant) {
+      if (!morceau(e.nomSeul) || !morceau(e.prenom)) { message('Indiquez le nom et le prénom.', 'erreur'); return; }
+      if (!String(e.telephone || '').trim()) { message('Le numéro de portable est obligatoire (code de première connexion par SMS).', 'erreur'); return; }
+      if (!e.debut || !e.fin) { message('Indiquez les dates de début et de fin de stage.', 'erreur'); return; }
+      if (e.fin < e.debut) { message('La fin du stage est avant son début.', 'erreur'); return; }
+      charge = { ancienCri: e.ancienCri, code: e.code, nomSeul: e.nomSeul, prenom: e.prenom, telephone: e.telephone, debut: e.debut, fin: e.fin };
+    } else {
+      if (!String(e.nom || '').trim()) { message('Indiquez le nom et le prénom.', 'erreur'); return; }
+      if (!/^\d{6}$/.test(cri)) { message('Le code CRI comporte 6 chiffres.', 'erreur'); return; }
+      charge = { ancienCri: e.ancienCri, nom: e.nom, cri, code: e.code, telephone: e.telephone };
+    }
     message('Enregistrement dans DB_SMUR…');
     try {
-      const rep = await appelerServeur('enregistrerAgent', {
-        agent: { ancienCri: e.ancienCri, nom: e.nom, cri: String(e.cri).replace(/\s/g, ''), code: e.code, telephone: e.telephone },
-      });
+      const rep = await appelerServeur('enregistrerAgent', { agent: charge });
       if (!rep.ok) { message(rep.erreur || 'Refusé par le serveur.', 'erreur'); return; }
-      ouvert = String(e.cri).replace(/\s/g, '');
+      ouvert = etudiant ? (rep.identifiant || e.ancienCri) : cri;
       edition = null;
       await charger(rep.message);
     } catch (err) {
@@ -206,7 +266,7 @@ const Utilisateurs = (() => {
     const liste = visibles();
     const actifs = agents.filter((a) => a.compteActif).length;
     const recherche = el('input', {
-      type: 'search', id: 'usr-recherche', valeur: filtre, placeholder: 'Nom, CRI ou fonction', autocomplete: 'off',
+      type: 'search', id: 'usr-recherche', valeur: filtre, placeholder: 'Nom, CRI, identifiant ou fonction', autocomplete: 'off',
       surinput: (e) => { filtre = e.target.value; rendreListe(); },
     });
     const choixRole = el('select', { id: 'usr-filtre', surchange: (e) => { filtreRole = e.target.value; rendreListe(); } },
@@ -217,15 +277,18 @@ const Utilisateurs = (() => {
     zone.innerHTML = '';
     zone.append(
       el('h1', { texte: 'Gestion des utilisateurs' }),
-      el('p', { classe: 'consigne', texte: `${agents.length} agents dans DB_SMUR, dont ${actifs} avec un compte actif.` }),
-      el('p', { classe: 'note-parc', texte: 'Les fiches sont enregistrées dans DB_SMUR (onglets PERSONNEL et Encadrement). Pour retirer un agent, supprimez sa ligne dans le Sheet.' }),
+      el('p', { classe: 'consigne', texte: `${agents.length} comptes dans DB_SMUR (dont ${agents.filter((a) => a.etudiant).length} étudiants), ${actifs} avec un mot de passe créé.` }),
+      el('p', { classe: 'note-parc', texte: 'Les fiches sont enregistrées dans DB_SMUR (onglets PERSONNEL, Encadrement et Etudiants). Pour retirer un agent, supprimez sa ligne dans le Sheet.' }),
       el('div', { classe: 'usr-outils' },
         el('div', { classe: 'champ usr-champ' }, el('label', { for: 'usr-recherche', texte: 'Rechercher' }), recherche),
         el('div', { classe: 'champ usr-champ' }, el('label', { for: 'usr-filtre', texte: 'Afficher' }), choixRole),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Actualiser', surclick: () => charger() }),
         el('button', {
-          type: 'button', classe: 'cfg-bouton usr-ajouter', texte: '+ Ajouter un agent', disabled: !fonctions.length,
-          surclick: () => { edition = { ancienCri: '', nom: '', cri: '', code: '', telephone: '' }; ouvert = ''; aConfirmer = ''; message(''); rendre(); },
+          type: 'button', classe: 'cfg-bouton usr-ajouter', texte: '+ Nouveau compte', disabled: !fonctions.length,
+          surclick: () => {
+            edition = { ancienCri: '', nom: '', cri: '', code: '', telephone: '', nomSeul: '', prenom: '', debut: '', fin: '' };
+            ouvert = ''; aConfirmer = ''; message(''); rendre();
+          },
         })),
       el('p', { classe: `message usr-message ${messageCourant.classe}`.trim(), role: 'status', texte: messageCourant.texte }),
       edition && !edition.ancienCri ? el('div', { classe: 'usr-agent ouvert' }, rendreFormulaire()) : null,

@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=61">
+  <link rel="stylesheet" href="style.css?v=62">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -65,8 +65,8 @@
     <form id="ecran-connexion" class="formulaire" hidden novalidate>
       <h1>Connexion</h1>
       <div class="champ">
-        <label for="cri">Code CRI</label>
-        <input id="cri" class="saisie-chiffres" inputmode="numeric" autocomplete="username" placeholder="6 chiffres" required>
+        <label for="cri">Code CRI ou identifiant</label>
+        <input id="cri" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="6 chiffres, ou nom-prenom pour les étudiants" required>
       </div>
       <div class="champ">
         <label for="mdp">Mot de passe</label>
@@ -90,15 +90,15 @@
     <!-- Première connexion, étape 1 -->
     <form id="ecran-sms" class="formulaire" hidden novalidate>
       <ol class="etapes" aria-label="Première connexion">
-        <li aria-current="step">Code CRI</li>
+        <li aria-current="step">Identifiant</li>
         <li>Code SMS</li>
         <li>Mot de passe</li>
       </ol>
-      <h1>Votre code CRI</h1>
-      <p class="consigne">C'est votre matricule hospitalier à 6 chiffres. Vous recevrez un code par SMS sur le numéro enregistré au service.</p>
+      <h1>Votre code CRI ou identifiant</h1>
+      <p class="consigne">Agents : votre matricule hospitalier à 6 chiffres. Étudiants : l'identifiant communiqué par le service (nom-prenom). Vous recevrez un code par SMS sur le numéro enregistré au service.</p>
       <div class="champ">
-        <label for="cri-sms">Code CRI</label>
-        <input id="cri-sms" class="saisie-chiffres" inputmode="numeric" placeholder="6 chiffres" required>
+        <label for="cri-sms">Code CRI ou identifiant</label>
+        <input id="cri-sms" autocapitalize="none" spellcheck="false" placeholder="6 chiffres, ou nom-prenom" required>
       </div>
       <button type="submit" class="principal">Recevoir le code par SMS</button>
       <p class="message erreur" role="alert"></p>
@@ -110,7 +110,7 @@
     <!-- Première connexion, étape 2 -->
     <form id="ecran-code" class="formulaire" hidden novalidate>
       <ol class="etapes" aria-label="Première connexion">
-        <li class="fait">Code CRI</li>
+        <li class="fait">Identifiant</li>
         <li aria-current="step">Code SMS</li>
         <li>Mot de passe</li>
       </ol>
@@ -131,7 +131,7 @@
     <!-- Première connexion, étape 3 -->
     <form id="ecran-mdp" class="formulaire" hidden novalidate>
       <ol class="etapes" aria-label="Première connexion">
-        <li class="fait">Code CRI</li>
+        <li class="fait">Identifiant</li>
         <li class="fait">Code SMS</li>
         <li aria-current="step">Mot de passe</li>
       </ol>
@@ -281,7 +281,7 @@
   <script src="ambulancier.js?v=25"></script>
   <script src="actions.js?v=11"></script>
   <script src="config-admin.js?v=6"></script>
-  <script src="utilisateurs.js?v=2"></script>
+  <script src="utilisateurs.js?v=3"></script>
   <script src="parc.js?v=7"></script>
   <script src="lib/qrcode.js?v=1"></script>
   <script src="inventaires.js?v=33"></script>
@@ -291,6 +291,6 @@
     <button type="button" data-scan="qr" aria-label="Scanner un QR code" title="QR code"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM5 5v3h3V5zM14 3h7v7h-7zm2 2v3h3V5zM3 14h7v7H3zm2 2v3h3v-3zM14 14h3v3h-3zM18 18h3v3h-3zM14 18h3v3h-3zM18 14h3v3h-3z" fill="currentColor"/></svg><span>QR code</span></button>
     <button type="button" data-scan="nfc" aria-label="Lire une puce NFC" title="NFC"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 4v10h2V11l4 6h2V7h-2v6l-4-6z" fill="currentColor"/></svg><span>NFC</span></button>
   </nav>
-  <script src="app.js?v=41"></script>
+  <script src="app.js?v=42"></script>
 </body>
 </html>

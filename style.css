@@ -2181,3 +2181,6 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .usr-formulaire .cfg-champ input, .usr-formulaire .cfg-champ select { max-width: 28rem; }
 .usr-enregistrer.principal { width: auto; margin: 0; flex: 0 1 16rem; }
 .usr-liste + .usr-agent, .usr-message + .usr-agent { margin-top: 0.6rem; }
+.usr-dates { display: flex; flex-wrap: wrap; gap: 0 1rem; }
+.usr-dates .cfg-champ { flex: 0 1 14rem; }
+.usr-apercu { font-weight: 700; color: var(--bleu); }
