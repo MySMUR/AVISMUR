@@ -242,7 +242,6 @@ const Infos = (() => {
         el('div', { classe: 'mur-grille' }, terminees.map((i) => carte(i, aujourdhui))));
       zone.append(details);
     }
-    zone.append(liensRapides());
 
     if (cible && !deplies.has(cible)) { deplies.add(cible); rendre(); return; }
     if (cible) {
