@@ -1204,9 +1204,16 @@ const Inventaires = (() => {
           classe: `inv-point ${b.classe}${placement === p.cible ? ' deplace' : ''}`, style: `left:${p.x * 100}%;top:${p.y * 100}%`,
           'aria-label': `${fils[rang].nom} : ${b.texte}`, title: fils[rang].nom,
         };
-        cadre.append(edition
+        const pastille = edition
           ? el('button', { type: 'button', ...commun, texte: String(rang + 1), surclick: () => { placement = placement === p.cible ? '' : p.cible; rendre({ garderPosition: true }); } })
-          : el('a', { href: lien(p.cible), ...commun, texte: b.complet ? '✓' : String(rang + 1) }));
+          : el('a', { href: lien(p.cible), ...commun, texte: b.complet ? '✓' : String(rang + 1) });
+        // Contenant scellable : petit cadenas en coin de pastille.
+        if (fils[rang].scellable) {
+          const cadenas = logoCadenas();
+          cadenas.classList.add('inv-point-cadenas');
+          pastille.append(cadenas);
+        }
+        cadre.append(pastille);
       });
       if (placement && contenant(placement)) {
         bloc.append(el('p', { classe: 'inv-consigne-placement', role: 'status' },
