@@ -3449,6 +3449,9 @@ const Inventaires = (() => {
       if (!t.classList || !t.classList.contains('inv-date') || (e.inputType || '').startsWith('delete')) return;
       let n = t.value.replace(/[^\d/]/g, '').replace(/^(\d{2})(\d)/, '$1/$2');
       if (/^\d{2}$/.test(n)) n += '/';
+      // Jour/mois/année : après « JJ/ », deux chiffres de 01 à 12 sont un mois (une année commence par 20) → second « / ».
+      n = n.replace(/^(\d{2}\/)(0[1-9]|1[0-2])(\d)$/, '$1$2/$3');
+      if (/^\d{2}\/(0[1-9]|1[0-2])$/.test(n)) n += '/';
       if (n !== t.value) t.value = n;
     });
     zone.addEventListener('click', (e) => {
