@@ -3169,7 +3169,8 @@ const Inventaires = (() => {
     const articles = aCocher(c);
     if (!articles.length) return null;
     const p = primaireDe(c.id);
-    const datesModifiables = dansUnMobile(c);
+    // Sans contenant primaire précisé : pas d'inventaire, mais les péremptions restent modifiables (quel que soit l'accès).
+    const datesModifiables = true;
     const ici = contenant(contexte.primaire);
     const ailleurs = ici && p && p.id !== ici.id && !contexte.consultation;
     return el('section', { classe: 'inv-section inv-consultation' },
