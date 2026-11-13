@@ -170,6 +170,11 @@ const Inventaires = (() => {
       nomVue: c.nomVue || '',
       scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
       categorie: CATEGORIES_CONTENANT[c.categorie] ? c.categorie : '', // primaire, immobile ou mobile
+      // Étiquette QR : côté imprimé (mm) et logo central (puce NFC collée au dos, logo SMUR ou aucun).
+      ...(c.etiquette ? { etiquette: {
+        taille: Math.min(100, Math.max(20, Number(c.etiquette.taille) || 40)),
+        logo: ['nfc', 'smur'].includes(c.etiquette.logo) ? c.etiquette.logo : '',
+      } } : {}),
       ...(c.modele ? { modele: true } : {}),
       ...(c.desaffecte ? { desaffecte: c.desaffecte } : {}), // mobile dont la place a été prise : à retrouver
       // Emplacement : attend un exemplaire d'un inventaire type (ex. un « Ampoulier A » dans chaque sac) ;
@@ -2844,6 +2849,22 @@ const Inventaires = (() => {
     const nfc = 'NDEFReader' in window
       ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Écrire sur une puce NFC', surclick: () => ecrireNfc(url, etatNfc) })
       : el('p', { classe: 'aide-question', texte: 'Puce NFC : l\'écriture depuis l\'appli demande Chrome sur Android. Sinon, enregistrez ce lien sur la puce avec une appli NFC (type « URL »).' });
+    // Étiquette : aperçu et réglages (taille imprimée, logo central), propres à ce contenant.
+    const apercu = el('div', { classe: 'inv-etiquette-apercu' }, etiquetteSvg(c));
+    const regler = (champ, valeur) => {
+      c.etiquette = { ...reglageEtiquette(c), [champ]: valeur };
+      c.etiquette = normaliser(c).etiquette;
+      marquer(c.id);
+      apercu.replaceChildren(etiquetteSvg(c));
+    };
+    const r0 = reglageEtiquette(c);
+    const reglages = el('div', { classe: 'inv-etiquette-reglages' },
+      el('label', {}, el('span', { texte: 'Taille imprimée (mm)' }),
+        el('input', { type: 'number', min: 20, max: 100, step: 5, valeur: r0.taille, inputmode: 'numeric',
+          surchange: (e) => regler('taille', e.target.value) })),
+      el('label', {}, el('span', { texte: 'Logo central' }),
+        el('select', { surchange: (e) => regler('logo', e.target.value) },
+          ...[['', 'Aucun'], ['nfc', 'NFC (puce collée au dos)'], ['smur', 'Croix SMUR']].map(([v, t]) => el('option', { value: v, selected: r0.logo === v, texte: t })))));
     const supprimer = el('button', {
       type: 'button', classe: 'cfg-bouton danger', texte: 'Supprimer cet inventaire',
       surclick: () => {
@@ -2862,9 +2883,10 @@ const Inventaires = (() => {
     });
     return el('section', { classe: 'cfg-section' }, el('h2', { texte: 'Accès rapide' }),
       el('p', { classe: 'aide-question', texte: 'Ce QR code et la puce NFC ouvrent directement cet inventaire. Ils restent valables si l\'inventaire est renommé.' }),
-      el('div', { classe: 'inv-acces' }, qrSvg(url),
+      el('div', { classe: 'inv-acces' }, apercu,
         el('div', { classe: 'inv-acces-actions' },
           el('p', { classe: 'inv-url', texte: url }),
+          reglages,
           el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer l\'étiquette QR', surclick: () => imprimerEtiquettes([c]) }),
           nfc, etatNfc)),
       el('h2', { texte: 'Autres actions' }),
@@ -3458,6 +3480,67 @@ const Inventaires = (() => {
       el('svg:rect', { width: '100%', height: '100%', fill: '#fff' }), el('svg:path', { d: trace, fill: '#000' }));
   }
 
+  /** Réglages d'étiquette d'un contenant (valeurs par défaut : 40 mm, sans logo). */
+  const reglageEtiquette = (c) => ({ taille: 40, logo: '', ...(c.etiquette || {}) });
+  const COULEURS_ETIQUETTE = { bleu: '#1D4F9F', fonce: '#163E7E', rhone: '#1E8C82', encre: '#13294B', orange: '#E07A12' };
+  const LOGOS_ETIQUETTE = {
+    nfc: (k) => [el('svg:rect', { x: 3, y: 2, width: 18, height: 20, rx: 3, fill: 'none', stroke: k.bleu, 'stroke-width': 1.8 }),
+      el('svg:path', { d: 'M8 16V8l8 8V8', fill: 'none', stroke: k.bleu, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })],
+    smur: (k) => [el('svg:path', { d: 'M12 3v18M3 12h18', stroke: k.rhone, 'stroke-width': 4, 'stroke-linecap': 'round' })],
+  };
+  /**
+   * Étiquette QR carrée aux couleurs de l'appli. La zone calme (4 modules blancs) reste intacte : le décor
+   * (cadre bleu, coins verts, filet orange) et les textes sont à l'extérieur. Nom du contenant en gras en haut ;
+   * pour un immobile, son contenant primaire en italique en bas. Correction H : le logo central reste lisible.
+   */
+  function etiquetteSvg(c, reglage = reglageEtiquette(c)) {
+    const k = COULEURS_ETIQUETTE;
+    const q = qrcode(0, 'H');
+    q.addData(adresse(c.id));
+    q.make();
+    const n = q.getModuleCount();
+    const primaire = c.categorie === 'immobile' ? chemin(c.id)[0] : null;
+    const haut = c.nom || '';
+    const bas = primaire && primaire.id !== c.id ? primaire.nom : '';
+    const Z = 4, B = 7, T = n + 2 * Z, W = T + 2 * B, o = B + Z;
+    const L = reglage.logo ? (Math.round(n * 0.2) | 1) : 0, l0 = (n - L) / 2;
+    let trace = '';
+    for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) {
+      if (L && r >= l0 - 0.5 && r < l0 + L && col >= l0 - 0.5 && col < l0 + L) continue;
+      if (q.isDark(r, col)) trace += `M${col + o} ${r + o}h1v1h-1z`;
+    }
+    const a = B * 0.35, cr = 3, coin = Math.min(8, W / 5), ep = a * 0.9;
+    const enfants = [
+      el('svg:rect', { width: W, height: W, fill: '#fff' }),
+      el('svg:rect', { x: a, y: a, width: W - 2 * a, height: W - 2 * a, rx: cr, fill: 'none', stroke: k.bleu, 'stroke-width': ep }),
+      ...[[a, a, 1, 1], [W - a, a, -1, 1], [a, W - a, 1, -1], [W - a, W - a, -1, -1]].map(([x, y, sx, sy]) => el('svg:path', {
+        d: `M${x} ${y + sy * coin}V${y + sy * cr}Q${x} ${y} ${x + sx * cr} ${y}H${x + sx * coin}`,
+        fill: 'none', stroke: k.rhone, 'stroke-width': ep * 1.6, 'stroke-linecap': 'round' })),
+      el('svg:rect', { x: B - 0.6, y: B - 0.6, width: T + 1.2, height: T + 1.2, rx: 1.5, fill: 'none', stroke: k.orange, 'stroke-width': 0.35, 'stroke-dasharray': '1.2 0.8' }),
+      el('svg:rect', { x: B, y: B, width: T, height: T, fill: '#fff' }),
+      el('svg:path', { d: trace, fill: k.encre }),
+    ];
+    if (L) {
+      const p = L + 1, x = o + l0 - 0.5;
+      enfants.push(el('svg:rect', { x, y: x, width: p, height: p, rx: 1.4, fill: '#fff', stroke: k.bleu, 'stroke-width': 0.35 }),
+        el('svg:svg', { x: x + p * 0.12, y: x + p * 0.12, width: p * 0.76, height: p * 0.76, viewBox: '0 0 24 24' }, ...LOGOS_ETIQUETTE[reglage.logo](k)));
+    }
+    // Texte réduit pour tenir dans le cartouche (≈ 0,55 module par caractère en gras).
+    const police = (texte, base, largeur) => Math.min(base, largeur / Math.max(1, texte.length * 0.55));
+    const fs = B * 0.55;
+    if (haut) {
+      const larg = W * 0.76;
+      enfants.push(el('svg:rect', { x: (W - larg) / 2, y: a * 0.55, width: larg, height: B * 0.95, rx: 2, fill: '#fff' }),
+        el('svg:text', { x: W / 2, y: B * 0.72, 'text-anchor': 'middle', 'font-family': 'system-ui, sans-serif', 'font-weight': 800, 'font-size': police(haut, fs, larg - 2), fill: k.fonce, texte: haut }));
+    }
+    if (bas) {
+      const larg = W * 0.7;
+      enfants.push(el('svg:rect', { x: (W - larg) / 2, y: W - B * 0.95 - a * 0.55, width: larg, height: B * 0.95, rx: 2, fill: '#fff' }),
+        el('svg:text', { x: W / 2, y: W - B * 0.33, 'text-anchor': 'middle', 'font-family': 'system-ui, sans-serif', 'font-style': 'italic', 'font-size': police(bas, fs * 0.85, larg - 2), fill: k.rhone, texte: bas }));
+    }
+    return el('svg:svg', { classe: 'inv-etiquette-qr', viewBox: `0 0 ${W} ${W}`, role: 'img', 'aria-label': `Étiquette QR : ${haut}` }, ...enfants);
+  }
+
   async function ecrireNfc(url, sortie) {
     const delai = new AbortController();
     const minuterie = setTimeout(() => delai.abort(), 30000);
@@ -3486,11 +3569,12 @@ const Inventaires = (() => {
     window.print();
   }
 
+  /** Étiquettes carrées, chacune à la taille réglée pour son contenant. */
   function imprimerEtiquettes(liste) {
-    lancerImpression(liste.map((c) => el('div', { classe: 'imp-etiquette' }, qrSvg(adresse(c.id)),
-      el('div', {}, el('strong', { texte: c.nom }),
-        el('span', { texte: chemin(c.id).slice(0, -1).map((x) => x.nom).join(' › ') }),
-        el('small', { texte: `SMUR Avignon · ${c.id}` })))), 'imp-etiquettes');
+    lancerImpression(liste.map((c) => {
+      const r = reglageEtiquette(c);
+      return el('div', { classe: 'imp-etiquette', style: `width:${r.taille}mm;height:${r.taille}mm` }, etiquetteSvg(c, r));
+    }), 'imp-etiquettes');
   }
 
   /** Liste papier d'un contenant et de tout ce qu'il contient. */

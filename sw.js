@@ -1,7 +1,7 @@
 // À incrémenter à chaque mise à jour, avec les ?v= de index.html.
-const CACHE = 'avismur-v127';
+const CACHE = 'avismur-v128';
 const FICHIERS = [
-  './', 'index.html', 'style.css?v=69', 'app.js?v=49', 'config.js?v=6', 'checklists.js?v=13', 'ambulancier.js?v=25', 'actions.js?v=11', 'config-admin.js?v=6', 'utilisateurs.js?v=11', 'parc.js?v=7', 'compteur.js?v=5', 'inventaires.js?v=34', 'infos.js?v=5', 'materiel.js?v=6', 'profil.js?v=4', 'annuaire.js?v=3', 'meteo.js?v=1', 'lib/qrcode.js?v=1',
+  './', 'index.html', 'style.css?v=70', 'app.js?v=49', 'config.js?v=6', 'checklists.js?v=13', 'ambulancier.js?v=25', 'actions.js?v=11', 'config-admin.js?v=6', 'utilisateurs.js?v=11', 'parc.js?v=7', 'compteur.js?v=5', 'inventaires.js?v=35', 'infos.js?v=5', 'materiel.js?v=6', 'profil.js?v=4', 'annuaire.js?v=3', 'meteo.js?v=1', 'lib/qrcode.js?v=1',
   'manifest.webmanifest',
   'img/logo-smur.png', 'img/logo-cha.png', 'img/icon-192.png', 'img/icon-512.png', 'img/icon-maskable-512.png',
   'img/vues/jumpy_gauche.svg', 'img/vues/jumpy_droite.svg', 'img/vues/jumpy_avant.svg', 'img/vues/jumpy_arriere.svg',

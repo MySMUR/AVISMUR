@@ -1298,6 +1298,11 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .inv-ajout-articles { margin-top: 0.8rem; }
 .inv-ajout-articles .cfg-bouton { align-self: flex-start; }
 .inv-acces { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; margin-bottom: 1.2rem; }
+.inv-etiquette-apercu { width: 11rem; flex-shrink: 0; }
+.inv-etiquette-qr { display: block; width: 100%; height: auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(19, 41, 75, .15); }
+.inv-etiquette-reglages { display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
+.inv-etiquette-reglages label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; color: var(--gris); }
+.inv-etiquette-reglages input { width: 6rem; }
 .inv-qr { width: 9.5rem; height: 9.5rem; flex-shrink: 0; border: 1px solid var(--trait); border-radius: 8px; }
 .inv-acces-actions { flex: 1 1 14rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
 .inv-url { margin: 0; font-size: 0.85rem; color: var(--gris); overflow-wrap: anywhere; }
@@ -1320,12 +1325,9 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
   body.impression-inventaire { display: block; background: #fff; }
   body.impression-inventaire > *:not(#inv-impression) { display: none !important; }
   body.impression-inventaire #inv-impression { display: block; color: #000; font-size: 11pt; }
-  .imp-etiquettes { display: grid !important; grid-template-columns: 1fr 1fr; gap: 6mm; }
-  .imp-etiquette { display: flex; align-items: center; gap: 4mm; padding: 3mm; border: 1px dashed #777; break-inside: avoid; }
-  .imp-etiquette .inv-qr { width: 30mm; height: 30mm; border: 0; }
-  .imp-etiquette div { display: flex; flex-direction: column; gap: 1mm; min-width: 0; }
-  .imp-etiquette strong { font-size: 13pt; }
-  .imp-etiquette small { color: #444; font-size: 8pt; }
+  .imp-etiquettes { display: flex !important; flex-wrap: wrap; align-items: flex-start; gap: 4mm; }
+  .imp-etiquette { flex: none; break-inside: avoid; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .imp-etiquette .inv-etiquette-qr { width: 100%; height: 100%; box-shadow: none; border-radius: 0; }
   .imp-entete { display: flex; align-items: center; gap: 6mm; margin-bottom: 5mm; padding-bottom: 3mm; border-bottom: 2px solid #000; }
   .imp-entete .inv-qr { width: 26mm; height: 26mm; border: 0; }
   .imp-entete p { margin: 0 0 1.5mm; }
