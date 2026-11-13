@@ -44,15 +44,15 @@ Liens connexes à prévoir (fonctionnalités non encore développées) :
 | Maintenance | Fiche véhicule ; Matériel ; Aujourd'hui (échéances) |
 | Pilotage (cadre, chef d'unité) | Menu (rubrique à créer) ; historiques par véhicule et par agent |
 
-## Mon profil (menu, sous Accueil)
+## Mon compte (menu, sous Accueil)
 
 Pour tous les agents (`profil.js`, backend `Profil.gs`) : changer son mot de passe, son numéro de portable (confirmé par un code SMS), son adresse mail, choisir de partager son numéro avec les autres utilisateurs (annuaire du personnel) et avec l'application (SMS d'alerte ou de rappel), activer ou désactiver les notifications push sur l'appareil et retirer un ancien appareil.
 
 Hors ligne : le profil connu est affiché ; le mail et les choix de partage partent dans la file d'attente, le téléphone et le mot de passe nécessitent le réseau. « Désactiver » les notifications est mémorisé sur l'appareil : elles ne se réactivent pas seules à la connexion suivante.
 
-## Annuaire du personnel (menu, sous Mon profil)
+## Annuaire du personnel (menu, sous Mon compte)
 
-`annuaire.js`, backend `Annuaire.gs`. Recherche par nom, fonction ou numéro, filtres par métier, case « Seulement avec numéro ». Un numéro n'apparaît que si son titulaire l'a choisi dans Mon profil ; le toucher lance un appel ou un SMS. L'agent qui ne partage pas son numéro voit un lien vers Mon profil. Hors ligne : dernière liste reçue, effacée de l'appareil à la déconnexion.
+`annuaire.js`, backend `Annuaire.gs`. Recherche par nom, fonction ou numéro, filtres par métier, case « Seulement avec numéro ». Un numéro n'apparaît que si son titulaire l'a choisi dans Mon compte ; trois icônes (appel, SMS, WhatsApp) sont proposées uniquement si le numéro est partagé, et une icône cloche (notification) si l'agent a activé les notifications push. L'agent qui ne partage pas son numéro voit un lien vers Mon compte. Hors ligne : dernière liste reçue, effacée de l'appareil à la déconnexion.
 
 Chaque lien du menu a une icône (`.tiroir-icone`, SVG en ligne dans `index.html`), à prévoir pour toute nouvelle entrée.
 

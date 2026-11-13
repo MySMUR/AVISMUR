@@ -1,5 +1,5 @@
 /**
- * « Mon profil » (menu burger) : chaque agent gère son propre compte (backend : Profil.gs).
+ * « Mon compte » (menu burger) : chaque agent gère son propre compte (backend : Profil.gs).
  *   - Coordonnées : téléphone (vérifié par un code SMS, il sert aux SMS de connexion), adresse mail.
  *   - Partage du numéro : avec les autres utilisateurs (annuaire du personnel) et avec l'application (SMS d'alerte, de rappel).
  *   - Notifications push : activer ou désactiver sur cet appareil, retirer un ancien appareil.
@@ -377,6 +377,19 @@ const Profil = (() => {
       });
     }
 
+    const test = etatNotif === 'actif' ? el('button', {
+      type: 'button', classe: 'cfg-bouton', texte: 'M\'envoyer une notification test',
+      surclick: async (e) => {
+        const b = e.currentTarget;
+        b.disabled = true;
+        dire('notif', 'Envoi du test…');
+        try {
+          const rep = await App.appeler('testerNotification');
+          dire('notif', rep.ok ? rep.message : (rep.erreur || 'Refusé par le serveur.'), rep.ok ? 'succes' : 'erreur');
+        } catch (err) { dire('notif', reseauKo(err), 'erreur'); }
+        b.disabled = false;
+      },
+    }) : null;
     const autres = (profil.notifications || []).filter((n) => n.fin !== finAppareil);
     return el('section', { classe: 'pro-carte', 'aria-labelledby': 'pro-titre-notif' },
       el('h2', { id: 'pro-titre-notif', texte: 'Notifications' }),
@@ -384,6 +397,7 @@ const Profil = (() => {
       el('div', { classe: 'pro-ligne' },
         el('span', { classe: `usr-pastille ${classe}`, texte: libelle }),
         bouton),
+      test,
       aide ? el('p', { classe: 'pro-aide', texte: aide }) : null,
       autres.length ? el('div', { classe: 'pro-appareils' },
         el('h3', { texte: 'Vos autres appareils recevant les notifications' }),
@@ -471,7 +485,7 @@ const Profil = (() => {
   function rendre() {
     if (!zone || zone.hidden) return;
     zone.innerHTML = '';
-    zone.append(el('h1', { texte: 'Mon profil' }));
+    zone.append(el('h1', { texte: 'Mon compte' }));
     if (erreurChargement) zone.append(el('p', { classe: `message ${profil ? '' : 'erreur'}`.trim(), role: 'status', texte: erreurChargement }));
     if (!profil) {
       if (chargementEnCours) zone.append(el('p', { classe: 'consigne', texte: 'Chargement de votre profil…' }));

@@ -169,7 +169,7 @@ function memoriserAppareil(rep, resterConnecte) {
 }
 
 /**
- * Mot de passe changé depuis « Mon profil » : le serveur a coupé les anciennes sessions et renvoie
+ * Mot de passe changé depuis « Mon compte » : le serveur a coupé les anciennes sessions et renvoie
  * un nouveau jeton (et un nouveau jeton d'appareil si celui-ci était mémorisé).
  */
 function nouvelleSession(rep) {
@@ -659,7 +659,7 @@ function enregistrerAmbulancier() {
 // « aujourdhui » : check-list du jour selon le métier (véhicules pour l'ambulancier, inventaires pour l'IADE).
 // Véhicules : « checklist-ambulancier » (tableau de bord du parc sur ordinateur, cases sinon),
 //   « carburant », « carrosserie », « mecanique » (mêmes cases ; toucher un véhicule ouvre directement l'écran voulu).
-// « profil » : Mon profil (profil.js) ; « annuaire » : annuaire du personnel (annuaire.js). Pour tous les agents.
+// « profil » : Mon compte (profil.js) ; « annuaire » : annuaire du personnel (annuaire.js). Pour tous les agents.
 // Inventaires : « inventaires » (inventaires.js). Administration : « utilisateurs », « configuration », « base-articles ».
 let roleCourant = '';
 let vueCourante = 'accueil';

@@ -828,7 +828,7 @@ const Infos = (() => {
     }
     if (!pushPossible()) return null;
     if (Notification.permission === 'granted') {
-      if (pushCoupe()) return null; // choix de l'agent (Mon profil) : pas de relance sur le mur
+      if (pushCoupe()) return null; // choix de l'agent (Mon compte) : pas de relance sur le mur
       return etatPush === 'erreur'
         ? el('div', { classe: 'mur-notif' }, icone('accident', 'mur-notif-picto'),
           el('p', {}, el('strong', { texte: 'Notifications non activées.' }), ' Le serveur n\'a pas pu enregistrer cet appareil.'),
@@ -862,7 +862,7 @@ const Infos = (() => {
   }
 
   /** Abonne cet appareil (ou rafraîchit son abonnement) et le transmet au serveur. Silencieux hors ligne. */
-  // Notifications désactivées par l'agent dans « Mon profil » : pas de réabonnement silencieux à la connexion.
+  // Notifications désactivées par l'agent dans « Mon compte » : pas de réabonnement silencieux à la connexion.
   const CLE_PUSH_COUPE = 'avismur_push_desactive';
   const pushCoupe = () => { try { return localStorage.getItem(CLE_PUSH_COUPE) === '1'; } catch (e) { return false; } };
   function couperPush(oui) {
@@ -1027,7 +1027,7 @@ const Infos = (() => {
       charger();
     },
     desabonner,
-    // « Mon profil » (profil.js) : état et réglage des notifications de cet appareil.
+    // « Mon compte » (profil.js) : état et réglage des notifications de cet appareil.
     /** 'ios' (installer l'appli d'abord), 'impossible', 'bloque', 'actif', 'erreur' ou 'inactif'. */
     async etatNotifications() {
       if (iosHorsAppli()) return 'ios';
@@ -1049,7 +1049,7 @@ const Infos = (() => {
       } catch (err) { etatPush = 'erreur'; }
       return this.etatNotifications();
     },
-    /** « Désactiver » dans Mon profil : désabonne cet appareil et s'en souvient. */
+    /** « Désactiver » dans Mon compte : désabonne cet appareil et s'en souvient. */
     async desactiverNotifications() {
       couperPush(true);
       etatPush = '';

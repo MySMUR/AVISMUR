@@ -2284,3 +2284,18 @@ body.fenetre-ouverte .mur-publier { display: none; }
   .ann-agent { grid-template-columns: 2.6rem 1fr; }
   .ann-actions, .ann-non-partage { grid-column: 2; justify-content: flex-start; }
 }
+
+/* Annuaire : icônes d'appel, SMS, WhatsApp et notification */
+.ann-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; }
+.ann-numero { font-size: 0.9rem; color: var(--gris); white-space: nowrap; }
+.ann-icones { display: flex; gap: 0.4rem; }
+.ann-icone {
+  display: inline-grid; place-items: center; width: 2.75rem; height: 2.75rem; padding: 0; border: 0; border-radius: 50%;
+  color: #fff; background: var(--bleu); cursor: pointer; text-decoration: none;
+}
+.ann-icone svg { width: 1.3rem; height: 1.3rem; }
+.ann-icone.ann-wa { background: #1f9d55; }
+.ann-icone.ann-notif { background: #b45309; }
+.ann-icone.ann-notif.ann-ok { background: #1f9d55; }
+.ann-icone.ann-notif.ann-ko { background: #b91c1c; }
+.ann-icone:disabled { opacity: 0.6; cursor: default; }
