@@ -39,6 +39,7 @@ const Inventaires = (() => {
   let ajoutSousOuvert = false; // formulaire « Ajouter un sous-inventaire » déplié (mode Modifier)
   let baseOuverte = ''; // fiche dépliée dans la base des articles ('nouvelle' : création)
   let baseFiltre = { texte: '', categorie: '', archives: false };
+  const brouillonsBase = new Map(); // tableau de la base (ordinateur) : fiches modifiées, pas encore enregistrées
   let edition = false;
   let gestion = false;
   // Identification d'un contenant mobile (check-list) : '<id>' (mobile prévu à cette place),
@@ -2593,12 +2594,164 @@ const Inventaires = (() => {
   }
 
   /** Base des articles : recherche, filtre par catégorie, création et modification des fiches. */
+  /** Enregistre une fiche ; la copie du nom dans les inventaires suit (historique des vérifications plus lisible). */
+  function enregistrerFicheEtInventaires(g) {
+    enregistrerFiche(g);
+    Object.values(structure.contenants).forEach((c) => {
+      let change = false;
+      c.articles.forEach((a) => { if (a.ref === g.id && (a.nom !== g.denomination || a.peremption !== g.perissable)) { a.nom = g.denomination; a.peremption = g.perissable; change = true; } });
+      if (change) marquer(c.id);
+    });
+  }
+
+  const icone = (...formes) => el('svg:svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' },
+    ...formes.map((d) => el('svg:path', { d })));
+  const iconeAppareil = () => icone('M3 8h3.5l2-3h7l2 3H21v11H3z', 'M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z');
+  const iconeImage = () => icone('M3 4h18v16H3z', 'M3 16l5-5 4 4 3-3 6 6', 'M15.5 9.5a1.5 1.5 0 1 0 0-.01');
+  const iconeArchive = () => icone('M3 4h18v4H3z', 'M5 8v12h14V8', 'M10 12h4');
+  const iconeReactiver = () => icone('M4 12a8 8 0 1 0 2.5-5.8', 'M4 4v4h4');
+
+  /**
+   * Base des articles sur ordinateur : tableau éditable. Les modifications de plusieurs lignes
+   * sont gardées en brouillon (brouillonsBase) et enregistrées ensemble.
+   */
+  function tableauBase(fiches, usages, rafraichir) {
+    const valeur = (f) => brouillonsBase.get(f.id) || f;
+    const modifier = (f, champ, v) => {
+      const d = { ...valeur(f), [champ]: v };
+      const origine = structure.catalogue[f.id];
+      const pareil = ['denomination', 'categorie', 'refInterne', 'refFournisseur', 'consommable', 'perissable', 'horsStock', 'archive', 'photo']
+        .every((k) => String(d[k]) === String(origine[k]));
+      if (pareil) brouillonsBase.delete(f.id); else brouillonsBase.set(f.id, d);
+      majCompte();
+      return d;
+    };
+    const corps = el('tbody');
+    const compteur = el('span', { classe: 'inv-tb-base-compte', role: 'status' });
+    const erreur = el('p', { classe: 'message erreur', role: 'alert', hidden: true });
+    const boutons = [];
+    function majCompte() {
+      const n = brouillonsBase.size;
+      compteur.textContent = n ? `${pluriel(n, 'article modifié', 'articles modifiés')}, non enregistré${n > 1 ? 's' : ''}` : 'Aucune modification en attente.';
+      boutons.forEach((b) => { b.disabled = !n; });
+      corps.querySelectorAll('tr').forEach((tr) => tr.classList.toggle('modifie', brouillonsBase.has(tr.dataset.id)));
+    }
+    const enregistrer = () => {
+      const fautes = [];
+      corps.querySelectorAll('tr.faute').forEach((tr) => { tr.classList.remove('faute'); tr.removeAttribute('title'); });
+      const prets = [...brouillonsBase.values()].map((d) => {
+        const g = normaliserFiche({ ...d, denomination: String(d.denomination).trim().replace(/\s+/g, ' '), refInterne: String(d.refInterne).trim(), refFournisseur: String(d.refFournisseur).trim() });
+        let probleme = !g.denomination ? 'dénomination vide' : (!g.categorie ? 'catégorie à choisir' : '');
+        const autre = !probleme && !g.archive ? doublon(g) : null;
+        if (autre) probleme = cle(autre.denomination) === cle(g.denomination) ? `« ${autre.denomination} » existe déjà` : `réf. interne déjà utilisée par « ${autre.denomination} »`;
+        if (probleme) {
+          fautes.push(`${g.denomination || '(sans nom)'} : ${probleme}`);
+          const tr = corps.querySelector(`tr[data-id="${g.id}"]`);
+          if (tr) { tr.classList.add('faute'); tr.title = probleme; }
+        }
+        return g;
+      });
+      if (fautes.length) { erreur.textContent = `Rien n'a été enregistré. À corriger : ${fautes.join(' ; ')}.`; erreur.hidden = false; return; }
+      prets.forEach(enregistrerFicheEtInventaires);
+      brouillonsBase.clear();
+      avis = `${pluriel(prets.length, 'fiche enregistrée', 'fiches enregistrées')}.`;
+      rendre({ garderPosition: true });
+    };
+    const annuler = () => { brouillonsBase.clear(); erreur.hidden = true; rafraichir(); };
+    const barre = () => {
+      const b = el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: 'Enregistrer les modifications', surclick: enregistrer });
+      const a = el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Annuler les modifications', surclick: annuler });
+      boutons.push(b, a);
+      return el('div', { classe: 'cfg-actions inv-tb-base-actions' }, b, a);
+    };
+
+    fiches.forEach((f0) => {
+      const f = valeur(f0);
+      const nb = (usages[f0.id] || []).length;
+      const tr = el('tr', { 'data-id': f0.id, classe: f.archive ? 'archive' : '' });
+      const texte = (champ, libelle, max) => el('td', {}, el('input', {
+        type: 'text', valeur: f[champ], maxlength: max, 'aria-label': `${libelle} : ${f0.denomination}`, autocomplete: 'off',
+        surinput: (e) => { modifier(f0, champ, e.target.value); },
+      }));
+      const caseC = (champ, libelle) => el('td', { classe: 'inv-tb-base-case' }, el('input', {
+        type: 'checkbox', checked: f[champ] === true, 'aria-label': `${libelle} : ${f0.denomination}`,
+        surchange: (e) => { modifier(f0, champ, e.target.checked); },
+      }));
+      const cat = el('select', { 'aria-label': `Catégorie : ${f0.denomination}`, surchange: (e) => { modifier(f0, 'categorie', e.target.value); } },
+        el('option', { value: '', texte: '—' }), ...CATEGORIES.map((c) => el('option', { value: c, texte: c })));
+      cat.value = f.categorie;
+      // Vignette de la photo (rafraîchie quand on en ajoute une).
+      const vignette = el('img', { classe: 'inv-tb-base-vignette', alt: '', hidden: true });
+      const montrer = (id) => {
+        vignette.hidden = !id;
+        if (id) obtenirPhoto(id).then((d) => { if (d) { vignette.src = d; vignette.hidden = false; } });
+      };
+      montrer(f.photo);
+      const recevoir = async (e) => {
+        const fichier = e.target.files[0];
+        e.target.value = '';
+        if (!fichier) return;
+        try {
+          const donnees = await reduirePhoto(fichier, 900);
+          const id = `local-${nouvelId()}`;
+          await Photos.ecrire(id, donnees);
+          modifier(f0, 'photo', id);
+          montrer(id);
+        } catch (err) { erreur.textContent = `Photo illisible ou trop lourde pour « ${f0.denomination} » : réessayez.`; erreur.hidden = false; }
+      };
+      const idPrendre = idChamp();
+      const idChoisir = idChamp();
+      const archive = el('button', { type: 'button', classe: 'cfg-mini inv-tb-base-icone' });
+      const majArchive = () => {
+        const a = valeur(f0).archive;
+        tr.classList.toggle('archive', a);
+        archive.innerHTML = '';
+        archive.append(a ? iconeReactiver() : iconeArchive());
+        archive.classList.toggle('danger', !a);
+        archive.disabled = !a && nb > 0;
+        const t = a ? `Réactiver « ${f0.denomination} »` : (nb ? `Archivage impossible : utilisé dans ${pluriel(nb, 'inventaire')}` : `Archiver « ${f0.denomination} »`);
+        archive.title = t;
+        archive.setAttribute('aria-label', t);
+      };
+      archive.addEventListener('click', () => { modifier(f0, 'archive', !valeur(f0).archive); majArchive(); });
+      majArchive();
+      tr.append(
+        el('td', { classe: 'inv-tb-base-nom' }, vignette, el('input', {
+          type: 'text', valeur: f.denomination, maxlength: '120', 'aria-label': 'Dénomination', autocomplete: 'off',
+          title: nb ? `Dans ${pluriel(nb, 'inventaire')}` : 'Utilisé dans aucun inventaire',
+          surinput: (e) => { modifier(f0, 'denomination', e.target.value); },
+        })),
+        el('td', {}, cat),
+        texte('refInterne', 'Réf. interne', '60'),
+        texte('refFournisseur', 'Réf. fournisseur', '120'),
+        caseC('consommable', 'Consommable'),
+        caseC('perissable', 'Périssable'),
+        caseC('horsStock', 'Hors stock'),
+        el('td', { classe: 'inv-tb-base-outils' },
+          el('label', { for: idPrendre, classe: 'cfg-mini inv-tb-base-icone', title: 'Prendre une photo', 'aria-label': `Prendre une photo : ${f0.denomination}` }, iconeAppareil()),
+          el('input', { type: 'file', id: idPrendre, accept: 'image/*', capture: 'environment', classe: 'invisible', surchange: recevoir }),
+          el('label', { for: idChoisir, classe: 'cfg-mini inv-tb-base-icone', title: 'Choisir une photo', 'aria-label': `Choisir une photo : ${f0.denomination}` }, iconeImage()),
+          el('input', { type: 'file', id: idChoisir, accept: 'image/*', classe: 'invisible', surchange: recevoir }),
+          archive));
+      corps.append(tr);
+    });
+    const tete = el('thead', {}, el('tr', {}, ...['Dénomination', 'Catégorie', 'Réf. interne', 'Réf. fournisseur', 'Consommable', 'Périssable', 'Hors stock', '']
+      .map((t) => el('th', { scope: 'col', texte: t }))));
+    const bloc = el('div', { classe: 'inv-tb-base' }, barre(), compteur, erreur,
+      el('div', { classe: 'inv-tb-base-defile' }, el('table', { classe: 'inv-tb-base-table' }, tete, corps)), barre());
+    majCompte();
+    return bloc;
+  }
+
   function vueBase() {
     const admin = aDroitApp('ARTICLES');
+    // Sur ordinateur (écran large), les gestionnaires éditent la base dans un tableau.
+    const enTableau = admin && window.matchMedia('(min-width: 1100px)').matches;
     const usages = utilisations();
     const liste = el('ul', { classe: 'inv-base-liste' });
     const compte = el('p', { classe: 'aide-question', role: 'status' });
     const nouvelle = el('div');
+    const tableau = el('div');
     const fermer = () => { baseOuverte = ''; remplir(); };
     const detail = (f) => {
       const ou = usages[f.id] || [];
@@ -2618,13 +2771,7 @@ const Inventaires = (() => {
       return el('div', { classe: 'inv-fiche-detail' },
         formulaireFiche(f, {
           surEnregistrer: (g) => {
-            enregistrerFiche(g);
-            // La copie du nom dans les inventaires suit la fiche (historique des vérifications plus lisible).
-            Object.values(structure.contenants).forEach((c) => {
-              let change = false;
-              c.articles.forEach((a) => { if (a.ref === g.id && (a.nom !== g.denomination || a.peremption !== g.perissable)) { a.nom = g.denomination; a.peremption = g.perissable; change = true; } });
-              if (change) marquer(c.id);
-            });
+            enregistrerFicheEtInventaires(g);
             baseOuverte = '';
             avis = `Fiche « ${g.denomination} » enregistrée.`;
             rendre({ garderPosition: true });
@@ -2637,8 +2784,15 @@ const Inventaires = (() => {
     function remplir() {
       liste.innerHTML = '';
       const trouvees = chercherFiches(baseFiltre.texte, { archives: baseFiltre.archives, categorie: baseFiltre.categorie });
-      const affichees = trouvees.slice(0, 60);
-      compte.textContent = trouvees.length ? `${pluriel(trouvees.length, 'article')}${trouvees.length > 60 ? ' — 60 premiers affichés, précisez la recherche' : ''}` : 'Aucun article ne correspond.';
+      const max = enTableau ? 300 : 60;
+      const affichees = trouvees.slice(0, max);
+      compte.textContent = trouvees.length ? `${pluriel(trouvees.length, 'article')}${trouvees.length > max ? ` — ${max} premiers affichés, précisez la recherche` : ''}` : 'Aucun article ne correspond.';
+      if (enTableau) {
+        liste.hidden = true;
+        tableau.innerHTML = '';
+        if (affichees.length) tableau.append(tableauBase(affichees, usages, remplir));
+        return;
+      }
       affichees.forEach((f) => {
         const ouvert = baseOuverte === f.id;
         const nb = (usages[f.id] || []).length;
@@ -2678,7 +2832,7 @@ const Inventaires = (() => {
         el('input', { id: champ, type: 'search', autocomplete: 'off', valeur: baseFiltre.texte, surinput: (e) => { baseFiltre.texte = e.target.value; remplir(); } })),
       filtres,
       el('label', { classe: 'cfg-case', for: caseArchives }, el('input', { type: 'checkbox', id: caseArchives, checked: baseFiltre.archives, surchange: (e) => { baseFiltre.archives = e.target.checked; remplir(); } }), 'Afficher les articles archivés'),
-      compte, liste,
+      compte, liste, tableau,
       el('div', { classe: 'inv-pied' }, el('a', { classe: 'lien', href: lien(''), texte: '← Tous les inventaires' })),
     ];
   }
