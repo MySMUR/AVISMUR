@@ -2190,3 +2190,11 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .usr-droit span { display: flex; flex-direction: column; }
 .usr-droit small { color: var(--gris); }
 .usr-indispo { opacity: 0.55; }
+.usr-stages { margin: 0.8rem 0 0; }
+.usr-stages h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+.usr-liste-stages { list-style: none; margin: 0 0 0.5rem; padding: 0; }
+.usr-stage { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem; padding: 0.4rem 0; border-bottom: 1px solid #E1E8F2; }
+.usr-stage-termine { color: var(--gris); }
+.usr-stage-en-cours span:first-child { font-weight: 700; }
+.usr-stage-boutons { display: flex; gap: 0.4rem; }
+.usr-form-stage { padding: 0.5rem 0; }

@@ -12,7 +12,9 @@ const Utilisateurs = (() => {
   let mesDroits = [];
   let moi = ''; // CRI de l'administrateur connecté
   let aDroit = () => false;
-  let brouillonDroits = null; // { cri, codes: Set } : droits en cours de modification // fonctions reconnues par le serveur : { code, libelle, onglet }
+  let brouillonDroits = null;
+  let ifias = []; // IFIA déjà utilisés (suggestions)
+  let stageEdite = null; // { identifiant, ligne (0 : ajout), debut, fin, ifia } // { cri, codes: Set } : droits en cours de modification // fonctions reconnues par le serveur : { code, libelle, onglet }
   let edition = null; // fiche en cours de saisie : { ancienCri, nom, cri, code, telephone } (ancienCri vide : ajout)
   let filtre = '';
   let filtreRole = '';
@@ -75,7 +77,7 @@ const Utilisateurs = (() => {
     const deplie = ouvert === a.cri;
     const entete = el('button', {
       type: 'button', classe: 'usr-entete', 'aria-expanded': String(deplie),
-      surclick: () => { ouvert = deplie ? '' : a.cri; aConfirmer = ''; edition = null; brouillonDroits = null; rendre(); },
+      surclick: () => { ouvert = deplie ? '' : a.cri; aConfirmer = ''; edition = null; brouillonDroits = null; stageEdite = null; rendre(); },
     },
     el('span', { classe: 'usr-nom', texte: a.nom }),
     el('span', {
@@ -96,8 +98,8 @@ const Utilisateurs = (() => {
   function rendreFiche(a) {
     const infos = el('dl', { classe: 'usr-infos' },
       a.etudiant ? ligneInfo('Identifiant de connexion', a.identifiant) : ligneInfo('Code CRI', a.cri),
-      a.etudiant ? ligneInfo('Stage', `du ${dateFr(a.debut)} au ${dateFr(a.fin)}`) : null,
-      ligneInfo('Fonction (DB_SMUR)', `${a.fonction || '—'} · onglet ${a.onglet}`),
+
+      ligneInfo(a.etudiant ? 'Fonction' : 'Fonction (DB_SMUR)', a.etudiant ? 'Étudiant IADE (DB_EIADE)' : `${a.fonction || '—'} · onglet ${a.onglet}`),
       ligneInfo('Rôle dans l\'appli', ROLES[a.role] || a.role),
       ligneInfo('Mot de passe', a.compteActif ? 'Créé' : 'Pas encore créé'),
       ligneInfo('Téléphone', a.telephone ? a.numero : (a.numero ? `${a.numero} (invalide)` : 'Absent : pas de SMS possible')),
@@ -113,9 +115,9 @@ const Utilisateurs = (() => {
         surclick: () => {
           edition = {
             ancienCri: a.cri, nom: a.nom, cri: a.etudiant ? '' : a.cri, code: a.code, telephone: a.numero,
-            nomSeul: a.nomSeul || '', prenom: a.prenom || '', debut: a.debut || '', fin: a.fin || '', identifiant: a.identifiant || '',
+            nomSeul: a.nomSeul || '', prenom: a.prenom || '', identifiant: a.identifiant || '',
           };
-          aConfirmer = ''; rendre();
+          aConfirmer = ''; stageEdite = null; rendre();
         },
       }));
     }
@@ -127,6 +129,11 @@ const Utilisateurs = (() => {
       actions.append(boutonAction(a, 'deconnecterAppareils', 'Déconnecter tous ses appareils',
         'Appuyez de nouveau pour déconnecter cet agent de tous ses appareils.'));
     }
+    if (gerable && a.cri !== moi) {
+      actions.append(boutonAction(a, 'supprimerAgent', a.etudiant ? 'Supprimer l\'étudiant' : 'Supprimer l\'agent', a.etudiant
+        ? 'Appuyez de nouveau : l\'étudiant, tous ses stages (DB_EIADE) et son compte seront supprimés.'
+        : 'Appuyez de nouveau : l\'agent sera retiré de DB_SMUR et déconnecté. Son historique est conservé.'));
+    }
     // Administrateur principal (propriété ADMINS) : seul un administrateur principal en nomme un autre.
     if (a.role && !a.etudiant && estPrincipal() && a.cri !== moi) {
       actions.append(a.role === 'admin'
@@ -137,10 +144,95 @@ const Utilisateurs = (() => {
     const notes = [];
     if (!a.role) notes.push('Fonction non reconnue : cet agent ne peut pas se connecter. « Modifier la fiche » pour lui attribuer une fonction.');
     if (a.etudiant && a.periode === 'a-venir') notes.push(`Connexion possible à partir du ${dateFr(a.debut)} : identifiant « ${a.identifiant} », puis « Recevoir un code par SMS ».`);
-    if (a.etudiant && a.periode === 'terminee') notes.push('Stage terminé : l\'étudiant ne peut plus se connecter. Pour prolonger, modifiez la date de fin.');
+    if (a.etudiant && a.periode === 'terminee') notes.push('Stage terminé : l\'étudiant ne peut plus se connecter. Pour un nouveau stage ou une prolongation, utilisez les stages ci-dessous.');
     if (!a.telephone) notes.push('Sans numéro de portable valide, l\'agent ne peut ni créer ni réinitialiser son mot de passe.');
     return el('div', { classe: 'usr-fiche' }, infos,
-      ...notes.map((t) => el('p', { classe: 'note-parc', texte: t })), actions, rendreDroits(a));
+      ...notes.map((t) => el('p', { classe: 'note-parc', texte: t })), a.etudiant ? rendreStages(a, gerable) : null, actions, rendreDroits(a));
+  }
+
+  // ---------- Stages des étudiants (DB_EIADE) ----------
+
+  function champIfia(id, objet) {
+    const liste = `${id}-liste`;
+    return el('div', { classe: 'champ cfg-champ' },
+      el('label', { for: id, texte: 'IFIA (institut de formation)' }),
+      el('input', { id, list: liste, valeur: objet.ifia || '', autocomplete: 'off', surinput: (ev) => { objet.ifia = ev.target.value; } }),
+      el('datalist', { id: liste }, ...ifias.map((v) => el('option', { value: v }))));
+  }
+
+  function champsDates(prefixe, objet) {
+    const champ = (cle, libelle) => el('div', { classe: 'champ cfg-champ' },
+      el('label', { for: `${prefixe}-${cle}`, texte: libelle }),
+      el('input', { id: `${prefixe}-${cle}`, type: 'date', valeur: objet[cle] || '', surinput: (ev) => { objet[cle] = ev.target.value; } }));
+    return el('div', { classe: 'usr-dates' }, champ('debut', 'Début de stage'), champ('fin', 'Fin de stage'));
+  }
+
+  function rendreStages(a, gerable) {
+    const j = new Date().toISOString().slice(0, 10);
+    const bloc = el('div', { classe: 'usr-stages' }, el('h3', { texte: 'Stages' }));
+    const liste = el('ul', { classe: 'usr-liste-stages' });
+    a.stages.forEach((st) => {
+      if (stageEdite && stageEdite.identifiant === a.cri && stageEdite.ligne === st.ligne) { liste.append(el('li', {}, formulaireStage(a))); return; }
+      const etat = st.fin < j ? 'terminé' : (st.debut > j ? 'à venir' : 'en cours');
+      const cle = `supprimerStage:${a.cri}:${st.ligne}`;
+      liste.append(el('li', { classe: `usr-stage usr-stage-${{ terminé: 'termine', 'à venir': 'a-venir', 'en cours': 'en-cours' }[etat]}` },
+        el('span', { texte: `Du ${dateFr(st.debut)} au ${dateFr(st.fin)}${st.ifia ? ` · ${st.ifia}` : ''} · ${etat}` }),
+        gerable ? el('span', { classe: 'usr-stage-boutons' },
+          el('button', { type: 'button', classe: 'cfg-mini', texte: 'Modifier', surclick: () => { stageEdite = { identifiant: a.cri, ...st }; edition = null; rendre(); } }),
+          a.stages.length > 1 ? el('button', {
+            type: 'button', classe: `cfg-mini danger${aConfirmer === cle ? ' usr-confirmer' : ''}`, texte: aConfirmer === cle ? 'Confirmer' : 'Supprimer',
+            surclick: () => {
+              if (aConfirmer !== cle) { aConfirmer = cle; rendre(); message('Appuyez sur « Confirmer » pour supprimer ce stage.', 'erreur'); return; }
+              aConfirmer = '';
+              envoyerStage(a, { operation: 'supprimer', ligne: st.ligne });
+            },
+          }) : null) : null));
+    });
+    bloc.append(liste);
+    if (gerable) {
+      if (stageEdite && stageEdite.identifiant === a.cri && !stageEdite.ligne) bloc.append(formulaireStage(a));
+      else {
+        bloc.append(el('button', {
+          type: 'button', classe: 'cfg-bouton', texte: '+ Ajouter un stage',
+          surclick: () => {
+            const dernier = a.stages[a.stages.length - 1];
+            stageEdite = { identifiant: a.cri, ligne: 0, debut: '', fin: '', ifia: dernier ? dernier.ifia : '' };
+            edition = null; rendre();
+          },
+        }));
+      }
+    }
+    return bloc;
+  }
+
+  function formulaireStage(a) {
+    const st = stageEdite;
+    return el('form', {
+      classe: 'usr-formulaire usr-form-stage', novalidate: true,
+      sursubmit: (ev) => {
+        ev.preventDefault();
+        if (!st.debut || !st.fin) { message('Indiquez les dates de début et de fin.', 'erreur'); return; }
+        if (st.fin < st.debut) { message('La fin du stage est avant son début.', 'erreur'); return; }
+        if (!String(st.ifia || '').trim()) { message('Indiquez l\'IFIA.', 'erreur'); return; }
+        envoyerStage(a, { operation: st.ligne ? 'modifier' : 'ajouter', ligne: st.ligne, debut: st.debut, fin: st.fin, ifia: st.ifia });
+      },
+    },
+    champsDates('usr-s', st), champIfia('usr-s-ifia', st),
+    el('div', { classe: 'usr-actions' },
+      el('button', { type: 'submit', classe: 'cfg-bouton', texte: st.ligne ? 'Enregistrer le stage' : 'Ajouter le stage' }),
+      el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Annuler', surclick: () => { stageEdite = null; message(''); rendre(); } })));
+  }
+
+  async function envoyerStage(a, charge) {
+    message('Enregistrement dans DB_EIADE…');
+    try {
+      const rep = await appelerServeur('stageEtudiant', { identifiant: a.cri, ...charge });
+      if (!rep.ok) { message(rep.erreur || 'Refusé par le serveur.', 'erreur'); rendre(); return; }
+      stageEdite = null;
+      await charger(rep.message);
+    } catch (err) {
+      message('Le serveur ne répond pas : stage non enregistré. Réessayez avec du réseau.', 'erreur');
+    }
   }
 
   // ---------- Droits d'administration (GRANT) ----------
@@ -192,7 +284,7 @@ const Utilisateurs = (() => {
 
   // ---------- Ajout / modification ----------
 
-  /** Aperçu de l'identifiant généré (le serveur ajoute « _1 », « _2 »… en cas d'homonyme). */
+  /** Aperçu de l'identifiant généré (même nom et prénom = même étudiant). */
   const morceau = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/[\s'’.]+/g, '').replace(/[^a-z-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '');
 
@@ -228,8 +320,8 @@ const Utilisateurs = (() => {
       avis.hidden = !texte.length;
       if (etudiant) {
         apercu.textContent = ajout
-          ? (morceau(e.nomSeul) && morceau(e.prenom) ? `Identifiant : ${morceau(e.nomSeul)}-${morceau(e.prenom)} (« _1 » ajouté si homonyme)` : 'Identifiant : nom-prenom, généré à l\'enregistrement')
-          : `Identifiant : ${e.identifiant} (ne change pas)`;
+          ? (morceau(e.nomSeul) && morceau(e.prenom) ? `Identifiant : ${morceau(e.nomSeul)}-${morceau(e.prenom)}` : 'Identifiant : nom-prenom, généré à l\'enregistrement')
+          : `Identifiant : ${morceau(e.nomSeul) && morceau(e.prenom) ? `${morceau(e.nomSeul)}-${morceau(e.prenom)}` : e.identifiant}`;
       }
     }
 
@@ -237,11 +329,12 @@ const Utilisateurs = (() => {
       champTexte('usr-f-nomseul', 'Nom', 'nomSeul', { autocomplete: 'off', maxlength: 40 }, majAvis),
       champTexte('usr-f-prenom', 'Prénom', 'prenom', { autocomplete: 'off', maxlength: 40 }, majAvis),
       apercu,
-      champTexte('usr-f-tel', 'Téléphone portable (obligatoire : code de première connexion par SMS)', 'telephone', { type: 'tel', inputmode: 'tel', autocomplete: 'off', placeholder: '06 12 34 56 78' }),
-      el('div', { classe: 'usr-dates' },
-        champTexte('usr-f-debut', 'Début de stage', 'debut', { type: 'date' }),
-        champTexte('usr-f-fin', 'Fin de stage', 'fin', { type: 'date' })),
-      el('p', { classe: 'aide-question', texte: 'En dehors de ces dates, l\'étudiant ne peut pas se connecter (contrôlé aussi hors ligne). Droits d\'un IADE, sans les stupéfiants.' }),
+      champTexte('usr-f-tel', 'Téléphone portable (nécessaire pour le code de première connexion par SMS)', 'telephone', { type: 'tel', inputmode: 'tel', autocomplete: 'off', placeholder: '06 12 34 56 78' }),
+      ajout ? champsDates('usr-f', e) : null,
+      ajout ? champIfia('usr-f-ifia', e) : null,
+      el('p', { classe: 'aide-question', texte: ajout
+        ? 'Le stage est enregistré dans DB_EIADE. En dehors de ses stages, l\'étudiant ne peut pas se connecter (contrôlé aussi hors ligne). Droits d\'un IADE, sans les stupéfiants.'
+        : 'Changer le nom ou le prénom renomme tous ses stages dans DB_EIADE et change son identifiant (il devra se reconnecter).' }),
     ] : [
       champTexte('usr-f-nom', 'Nom et prénom', 'nom', { autocomplete: 'off', placeholder: 'NOM Prénom', maxlength: 80 }),
       champTexte('usr-f-cri', 'Code CRI (6 chiffres)', 'cri', { inputmode: 'numeric', maxlength: 6, autocomplete: 'off' }),
@@ -270,10 +363,12 @@ const Utilisateurs = (() => {
     if (!e.code) { message('Choisissez une fonction.', 'erreur'); return; }
     if (etudiant) {
       if (!morceau(e.nomSeul) || !morceau(e.prenom)) { message('Indiquez le nom et le prénom.', 'erreur'); return; }
-      if (!String(e.telephone || '').trim()) { message('Le numéro de portable est obligatoire (code de première connexion par SMS).', 'erreur'); return; }
-      if (!e.debut || !e.fin) { message('Indiquez les dates de début et de fin de stage.', 'erreur'); return; }
-      if (e.fin < e.debut) { message('La fin du stage est avant son début.', 'erreur'); return; }
-      charge = { ancienCri: e.ancienCri, code: e.code, nomSeul: e.nomSeul, prenom: e.prenom, telephone: e.telephone, debut: e.debut, fin: e.fin };
+      if (!e.ancienCri) {
+        if (!e.debut || !e.fin) { message('Indiquez les dates de début et de fin de stage.', 'erreur'); return; }
+        if (e.fin < e.debut) { message('La fin du stage est avant son début.', 'erreur'); return; }
+        if (!String(e.ifia || '').trim()) { message('Indiquez l\'IFIA.', 'erreur'); return; }
+      }
+      charge = { ancienCri: e.ancienCri, code: e.code, nomSeul: e.nomSeul, prenom: e.prenom, telephone: e.telephone, debut: e.debut, fin: e.fin, ifia: e.ifia };
     } else {
       if (!String(e.nom || '').trim()) { message('Indiquez le nom et le prénom.', 'erreur'); return; }
       if (!/^\d{6}$/.test(cri)) { message('Le code CRI comporte 6 chiffres.', 'erreur'); return; }
@@ -284,6 +379,7 @@ const Utilisateurs = (() => {
       const rep = await appelerServeur('enregistrerAgent', { agent: charge });
       if (!rep.ok) { message(rep.erreur || 'Refusé par le serveur.', 'erreur'); return; }
       ouvert = etudiant ? (rep.identifiant || e.ancienCri) : cri;
+      if (rep.identifiant) filtre = '';
       edition = null;
       await charger(rep.message);
     } catch (err) {
@@ -339,8 +435,8 @@ const Utilisateurs = (() => {
     zone.innerHTML = '';
     zone.append(
       el('h1', { texte: 'Gestion des utilisateurs' }),
-      el('p', { classe: 'consigne', texte: `${agents.length} comptes dans DB_SMUR (dont ${agents.filter((a) => a.etudiant).length} étudiants), ${actifs} avec un mot de passe créé.` }),
-      el('p', { classe: 'note-parc', texte: 'Les fiches sont enregistrées dans DB_SMUR (onglets PERSONNEL, Encadrement et Etudiants). Pour retirer un agent, supprimez sa ligne dans le Sheet.' }),
+      el('p', { classe: 'consigne', texte: `${agents.filter((a) => !a.etudiant).length} agents et ${agents.filter((a) => a.etudiant).length} étudiants IADE, ${actifs} avec un mot de passe créé.` }),
+      el('p', { classe: 'note-parc', texte: 'Agents : DB_SMUR (onglets PERSONNEL et Encadrement). Étudiants IADE et leurs stages : DB_EIADE. Tout se modifie ici, y compris la suppression.' }),
       el('div', { classe: 'usr-outils' },
         el('div', { classe: 'champ usr-champ' }, el('label', { for: 'usr-recherche', texte: 'Rechercher' }), recherche),
         el('div', { classe: 'champ usr-champ' }, el('label', { for: 'usr-filtre', texte: 'Afficher' }), choixRole),
@@ -349,7 +445,8 @@ const Utilisateurs = (() => {
           type: 'button', classe: 'cfg-bouton usr-ajouter', texte: '+ Nouveau compte', disabled: !fonctions.length,
           hidden: !aDroit('UTILISATEURS') && !aDroit('ETUDIANTS'),
           surclick: () => {
-            edition = { ancienCri: '', nom: '', cri: '', code: '', telephone: '', nomSeul: '', prenom: '', debut: '', fin: '' };
+            edition = { ancienCri: '', nom: '', cri: '', code: '', telephone: '', nomSeul: '', prenom: '', debut: '', fin: '', ifia: '' };
+            stageEdite = null;
             ouvert = ''; aConfirmer = ''; message(''); rendre();
           },
         })),
@@ -381,6 +478,7 @@ const Utilisateurs = (() => {
       catalogueDroits = rep.droits || [];
       mesDroits = rep.mesDroits || [];
       moi = rep.moi || '';
+      ifias = rep.ifias || [];
       message(texteSucces || '', texteSucces ? 'succes' : '');
     } catch (err) {
       message('Le serveur ne répond pas. La gestion des utilisateurs nécessite le réseau.', 'erreur');
