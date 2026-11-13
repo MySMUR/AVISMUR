@@ -751,6 +751,12 @@ body:has(.tiroir[open]) { overflow: hidden; }
   cursor: pointer;
 }
 .tiroir-lien small { flex-basis: 100%; font-size: 0.85rem; font-weight: 400; color: var(--gris); }
+/* Icône à gauche de chaque lien du menu ; libellé et sous-titre à droite. */
+.tiroir-lien { flex-wrap: nowrap; column-gap: 0.7rem; }
+.tiroir-icone { width: 1.3rem; height: 1.3rem; flex: none; color: var(--bleu); }
+.tiroir-texte { display: flex; flex-wrap: wrap; align-items: center; column-gap: 0.5rem; min-width: 0; }
+.tiroir-lien.a-venir .tiroir-icone { color: #A9B5C8; }
+.rubrique-admin .tiroir-icone { color: var(--orange); }
 .tiroir-lien:hover { background: var(--ciel); }
 .tiroir-lien[aria-current="page"] { color: var(--bleu); background: var(--ciel); border-left-color: var(--bleu); }
 .tiroir-lien:focus-visible { outline: 3px solid var(--orange); outline-offset: -3px; }
@@ -2231,3 +2237,39 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .pro-appareils ul { list-style: none; margin: 0; padding: 0; }
 .pro-appareils li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.45rem 0; border-top: 1px solid #E1E8F2; }
 .pro-appareils small { color: var(--gris); }
+
+/* ---------- Annuaire du personnel (annuaire.js) ---------- */
+.annuaire { max-width: 52rem; }
+.ann-rappel { margin: 0 0 1rem; padding: 0.7rem 0.9rem; background: #FFF6E8; border-radius: var(--rayon); }
+.ann-outils { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.4rem 1.2rem; }
+.ann-champ { flex: 1 1 16rem; margin-bottom: 0.6rem; }
+.ann-case { margin-bottom: 1rem; }
+.ann-filtres { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 0.6rem; }
+.ann-filtre {
+  min-height: 2.4rem; padding: 0.3rem 0.9rem; font: inherit; font-size: 0.92rem; font-weight: 700;
+  color: var(--bleu); background: #fff; border: 1px solid var(--trait); border-radius: 999px; cursor: pointer;
+}
+.ann-filtre.actif { color: #fff; background: var(--bleu); border-color: var(--bleu); }
+.ann-compte { margin: 0.2rem 0 0.5rem; color: var(--gris); font-size: 0.92rem; }
+.ann-liste { list-style: none; margin: 0 0 1rem; padding: 0; }
+.ann-agent {
+  display: grid; grid-template-columns: 2.6rem 1fr auto; align-items: center; gap: 0.4rem 0.8rem;
+  margin: 0 0 0.45rem; padding: 0.6rem 0.8rem; background: #fff; border: 1px solid var(--trait); border-radius: var(--rayon);
+}
+.ann-moi { border-color: var(--bleu); }
+.ann-avatar { width: 2.6rem; height: 2.6rem; border-radius: 50%; display: grid; place-items: center; background: var(--ciel); color: var(--bleu); font-weight: 700; }
+.ann-identite p { margin: 0; }
+.ann-nom { font-weight: 700; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.ann-fonction { color: var(--gris); font-size: 0.92rem; }
+.ann-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: flex-end; }
+.ann-bouton {
+  display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.6rem; padding: 0.3rem 0.8rem;
+  font-weight: 700; color: #fff; background: var(--bleu); border-radius: 999px; text-decoration: none; white-space: nowrap;
+}
+.ann-bouton svg { width: 1.05rem; height: 1.05rem; }
+.ann-sms { color: var(--bleu); background: var(--ciel); }
+.ann-non-partage { margin: 0; color: #8796AE; font-size: 0.9rem; }
+@media (max-width: 30rem) {
+  .ann-agent { grid-template-columns: 2.6rem 1fr; }
+  .ann-actions, .ann-non-partage { grid-column: 2; justify-content: flex-start; }
+}

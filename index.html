@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=65">
+  <link rel="stylesheet" href="style.css?v=66">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -199,6 +199,9 @@
       <!-- Mon profil : mot de passe, téléphone, mail, partage du numéro, notifications (profil.js) -->
       <div id="zone-profil" class="profil" hidden></div>
 
+      <!-- Annuaire du personnel : agents de DB_SMUR, numéros partagés par leur titulaire (annuaire.js) -->
+      <div id="zone-annuaire" class="annuaire" hidden></div>
+
       <!-- Inventaires emboîtés (IADE) : sac > sacoche > pochette, photos à points, péremptions (inventaires.js) -->
       <div id="zone-inventaires" class="inventaires" hidden></div>
 
@@ -222,46 +225,47 @@
         </button>
       </div>
       <nav class="tiroir-corps" aria-label="Menu principal">
-        <button type="button" class="tiroir-lien tiroir-accueil" data-vue="accueil">Accueil<small>Informations et rappels</small></button>
-        <button type="button" class="tiroir-lien tiroir-accueil" data-vue="profil">Mon profil<small>Mot de passe, téléphone, mail, notifications</small></button>
+        <button type="button" class="tiroir-lien tiroir-accueil" data-vue="accueil"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg><span class="tiroir-texte">Accueil<small>Informations et rappels</small></span></button>
+        <button type="button" class="tiroir-lien tiroir-accueil" data-vue="profil"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span class="tiroir-texte">Mon profil<small>Mot de passe, téléphone, mail, notifications</small></span></button>
+        <button type="button" class="tiroir-lien tiroir-accueil" data-vue="annuaire"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="5" y="3" width="14" height="18" rx="1.5"/><circle cx="12" cy="10" r="2.5"/><path d="M8.5 17c.7-1.8 2-2.8 3.5-2.8s2.8 1 3.5 2.8"/><path d="M3 7h2M3 12h2M3 17h2"/></svg><span class="tiroir-texte">Annuaire du personnel<small>Agents du SMUR et numéros partagés</small></span></button>
 
         <section id="rubrique-vehicules" class="rubrique" aria-labelledby="titre-rubrique-vehicules">
           <h2 id="titre-rubrique-vehicules"><button type="button" class="rubrique-titre" aria-expanded="false" aria-controls="liste-rubrique-vehicules"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 16V8a1 1 0 0 1 1-1h10l4 4h2a1 1 0 0 1 1 1v4"/><path d="M3 16h2m4 0h6m4 0h2"/><circle cx="7" cy="16.5" r="2"/><circle cx="17" cy="16.5" r="2"/><path d="M8 10.5h3M9.5 9v3"/></svg>Véhicules<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg></button></h2>
           <ul id="liste-rubrique-vehicules" hidden>
-          <li><button type="button" class="tiroir-lien" data-vue="checklist-ambulancier">Check-list ambulancier<small>Vérification du matin</small></button></li>
-          <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true">Commande d'oxygène<span class="etiquette">À venir</span></button></li>
-          <li><button type="button" class="tiroir-lien" data-vue="carburant">Carburant<small>Signaler un plein</small></button></li>
-          <li><button type="button" class="tiroir-lien" data-vue="carrosserie">Carrosserie<small>Rayures, impacts, réparations</small></button></li>
-          <li><button type="button" class="tiroir-lien" data-vue="mecanique">Suivi mécanique<small>Passages au garage</small></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="checklist-ambulancier"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M8 5H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M9 13l2 2 4-4"/></svg><span class="tiroir-texte">Check-list ambulancier<small>Vérification du matin</small></span></button></li>
+          <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 2h4M12 2v3"/><path d="M9 8a3 3 0 0 1 6 0v12a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1z"/><path d="M9 12h6"/></svg><span class="tiroir-texte">Commande d'oxygène<span class="etiquette">À venir</span></span></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="carburant"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M3 21h12M4 10h10"/><path d="M14 8l3 2v7.5a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg><span class="tiroir-texte">Carburant<small>Signaler un plein</small></span></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="carrosserie"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 17v-4l2.5-5h13l2.5 5v4z"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/><path d="M5.5 13h13"/></svg><span class="tiroir-texte">Carrosserie<small>Rayures, impacts, réparations</small></span></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="mecanique"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="tiroir-texte">Suivi mécanique<small>Passages au garage</small></span></button></li>
           </ul>
         </section>
 
         <section id="rubrique-inventaires" class="rubrique" aria-labelledby="titre-rubrique-inventaires">
           <h2 id="titre-rubrique-inventaires"><button type="button" class="rubrique-titre" aria-expanded="false" aria-controls="liste-rubrique-inventaires"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M8 5H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M9 11l1.5 1.5L13 10M9 16h6"/></svg>Inventaires<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg></button></h2>
           <ul id="liste-rubrique-inventaires" hidden>
-          <li><button type="button" class="tiroir-lien" data-vue="inventaires">Check-list<small>Sacs, tiroirs, péremptions</small></button></li>
-          <li><button type="button" class="tiroir-lien" data-vue="tableau-inventaires">Tableau de bord<small>Contenants primaires et ce qu'ils renferment</small></button></li>
-          <li><button type="button" class="tiroir-lien" data-vue="suivi-materiel">Suivi matériel<small>Scopes, PSE, respirateurs : révisions et réparations</small></button></li>
-          <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true">Stupéfiants<span class="etiquette">À venir</span></button></li>
-          <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true">Stérilisation<span class="etiquette">À venir</span></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="inventaires"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 6h10M10 12h10M10 18h10"/><path d="M4 6l1.2 1.2L7.5 5M4 12l1.2 1.2L7.5 11M4 18l1.2 1.2L7.5 17"/></svg><span class="tiroir-texte">Check-list<small>Sacs, tiroirs, péremptions</small></span></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="tableau-inventaires"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span class="tiroir-texte">Tableau de bord<small>Contenants primaires et ce qu'ils renferment</small></span></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="suivi-materiel"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/><path d="M6 10h3l1.5-3 2 6 1.5-3H18"/></svg><span class="tiroir-texte">Suivi matériel<small>Scopes, PSE, respirateurs : révisions et réparations</small></span></button></li>
+          <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><path d="M12 15v2"/></svg><span class="tiroir-texte">Stupéfiants<span class="etiquette">À venir</span></span></button></li>
+          <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-4 3-7 6-11z"/><path d="M10 14.5l1.5 1.5 3-3"/></svg><span class="tiroir-texte">Stérilisation<span class="etiquette">À venir</span></span></button></li>
           </ul>
         </section>
 
         <section id="rubrique-admin" class="rubrique rubrique-admin" aria-labelledby="titre-rubrique-admin" hidden>
           <h2 id="titre-rubrique-admin"><button type="button" class="rubrique-titre" aria-expanded="false" aria-controls="liste-rubrique-admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/></svg>Administration<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg></button></h2>
           <ul id="liste-rubrique-admin" hidden>
-          <li data-droits="UTILISATEURS ETUDIANTS GRANT"><button type="button" class="tiroir-lien" data-vue="utilisateurs">Gestion des utilisateurs<small>Comptes, mots de passe, administrateurs</small></button></li>
-          <li data-droits="VEHICULES"><button type="button" class="tiroir-lien" data-vue="configuration">Gestion des véhicules<small>Véhicules et questions des check-lists</small></button></li>
-          <li data-droits="INVENTAIRES"><button type="button" class="tiroir-lien" data-vue="gestion-inventaires">Gestion des inventaires<small>Créer et modifier les inventaires, inventaires types</small></button></li>
+          <li data-droits="UTILISATEURS ETUDIANTS GRANT"><button type="button" class="tiroir-lien" data-vue="utilisateurs"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c.8-3.5 3.2-5 6-5s5.2 1.5 6 5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 15c1.8.6 3 2.3 3.5 5"/></svg><span class="tiroir-texte">Gestion des utilisateurs<small>Comptes, mots de passe, administrateurs</small></span></button></li>
+          <li data-droits="VEHICULES"><button type="button" class="tiroir-lien" data-vue="configuration"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h10M18 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg><span class="tiroir-texte">Gestion des véhicules<small>Véhicules et questions des check-lists</small></span></button></li>
+          <li data-droits="INVENTAIRES"><button type="button" class="tiroir-lien" data-vue="gestion-inventaires"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg><span class="tiroir-texte">Gestion des inventaires<small>Créer et modifier les inventaires, inventaires types</small></span></button></li>
           <li class="tiroir-groupe"><span class="tiroir-groupe-titre">Gestion des catalogues</span>
             <ul>
-            <li data-droits="ARTICLES"><button type="button" class="tiroir-lien" data-vue="base-articles">Base des articles<small>Fiches des articles des inventaires</small></button></li>
-            <li data-droits="MATERIEL"><button type="button" class="tiroir-lien" data-vue="suivi-materiel">Base du matériel<small>Appareils biomédicaux, interventions, répercussion</small></button></li>
+            <li data-droits="ARTICLES"><button type="button" class="tiroir-lien" data-vue="base-articles"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg><span class="tiroir-texte">Base des articles<small>Fiches des articles des inventaires</small></span></button></li>
+            <li data-droits="MATERIEL"><button type="button" class="tiroir-lien" data-vue="suivi-materiel"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/><path d="M6 10h3l1.5-3 2 6 1.5-3H18"/></svg><span class="tiroir-texte">Base du matériel<small>Appareils biomédicaux, interventions, répercussion</small></span></button></li>
             </ul>
           </li>
           <li class="tiroir-groupe"><span class="tiroir-groupe-titre">Gestion de la communication</span>
             <ul>
-            <li data-droits="COMMUNICATION"><button type="button" class="tiroir-lien" data-vue="types-infos">Types d'informations<small>Catégories du mur d'accueil</small></button></li>
+            <li data-droits="COMMUNICATION"><button type="button" class="tiroir-lien" data-vue="types-infos"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 10v4a1 1 0 0 0 1 1h3l6 4V5L7 9H4a1 1 0 0 0-1 1z"/><path d="M17 9a4 4 0 0 1 0 6M19.5 6.5a7.5 7.5 0 0 1 0 11"/></svg><span class="tiroir-texte">Types d'informations<small>Catégories du mur d'accueil</small></span></button></li>
             </ul>
           </li>
           </ul>
@@ -291,11 +295,12 @@
   <script src="inventaires.js?v=34"></script>
   <script src="infos.js?v=5"></script>
   <script src="materiel.js?v=6"></script>
-  <script src="profil.js?v=1"></script>
+  <script src="profil.js?v=2"></script>
+  <script src="annuaire.js?v=1"></script>
   <nav id="barre-scan" class="barre-scan" aria-label="Accès rapide aux inventaires">
     <button type="button" data-scan="qr" aria-label="Scanner un QR code" title="QR code"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM5 5v3h3V5zM14 3h7v7h-7zm2 2v3h3V5zM3 14h7v7H3zm2 2v3h3v-3zM14 14h3v3h-3zM18 18h3v3h-3zM14 18h3v3h-3zM18 14h3v3h-3z" fill="currentColor"/></svg><span>QR code</span></button>
     <button type="button" data-scan="nfc" aria-label="Lire une puce NFC" title="NFC"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 4v10h2V11l4 6h2V7h-2v6l-4-6z" fill="currentColor"/></svg><span>NFC</span></button>
   </nav>
-  <script src="app.js?v=46"></script>
+  <script src="app.js?v=47"></script>
 </body>
 </html>

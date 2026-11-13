@@ -244,7 +244,8 @@ const Profil = (() => {
         'Votre numéro apparaît dans l\'annuaire du personnel de l\'application.'),
       caseAvec('partageAppli', 'Utilisable par l\'application',
         'L\'application peut vous envoyer des SMS d\'alerte ou de rappel. Les SMS de connexion (première connexion, mot de passe oublié) sont envoyés dans tous les cas.'),
-      zoneMessage('partage'));
+      zoneMessage('partage'),
+      App.ouvrirVue ? el('button', { type: 'button', classe: 'lien', texte: 'Voir l\'annuaire du personnel', surclick: () => App.ouvrirVue('annuaire') }) : null);
   }
 
   function blocNotifications() {
