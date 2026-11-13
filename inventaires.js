@@ -1012,6 +1012,62 @@ const Inventaires = (() => {
     const premier = fond.querySelector('.inv-etage');
     if (premier) premier.focus();
   }
+  /**
+   * Gestion : appui long sur une pastille → elle se décolle (vibration), suit le doigt,
+   * et se pose là où on relâche. Un appui court garde le comportement habituel.
+   */
+  function glisserPastille(pastille, img, c, vc, cible) {
+    let minuterie = null;
+    let saisie = false;
+    let bouge = false;
+    let idPointeur = null;
+    const borne = (v) => Math.min(1, Math.max(0, v));
+    const position = (e) => {
+      const r = img.getBoundingClientRect();
+      return { x: borne((e.clientX - r.left) / r.width), y: borne((e.clientY - r.top) / r.height) };
+    };
+    const annuler = () => { clearTimeout(minuterie); minuterie = null; };
+    pastille.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      saisie = false; bouge = false; idPointeur = e.pointerId;
+      annuler();
+      minuterie = setTimeout(() => {
+        saisie = true;
+        if (navigator.vibrate) navigator.vibrate(20);
+        pastille.classList.add('saisie');
+        try { pastille.setPointerCapture(idPointeur); } catch (err) { /* pointeur déjà relâché */ }
+      }, 450);
+    });
+    pastille.addEventListener('pointermove', (e) => {
+      if (!saisie) return;
+      e.preventDefault();
+      bouge = true;
+      const { x, y } = position(e);
+      pastille.style.left = `${x * 100}%`;
+      pastille.style.top = `${y * 100}%`;
+    });
+    const finir = (e, poser) => {
+      annuler();
+      if (!saisie) return;
+      saisie = false;
+      pastille.classList.remove('saisie');
+      try { pastille.releasePointerCapture(idPointeur); } catch (err) { /* déjà libéré */ }
+      if (poser && bouge) {
+        majVue(c, vc.cle, { points: vc.points.filter((q) => q.cible !== cible).concat({ cible, ...position(e) }) });
+        placement = '';
+        marquer(c.id);
+      }
+      pastille.dataset.glisse = '1'; // empêche le clic qui suit le relâcher
+      rendre({ garderPosition: true });
+    };
+    pastille.addEventListener('pointerup', (e) => finir(e, true));
+    pastille.addEventListener('pointercancel', (e) => finir(e, false));
+    pastille.addEventListener('contextmenu', (e) => e.preventDefault());
+    pastille.addEventListener('click', (e) => {
+      if (pastille.dataset.glisse) { delete pastille.dataset.glisse; e.preventDefault(); e.stopImmediatePropagation(); }
+    }, true);
+  }
+
   /** Flèche retour : un appui remonte d'un étage ; un appui long (ou clic droit) propose de choisir l'étage. */
   function boutonRetour(retour, etages) {
     let minuterie = null;
@@ -1247,6 +1303,7 @@ const Inventaires = (() => {
           cadenas.classList.add('inv-point-cadenas');
           pastille.append(cadenas);
         }
+        if (edition) glisserPastille(pastille, img, c, vc, p.cible);
         cadre.append(pastille);
       });
       if (placement && contenant(placement)) {

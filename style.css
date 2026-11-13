@@ -2117,3 +2117,7 @@ details.inv-tb-legende li { display: inline-flex; align-items: center; gap: 0.35
 .commentaire-saisie { display: flex; flex-direction: column; gap: 0.5rem; }
 .commentaire-saisie textarea { width: 100%; resize: vertical; }
 .commentaire-saisie .envoyer { align-self: flex-end; color: #fff; background: var(--bleu); border-color: var(--bleu); }
+
+/* Gestion : déplacement d'une pastille par appui long puis glisser */
+.inv-photo button.inv-point { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.inv-point.saisie { transform: translate(-50%, -50%) scale(1.35); background: var(--orange); box-shadow: 0 4px 12px rgba(0,0,0,.45); z-index: 5; cursor: grabbing; animation: none; }
