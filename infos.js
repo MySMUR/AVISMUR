@@ -357,9 +357,9 @@ const Infos = (() => {
         info.destinataires.map((d) => (METIERS.find((m) => m.id === d) || { libelle: d }).libelle).join(', '))),
     enConfirmation
       ? el('div', { classe: 'info-confirmation', role: 'group', 'aria-label': 'Confirmer' },
-        el('p', { texte: 'Mettre fin à cette information pour tout le monde ?' }),
+        el('p', { texte: 'Clôturer cette information pour tout le monde ?' }),
         el('div', { classe: 'info-confirmation-boutons' },
-          el('button', { type: 'button', classe: 'info-bouton danger', texte: 'Oui, y mettre fin', surclick: () => terminer(info) }),
+          el('button', { type: 'button', classe: 'info-bouton danger', texte: 'Oui, clôturer', surclick: () => terminer(info) }),
           el('button', { type: 'button', classe: 'info-bouton', texte: 'Annuler', surclick: () => { confirmerFin = ''; rendre(); } })))
       : el('div', { classe: 'info-actions' },
         boutonCommentaires,
