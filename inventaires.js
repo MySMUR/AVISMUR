@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 13;
+  const VERSION_SERVEUR = 14;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -1691,6 +1691,8 @@ const Inventaires = (() => {
   /** Ligne d'un contrôle en check-list : champ adapté au type, rouge si hors plage. */
   /** Petite mention « facultatif » après le nom d'un article qui peut manquer sans anomalie. */
   const mentionFacultatif = (a) => (estFacultatif(a) ? el('small', { classe: 'inv-facultatif', title: 'Facultatif : son absence ne rend pas l\'inventaire non conforme', texte: ' facultatif' }) : null);
+  /** Commentaire d'un article (saisi en gestion), visible de tous sous l'article. */
+  const noteCommentaire = (a) => (a && a.commentaire ? el('p', { classe: 'inv-commentaire', texte: a.commentaire }) : null);
   function ligneControle(a, b, modifie) {
     const li = el('li', { classe: `inv-article inv-controle inv-controle-${a.controle}` });
     const champ = idChamp();
@@ -1732,7 +1734,7 @@ const Inventaires = (() => {
       saisie = el('span', { classe: 'inv-valeur-zone' }, entree, unite ? el('span', { classe: 'inv-qte-attendue', texte: unite }) : null);
     }
     ligne.append(saisie);
-    li.append(ligne);
+    li.append(ligne, noteCommentaire(a));
     etat_();
     return li;
   }
@@ -1882,6 +1884,8 @@ const Inventaires = (() => {
         ligne.append(el('span', { classe: 'inv-qte-attendue', texte: a.quantite }));
       }
       li.append(ligne);
+      const note = noteCommentaire(a);
+      if (note) li.append(note);
       if (suiviPeremption(a)) {
         const champ = idChamp();
         const echeance = el('span', { classe: 'inv-echeance' });
@@ -2627,6 +2631,14 @@ const Inventaires = (() => {
         marquer(c.id);
       } }), ' Facultatif');
   }
+  /** Champ « Commentaire » de l'édition : texte libre affiché à tous sous l'article en check-list. */
+  function champCommentaire(c, a) {
+    return el('input', {
+      classe: 'inv-commentaire-saisie', maxlength: '300', placeholder: '💬 Commentaire (visible de tous)', valeur: a.commentaire || '',
+      'aria-label': `Commentaire visible de tous (${nomArticle(a)})`,
+      surchange: (e) => { const t = e.target.value.trim(); if (t) a.commentaire = t; else delete a.commentaire; e.target.value = t; marquer(c.id); },
+    });
+  }
   function ligneEditionControle(c, a, outils) {
     const nombre = (cle, libelle) => el('label', { classe: 'inv-qte-libelle' }, `${libelle} `, el('input', {
       type: 'text', inputmode: 'decimal', classe: 'inv-qte', valeur: a[cle] === undefined ? '' : String(a[cle]), placeholder: '–', 'aria-label': `${libelle} (${a.nom})`,
@@ -2644,7 +2656,8 @@ const Inventaires = (() => {
     return el('div', { classe: 'inv-edition-article inv-edition-fiche inv-edition-controle', 'data-cle': a.id }, poignee(a.nom),
       el('div', { classe: 'inv-edition-nom' },
         el('input', { 'aria-label': 'Libellé du contrôle', maxlength: '120', valeur: a.nom, classe: 'inv-nom-article', surchange: (e) => { const t = e.target.value.trim(); if (t) { a.nom = t; marquer(c.id); } else e.target.value = a.nom; } }),
-        el('small', { texte: `Contrôle : ${CONTROLES[a.controle].nom}${texteAttente(a) ? ` (${texteAttente(a)})` : ''}` })),
+        el('small', { texte: `Contrôle : ${CONTROLES[a.controle].nom}${texteAttente(a) ? ` (${texteAttente(a)})` : ''}` }),
+        champCommentaire(c, a)),
       el('div', { classe: 'cfg-ligne inv-edition-outils' }, ...reglages, caseFacultatif(c, a), ...outils));
   }
   function blocArticles(c) {
@@ -2679,7 +2692,8 @@ const Inventaires = (() => {
                 rechercheAjout = rattacher ? a.nom : '';
                 creation = null;
                 rendre({ garderPosition: true, focus: rattacher ? '.inv-recherche-article input' : '' });
-              } }))),
+              } })),
+          champCommentaire(c, a)),
         el('div', { classe: 'cfg-ligne inv-edition-outils' }, el('label', { classe: 'inv-qte-libelle' }, 'Qté ',
           el('select', { classe: 'inv-qte-mode', 'aria-label': `Quantité exacte ou minimale (${nom})`, title: 'Exacte : ni plus ni moins. Minimale : au moins cette quantité (consommables conditionnés par boîtes…)', surchange: (e) => {
             if (e.target.value === 'min') a.quantiteMin = true; else delete a.quantiteMin;
@@ -3123,8 +3137,8 @@ const Inventaires = (() => {
   const copieProfonde = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   /** Article réduit à ce qui se répercute (le nom des articles de la base vient de la fiche). */
   const sigArticle = (a) => (a.separateur ? { separateur: true, nom: a.nom }
-    : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu, facultatif: a.facultatif === true || undefined }
-      : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || ''), quantiteMin: a.quantiteMin === true || undefined, facultatif: a.facultatif === true || undefined });
+    : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined }
+      : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || ''), quantiteMin: a.quantiteMin === true || undefined, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined });
   /** Instantané d'un contenant du modèle : ce que ses exemplaires doivent reproduire. */
   function instantane(m) {
     return {
@@ -3193,6 +3207,7 @@ const Inventaires = (() => {
           const a = mm.controle || i.controle ? depuisModele() : { ...i, ...depuisModele() };
           if (!mm.facultatif) delete a.facultatif; // redevenu obligatoire dans le modèle
           if (!mm.quantiteMin) delete a.quantiteMin; // redevenue exacte dans le modèle
+          if (!mm.commentaire) delete a.commentaire; // commentaire retiré du modèle
           resultat.push(a);
         }
         else { resultat.push(i); if (!egal(sigArticle(i), sigArticle(mm))) conserves += 1; }
@@ -3586,12 +3601,13 @@ const Inventaires = (() => {
               echeance.textContent = n.texte ? ` ${n.texte}` : '';
               li.className = n.niveau;
             } });
-          li.append(el('div', { classe: 'inv-peremption' }, el('span', { texte: 'Pér. ' }), champ, echeance));
+          li.append(el('div', { classe: 'inv-peremption' }, el('span', { texte: 'Pér. ' }), champ, echeance), noteCommentaire(a));
           return li;
         }
         return el('li', { classe: pe ? pe.niveau : '' }, nomArticle(a),
           a.quantite ? el('span', { classe: 'inv-qte-attendue', texte: ` × ${a.quantite}` }) : null,
-          date ? el('small', { classe: 'inv-consultation-date', texte: ` · pér. ${afficherDate(date)}${pe.texte ? ` (${pe.texte})` : ''}` }) : null);
+          date ? el('small', { classe: 'inv-consultation-date', texte: ` · pér. ${afficherDate(date)}${pe.texte ? ` (${pe.texte})` : ''}` }) : null,
+          noteCommentaire(a));
       })));
   }
 
@@ -3983,7 +3999,7 @@ const Inventaires = (() => {
         el(niveau ? 'h2' : 'h1', { texte: `${x.nom}${x.scellable ? ' (scellable)' : ''}` }),
         x.articles.length ? el('ul', {}, ...x.articles.map((a) => (a.separateur ? el('li', { classe: 'imp-separation', texte: a.nom }) : el('li', {},
           el('span', { classe: 'imp-case', 'aria-hidden': 'true' }),
-          el('span', { classe: 'imp-nom', texte: estControle(a) ? `${nomArticle(a)}${texteAttente(a) ? ` (${texteAttente(a)})` : ''} : ${a.controle === 'oui' ? 'Oui / Non' : '……………'}` : `${nomArticle(a)}${a.quantite ? ` × ${estMinimum(a) ? '≥ ' : ''}${a.quantite}` : ''}${estFacultatif(a) ? ' (facultatif)' : ''}` }),
+          el('span', { classe: 'imp-nom', texte: estControle(a) ? `${nomArticle(a)}${texteAttente(a) ? ` (${texteAttente(a)})` : ''} : ${a.controle === 'oui' ? 'Oui / Non' : '……………'}` : `${nomArticle(a)}${a.quantite ? ` × ${estMinimum(a) ? '≥ ' : ''}${a.quantite}` : ''}${estFacultatif(a) ? ' (facultatif)' : ''}${a.commentaire ? ` — ${a.commentaire}` : ''}` }),
           suiviPeremption(a) ? el('span', { classe: 'imp-date', texte: `Pér. ${afficherDate(datePeremption(x.id, a.id)) || '……/………'}` }) : null)))) : null);
     });
     lancerImpression([

@@ -2397,3 +2397,9 @@ body.fenetre-ouverte .mur-publier { display: none; }
 /* Miniature de la photo d'un sous-inventaire, à côté de son numéro. */
 .inv-carte-photo { width: 3rem; height: 3rem; flex-shrink: 0; overflow: hidden; border-radius: 6px; border: 1px solid var(--trait); background: var(--ciel); }
 .inv-carte-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Commentaire d'un article : saisi en gestion, visible de tous sous l'article */
+.inv-commentaire { margin: 0.1rem 0 0.2rem 2.2rem; font-size: 0.85rem; font-style: italic; color: #5A4A00; }
+.inv-commentaire::before { content: '💬 '; font-style: normal; }
+.inv-commentaire-saisie { display: block; width: 100%; margin-top: 0.25rem; padding: 0.3rem 0.5rem; font-size: 0.85rem; border: 1px dashed var(--trait); border-radius: 6px; background: #fff; }
+.inv-commentaire-saisie:focus { border-style: solid; border-color: var(--bleu); }
