@@ -933,6 +933,12 @@ const Inventaires = (() => {
   /** Quantité attendue (nombre) d'un article, ou null s'il n'en a pas. */
   const attendue = (a) => (/^\d+$/.test(String(a.quantite || '').trim()) ? Number(a.quantite) : null);
   /** Quantité trouvée : par défaut, la quantité attendue. */
+  /** Quantité minimale (ex. consommables conditionnés par boîtes : « au moins 10 ») ; sinon quantité exacte. */
+  const estMinimum = (a) => Boolean(a && a.quantiteMin === true);
+  /** Quantité trouvée hors attente : en dessous, ou au-dessus si la quantité doit être exacte. */
+  const ecartQuantite = (att, qte, min) => qte < att || (!min && qte > att);
+  /** « 8/10 » (exacte) ou « 8/≥10 » (minimale). */
+  const texteQuantite = (qte, att, min) => `${qte}/${min ? '≥' : ''}${att}`;
   const trouvee = (a, b) => (b.quantites[a.id] !== undefined ? b.quantites[a.id] : attendue(a));
   const dateCourante = (c, a, b) => (b.dates[a.id] !== undefined ? b.dates[a.id] : datePeremption(c.id, a.id));
 
@@ -952,16 +958,16 @@ const Inventaires = (() => {
       const qte = trouvee(a, b);
       return {
         id: a.id, nom: nomArticle(a), ok: Boolean(b.coches[a.id]), ...(estFacultatif(a) ? { facultatif: true } : {}),
-        ...(att !== null ? { attendu: att, quantite: qte === null || qte === '' ? 0 : Number(qte) } : {}),
+        ...(att !== null ? { attendu: att, quantite: qte === null || qte === '' ? 0 : Number(qte), ...(estMinimum(a) ? { min: true } : {}) } : {}),
         ...(suiviPeremption(a) ? { peremption: dateCourante(c, a, b) } : {}),
       };
     });
     // Manquant : non coché, ou coché avec une quantité inférieure à celle attendue (jamais pour un article facultatif).
-    const incomplet = (a) => !a.facultatif && (!a.ok || (a.attendu !== undefined && a.quantite < a.attendu));
+    const incomplet = (a) => !a.facultatif && (!a.ok || (a.attendu !== undefined && ecartQuantite(a.attendu, a.quantite, a.min)));
     const manquants = articles.filter(incomplet);
     if (manquants.length && confirmer !== `valider-${c.id}`) {
       confirmer = `valider-${c.id}`;
-      const libelle = (a) => (a.controle ? `${a.nom} (${a.libelle})` : (a.ok ? `${a.nom} (${a.quantite}/${a.attendu})` : a.nom));
+      const libelle = (a) => (a.controle ? `${a.nom} (${a.libelle})` : (a.ok ? `${a.nom} (${texteQuantite(a.quantite, a.attendu, a.min)})` : a.nom));
       messageVue(`Sera noté manquant ou en anomalie : ${manquants.map(libelle).join(' ; ')}. Corrigez ou appuyez de nouveau pour valider quand même.`, 'erreur');
       zone.querySelector('.inv-valider').textContent = 'Valider quand même';
       return;
@@ -978,7 +984,7 @@ const Inventaires = (() => {
     const maintenant = new Date().toISOString();
     const valeurs = {};
     articles.filter((a) => a.controle).forEach((a) => { valeurs[a.id] = a.valeur; });
-    etat.verifs[c.id] = { date: maintenant, agent: App.agent(), manquants: manquants.map((a) => ({ id: a.id, nom: a.controle ? `${a.nom} (${a.libelle})` : (a.ok ? `${a.nom} (${a.quantite}/${a.attendu})` : a.nom) })), remarque: b.remarque.trim(), valeurs };
+    etat.verifs[c.id] = { date: maintenant, agent: App.agent(), manquants: manquants.map((a) => ({ id: a.id, nom: a.controle ? `${a.nom} (${a.libelle})` : (a.ok ? `${a.nom} (${texteQuantite(a.quantite, a.attendu, a.min)})` : a.nom) })), remarque: b.remarque.trim(), valeurs };
     articles.filter((a) => a.peremption !== undefined).forEach((a) => { etat.peremptions[`${c.id}/${a.id}`] = { date: a.peremption, maj: maintenant }; });
     delete brouillons.liste[c.id];
     sauverEtat();
@@ -1835,17 +1841,17 @@ const Inventaires = (() => {
       if (att !== null) {
         const champQte = el('input', {
           type: 'number', inputmode: 'numeric', min: '0', max: '999', step: '1', classe: 'inv-qte',
-          'aria-label': `Quantité de ${nomArticle(a)} (attendu ${att})`, valeur: String(trouvee(a, b)),
+          'aria-label': `Quantité de ${nomArticle(a)} (attendu ${estMinimum(a) ? 'au moins ' : ''}${att})`, valeur: String(trouvee(a, b)),
           surfocus: (e) => e.target.select(),
           surinput: (e) => {
             const v = e.target.value === '' ? '' : Math.max(0, Math.round(Number(e.target.value)));
             b.quantites[a.id] = v;
-            champQte.classList.toggle('insuffisant', v !== '' && v < att);
+            champQte.classList.toggle('insuffisant', v !== '' && ecartQuantite(att, v, estMinimum(a)));
             modifie();
           },
         });
-        champQte.classList.toggle('insuffisant', Number(trouvee(a, b)) < att);
-        ligne.append(el('span', { classe: 'inv-qte-zone' }, champQte, el('span', { classe: 'inv-qte-attendue', 'aria-hidden': 'true', texte: `/${att}` })));
+        champQte.classList.toggle('insuffisant', ecartQuantite(att, Number(trouvee(a, b)), estMinimum(a)));
+        ligne.append(el('span', { classe: 'inv-qte-zone' }, champQte, el('span', { classe: 'inv-qte-attendue', 'aria-hidden': 'true', title: estMinimum(a) ? 'Quantité minimale' : 'Quantité exacte', texte: `/${estMinimum(a) ? '≥' : ''}${att}` })));
       } else if (a.quantite) {
         ligne.append(el('span', { classe: 'inv-qte-attendue', texte: a.quantite }));
       }
@@ -2648,7 +2654,12 @@ const Inventaires = (() => {
                 creation = null;
                 rendre({ garderPosition: true, focus: rattacher ? '.inv-recherche-article input' : '' });
               } }))),
-        el('div', { classe: 'cfg-ligne inv-edition-outils' }, el('label', { classe: 'inv-qte-libelle' }, 'Qté ', qte), caseFacultatif(c, a), ...fleches)));
+        el('div', { classe: 'cfg-ligne inv-edition-outils' }, el('label', { classe: 'inv-qte-libelle' }, 'Qté ',
+          el('select', { classe: 'inv-qte-mode', 'aria-label': `Quantité exacte ou minimale (${nom})`, title: 'Exacte : ni plus ni moins. Minimale : au moins cette quantité (consommables conditionnés par boîtes…)', surchange: (e) => {
+            if (e.target.value === 'min') a.quantiteMin = true; else delete a.quantiteMin;
+            marquer(c.id);
+          } }, el('option', { value: 'exact', selected: !estMinimum(a), texte: '=' }), el('option', { value: 'min', selected: estMinimum(a), texte: '≥' })),
+          qte), caseFacultatif(c, a), ...fleches)));
     });
 
     triable(liste, (cles) => {
@@ -3087,7 +3098,7 @@ const Inventaires = (() => {
   /** Article réduit à ce qui se répercute (le nom des articles de la base vient de la fiche). */
   const sigArticle = (a) => (a.separateur ? { separateur: true, nom: a.nom }
     : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu, facultatif: a.facultatif === true || undefined }
-      : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || ''), facultatif: a.facultatif === true || undefined });
+      : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || ''), quantiteMin: a.quantiteMin === true || undefined, facultatif: a.facultatif === true || undefined });
   /** Instantané d'un contenant du modèle : ce que ses exemplaires doivent reproduire. */
   function instantane(m) {
     return {
@@ -3155,6 +3166,7 @@ const Inventaires = (() => {
         if (forcer || (b && egal(sigArticle(i), sigArticle(b)))) {
           const a = mm.controle || i.controle ? depuisModele() : { ...i, ...depuisModele() };
           if (!mm.facultatif) delete a.facultatif; // redevenu obligatoire dans le modèle
+          if (!mm.quantiteMin) delete a.quantiteMin; // redevenue exacte dans le modèle
           resultat.push(a);
         }
         else { resultat.push(i); if (!egal(sigArticle(i), sigArticle(mm))) conserves += 1; }
@@ -3368,7 +3380,7 @@ const Inventaires = (() => {
         const att = attendue(a);
         return {
           id: a.id, nom: nomArticle(a), ok: !manquants.has(a.id), ...(estFacultatif(a) ? { facultatif: true } : {}),
-          ...(att !== null ? { attendu: att, quantite: att } : {}),
+          ...(att !== null ? { attendu: att, quantite: att, ...(estMinimum(a) ? { min: true } : {}) } : {}),
           ...(suiviPeremption(a) ? { peremption: datePeremption(d.id, a.id) } : {}),
         };
       });
@@ -3945,7 +3957,7 @@ const Inventaires = (() => {
         el(niveau ? 'h2' : 'h1', { texte: `${x.nom}${x.scellable ? ' (scellable)' : ''}` }),
         x.articles.length ? el('ul', {}, ...x.articles.map((a) => (a.separateur ? el('li', { classe: 'imp-separation', texte: a.nom }) : el('li', {},
           el('span', { classe: 'imp-case', 'aria-hidden': 'true' }),
-          el('span', { classe: 'imp-nom', texte: estControle(a) ? `${nomArticle(a)}${texteAttente(a) ? ` (${texteAttente(a)})` : ''} : ${a.controle === 'oui' ? 'Oui / Non' : '……………'}` : `${nomArticle(a)}${a.quantite ? ` × ${a.quantite}` : ''}${estFacultatif(a) ? ' (facultatif)' : ''}` }),
+          el('span', { classe: 'imp-nom', texte: estControle(a) ? `${nomArticle(a)}${texteAttente(a) ? ` (${texteAttente(a)})` : ''} : ${a.controle === 'oui' ? 'Oui / Non' : '……………'}` : `${nomArticle(a)}${a.quantite ? ` × ${estMinimum(a) ? '≥ ' : ''}${a.quantite}` : ''}${estFacultatif(a) ? ' (facultatif)' : ''}` }),
           suiviPeremption(a) ? el('span', { classe: 'imp-date', texte: `Pér. ${afficherDate(datePeremption(x.id, a.id)) || '……/………'}` }) : null)))) : null);
     });
     lancerImpression([
