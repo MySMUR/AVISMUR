@@ -1181,6 +1181,9 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .inv-statut .inv-badges { margin-left: 0.5rem; }
 .inv-badge { padding: 0.05rem 0.55rem; font-size: 0.85rem; font-weight: 700; color: var(--gris); background: #fff; border: 1.5px solid var(--trait); border-radius: 999px; white-space: nowrap; }
 .inv-badge.alerte { color: #fff; background: var(--erreur); border-color: var(--erreur); }
+.inv-badge-cliquable { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.inv-badge-cliquable:hover, .inv-badge-cliquable:focus-visible { filter: brightness(0.9); outline: 2px solid var(--erreur); outline-offset: 2px; }
+.inv-manquants-ou { color: inherit; }
 .inv-badge.proche { color: #8A4B00; background: #FFF3E0; border-color: var(--orange); }
 
 /* Cartes : inventaires du premier niveau et sous-inventaires */

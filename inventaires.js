@@ -532,7 +532,8 @@ const Inventaires = (() => {
 
   /** État d'un contenant et de tout ce qu'il contient. */
   function bilan(id) {
-    const b = { total: 0, faits: 0, manquants: 0, perimes: 0, proches: 0, sansDate: 0 };
+    // listeManquants : le détail des manquants (affiché au clic sur le badge) ; remarques : notées à part, jamais comptées.
+    const b = { total: 0, faits: 0, manquants: 0, perimes: 0, proches: 0, sansDate: 0, listeManquants: [], remarques: [], racine: id };
     descendants(id).forEach((c) => {
       if (dansUnModele(c.id)) return; // un inventaire type ne se vérifie pas
       if (c.emplacement && !occupantDuJour(c)) { b.total += 1; b.vides = (b.vides || 0) + 1; }
@@ -549,7 +550,12 @@ const Inventaires = (() => {
       if (aCocher(c).length) {
         b.total += 1;
         const v = verifDuJour(c.id);
-        if (v) { b.faits += 1; b.manquants += v.manquants.length; }
+        if (v) {
+          b.faits += 1;
+          b.manquants += v.manquants.length;
+          v.manquants.forEach((m) => b.listeManquants.push({ nom: m.nom, ou: c.id }));
+          if (v.remarque && !verifScellee(v)) b.remarques.push({ texte: v.remarque, ou: c.id, agent: v.agent });
+        }
       }
       aCocher(c).filter(suiviPeremption).forEach((a) => {
         const p = etatPeremption(datePeremption(c.id, a.id)).niveau;
@@ -1112,9 +1118,42 @@ const Inventaires = (() => {
     if (texte) p.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
+  /** Fenêtre « Manquants » : ce qui a été noté manquant aujourd'hui, par inventaire, puis les remarques (non comptées). */
+  function fenetreManquants(b) {
+    const racine = contenant(b.racine);
+    const fond = el('div', { classe: 'fenetre-fond', surclick: (e) => { if (e.target === fond) fermer(); } });
+    const retour = document.activeElement;
+    const fermer = () => { fond.remove(); document.body.classList.remove('fenetre-ouverte'); if (retour && retour.isConnected) retour.focus(); };
+    const titre = idChamp();
+    const groupes = (liste) => {
+      const parOu = new Map();
+      liste.forEach((x) => { if (!parOu.has(x.ou)) parOu.set(x.ou, []); parOu.get(x.ou).push(x); });
+      return [...parOu.entries()];
+    };
+    const nomOu = (id) => (id === b.racine ? '' : chemin(id).slice(chemin(b.racine).length).map((x) => x.nom).join(' › '));
+    const lienOu = (id) => (id === b.racine ? null : el('a', { href: lien(id), classe: 'inv-manquants-ou', surclick: (e) => { e.preventDefault(); fermer(); aller(id); } }, nomOu(id)));
+    fond.append(el('div', { classe: 'fenetre inv-tb-fenetre', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
+      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: `${pluriel(b.manquants, 'manquant')}${racine ? ` — ${racine.nom}` : ''}` }),
+        el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
+      ...groupes(b.listeManquants).map(([ou, liste]) => el('section', { classe: 'inv-tb-rubrique' },
+        lienOu(ou) ? el('h3', {}, lienOu(ou)) : null,
+        el('ul', {}, ...liste.map((x) => el('li', { classe: 'rouge', texte: x.nom }))))),
+      b.remarques.length ? el('section', { classe: 'inv-tb-rubrique' }, el('h3', { texte: 'Remarques (non comptées)' }),
+        el('ul', {}, ...b.remarques.map((r) => el('li', {}, r.texte, el('small', { texte: ` — ${[nomOu(r.ou), r.agent].filter(Boolean).join(', ')}` }))))) : null));
+    fond.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
+    document.body.append(fond);
+    document.body.classList.add('fenetre-ouverte');
+    fond.querySelector('.fenetre-fermer').focus();
+  }
   function badges(b) {
     const liste = [];
-    if (b.manquants) liste.push(el('span', { classe: 'inv-badge alerte', texte: pluriel(b.manquants, 'manquant') }));
+    if (b.manquants) {
+      // Souvent dans une carte (lien) : le badge ouvre le détail sans suivre le lien.
+      const ouvrir = (e) => { e.preventDefault(); e.stopPropagation(); fenetreManquants(b); };
+      liste.push(el('span', { classe: 'inv-badge alerte inv-badge-cliquable', role: 'button', tabindex: '0', title: 'Voir ce qui manque',
+        'aria-label': `${pluriel(b.manquants, 'manquant')} : voir le détail`, texte: pluriel(b.manquants, 'manquant'),
+        surclick: ouvrir, surkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') ouvrir(e); } }));
+    }
     if (b.perimes) liste.push(el('span', { classe: 'inv-badge alerte', texte: pluriel(b.perimes, 'périmé') }));
     if (b.proches) liste.push(el('span', { classe: 'inv-badge proche', texte: `${b.proches} bientôt périmé${b.proches > 1 ? 's' : ''}` }));
     if (b.sansDate) liste.push(el('span', { classe: 'inv-badge', texte: `${pluriel(b.sansDate, 'date')} à saisir` }));
@@ -2082,7 +2121,7 @@ const Inventaires = (() => {
     const champRemarque = idChamp();
     const v = etat.verifs[c.id];
     const veille = v && !verifDuJour(c.id) && (v.manquants.length || v.remarque)
-      ? el('p', { classe: 'note-parc anomalie', texte: `Dernière vérification le ${new Date(v.date).toLocaleDateString('fr-FR')} par ${v.agent} : ${[v.manquants.length ? `manquant : ${v.manquants.map((m) => m.nom).join(', ')}` : '', v.remarque].filter(Boolean).join(' — ')}` })
+      ? el('p', { classe: `note-parc${v.manquants.length ? ' anomalie' : ''}`, texte: `Dernière vérification le ${new Date(v.date).toLocaleDateString('fr-FR')} par ${v.agent} : ${[v.manquants.length ? `manquant : ${v.manquants.map((m) => m.nom).join(', ')}` : '', v.remarque].filter(Boolean).join(' — ')}` })
       : null;
     // « Tout cocher » de l'en-tête coche toutes les sections d'un coup.
     if (groupes.length) toutCocher.setAttribute('aria-label', 'Tout cocher : toutes les sections');
