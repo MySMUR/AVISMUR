@@ -304,6 +304,8 @@ const Inventaires = (() => {
     valeur: { nom: 'Mesure', aide: 'nombre avec unité (bar, L…)', defaut: 'Pression' },
   };
   const estControle = (a) => Boolean(a && CONTROLES[a.controle]);
+  /** Article facultatif (ex. détecteur de CO présent sur certains sacs) : son absence ne rend pas l'inventaire non conforme. */
+  const estFacultatif = (a) => Boolean(a && a.facultatif === true);
   const seuilBatterie = (a) => (a.seuil !== undefined ? a.seuil : (a.echelle === '4' ? 2 : 50));
   /** Évalue une valeur relevée : { ok, rempli }. */
   function evaluer(a, v) {
@@ -944,18 +946,18 @@ const Inventaires = (() => {
     const articles = aCocher(c).map((a) => {
       if (estControle(a)) {
         const val = String(b.valeurs[a.id] === undefined ? '' : b.valeurs[a.id]).trim();
-        return { id: a.id, nom: nomArticle(a), controle: a.controle, ok: evaluer(a, val).ok, valeur: val, libelle: texteValeur(a, val) };
+        return { id: a.id, nom: nomArticle(a), controle: a.controle, ok: evaluer(a, val).ok, valeur: val, libelle: texteValeur(a, val), ...(estFacultatif(a) ? { facultatif: true } : {}) };
       }
       const att = attendue(a);
       const qte = trouvee(a, b);
       return {
-        id: a.id, nom: nomArticle(a), ok: Boolean(b.coches[a.id]),
+        id: a.id, nom: nomArticle(a), ok: Boolean(b.coches[a.id]), ...(estFacultatif(a) ? { facultatif: true } : {}),
         ...(att !== null ? { attendu: att, quantite: qte === null || qte === '' ? 0 : Number(qte) } : {}),
         ...(suiviPeremption(a) ? { peremption: dateCourante(c, a, b) } : {}),
       };
     });
-    // Manquant : non coché, ou coché avec une quantité inférieure à celle attendue.
-    const incomplet = (a) => !a.ok || (a.attendu !== undefined && a.quantite < a.attendu);
+    // Manquant : non coché, ou coché avec une quantité inférieure à celle attendue (jamais pour un article facultatif).
+    const incomplet = (a) => !a.facultatif && (!a.ok || (a.attendu !== undefined && a.quantite < a.attendu));
     const manquants = articles.filter(incomplet);
     if (manquants.length && confirmer !== `valider-${c.id}`) {
       confirmer = `valider-${c.id}`;
@@ -1655,11 +1657,13 @@ const Inventaires = (() => {
   let peremptionsVisibles = false;
   const datesOuvertes = new Set(); // articles dont on a ouvert la date en touchant leur repère
   /** Ligne d'un contrôle en check-list : champ adapté au type, rouge si hors plage. */
+  /** Petite mention « facultatif » après le nom d'un article qui peut manquer sans anomalie. */
+  const mentionFacultatif = (a) => (estFacultatif(a) ? el('small', { classe: 'inv-facultatif', title: 'Facultatif : son absence ne rend pas l\'inventaire non conforme', texte: ' facultatif' }) : null);
   function ligneControle(a, b, modifie) {
     const li = el('li', { classe: `inv-article inv-controle inv-controle-${a.controle}` });
     const champ = idChamp();
     const attente = texteAttente(a);
-    const etiquette = el('label', { for: champ, classe: 'inv-nom' }, nomArticle(a), attente ? el('small', { classe: 'inv-attente', texte: ` (${attente})` }) : null);
+    const etiquette = el('label', { for: champ, classe: 'inv-nom' }, nomArticle(a), attente ? el('small', { classe: 'inv-attente', texte: ` (${attente})` }) : null, mentionFacultatif(a));
     const val = () => (b.valeurs[a.id] === undefined ? '' : String(b.valeurs[a.id]));
     const ligne = el('div', { classe: 'inv-ligne' }, el('span', { classe: 'inv-pastille-controle', 'aria-hidden': 'true' }), etiquette);
     const etat_ = () => {
@@ -1781,10 +1785,13 @@ const Inventaires = (() => {
       basculer.setAttribute('aria-pressed', String(peremptionsVisibles));
       basculer.textContent = peremptionsVisibles ? 'Masquer les péremptions' : `Péremptions (${suivis.length})`;
     };
-    const cases = articles.filter((a) => !estControle(a));
+    // « Tout cocher » et le compteur ne portent que sur les articles obligatoires :
+    // un article facultatif se coche à la main, seulement s'il est là.
+    const obligatoires = articles.filter((a) => !estFacultatif(a));
+    const cases = obligatoires.filter((a) => !estControle(a));
     const maj = () => {
-      const n = articles.filter((a) => (estControle(a) ? evaluer(a, b.valeurs[a.id]).rempli : b.coches[a.id])).length;
-      compte.textContent = `${n}/${articles.length}`;
+      const n = obligatoires.filter((a) => (estControle(a) ? evaluer(a, b.valeurs[a.id]).rempli : b.coches[a.id])).length;
+      compte.textContent = `${n}/${obligatoires.length}`;
       const nc = cases.filter((a) => b.coches[a.id]).length;
       toutCocher.hidden = !cases.length;
       toutCocher.textContent = nc === cases.length ? 'Tout décocher' : 'Tout cocher';
@@ -1801,7 +1808,7 @@ const Inventaires = (() => {
       if (a.separateur) {
         const g = { membres: [] };
         let i = c.articles.indexOf(a) + 1;
-        while (i < c.articles.length && !c.articles[i].separateur) { if (!estControle(c.articles[i])) g.membres.push(c.articles[i]); i++; }
+        while (i < c.articles.length && !c.articles[i].separateur) { if (!estControle(c.articles[i]) && !estFacultatif(c.articles[i])) g.membres.push(c.articles[i]); i++; }
         g.bouton = el('button', { type: 'button', classe: 'lien inv-cocher-groupe', 'aria-label': `Tout cocher : section ${a.nom}`, surclick: () => {
           const tout = !g.membres.every((x) => b.coches[x.id]);
           g.membres.forEach((x) => { b.coches[x.id] = tout; const box = liste.querySelector(`input[data-article="${x.id}"]`); if (box) box.checked = tout; });
@@ -1815,7 +1822,7 @@ const Inventaires = (() => {
       const champCase = idChamp();
       const coche = el('input', { type: 'checkbox', id: champCase, 'data-article': a.id, checked: Boolean(b.coches[a.id]), surchange: (e) => { b.coches[a.id] = e.target.checked; modifie(); } });
       const li = el('li', { classe: 'inv-article' });
-      const ligne = el('div', { classe: 'inv-ligne' }, coche, el('label', { for: champCase, classe: 'inv-nom', texte: nomArticle(a) }));
+      const ligne = el('div', { classe: 'inv-ligne' }, coche, el('label', { for: champCase, classe: 'inv-nom' }, nomArticle(a), mentionFacultatif(a)));
       const ficheA = fiche(a);
       if (ficheA && ficheA.photo) {
         // Vignette de l'article : la toucher ouvre la photo en grand et les informations de la fiche.
@@ -1887,7 +1894,7 @@ const Inventaires = (() => {
     toutCocher.addEventListener('click', () => {
       const tout = !cases.every((a) => b.coches[a.id]);
       cases.forEach((a) => { b.coches[a.id] = tout; });
-      liste.querySelectorAll('input[type="checkbox"]').forEach((x) => { x.checked = tout; });
+      cases.forEach((a) => { const x = liste.querySelector(`input[data-article="${a.id}"]`); if (x) x.checked = tout; });
       modifie();
     });
     if (basculer) basculer.addEventListener('click', () => { peremptionsVisibles = !peremptionsVisibles; majBascule(); });
@@ -2278,7 +2285,7 @@ const Inventaires = (() => {
           return;
         }
         detail.controles.push({ nom: nomArticle(a), ou: ici, texte: texteValeur(a, val), ok: e.ok, rempli: e.rempli });
-        if (e.rempli && !e.ok) controleKo = true;
+        if (e.rempli && !e.ok && !estFacultatif(a)) controleKo = true;
         if (a.controle === 'batterie' && e.rempli) {
           const niveau = Number(String(val).replace(',', '.')) / (a.echelle === '4' ? 4 : 100);
           if (!batterie || niveau < batterie.niveau) batterie = { niveau, ok: e.ok, texte: texteValeur(a, val) };
@@ -2580,6 +2587,14 @@ const Inventaires = (() => {
 
   /** Édition des articles d'un contenant (administrateurs). */
   /** Édition d'un contrôle : libellé et réglages selon le type. */
+  /** Case « Facultatif » de l'édition : décochée = article obligatoire pour un inventaire conforme. */
+  function caseFacultatif(c, a) {
+    return el('label', { classe: 'inv-qte-libelle inv-case-facultatif', title: 'Facultatif : s\'il est absent, l\'inventaire reste conforme (ex. détecteur de CO sur certains sacs)' },
+      el('input', { type: 'checkbox', checked: estFacultatif(a), 'aria-label': `Facultatif (${nomArticle(a)}) : son absence ne rend pas l'inventaire non conforme`, surchange: (e) => {
+        if (e.target.checked) a.facultatif = true; else delete a.facultatif;
+        marquer(c.id);
+      } }), ' Facultatif');
+  }
   function ligneEditionControle(c, a, outils) {
     const nombre = (cle, libelle) => el('label', { classe: 'inv-qte-libelle' }, `${libelle} `, el('input', {
       type: 'text', inputmode: 'decimal', classe: 'inv-qte', valeur: a[cle] === undefined ? '' : String(a[cle]), placeholder: '–', 'aria-label': `${libelle} (${a.nom})`,
@@ -2598,7 +2613,7 @@ const Inventaires = (() => {
       el('div', { classe: 'inv-edition-nom' },
         el('input', { 'aria-label': 'Libellé du contrôle', maxlength: '120', valeur: a.nom, classe: 'inv-nom-article', surchange: (e) => { const t = e.target.value.trim(); if (t) { a.nom = t; marquer(c.id); } else e.target.value = a.nom; } }),
         el('small', { texte: `Contrôle : ${CONTROLES[a.controle].nom}${texteAttente(a) ? ` (${texteAttente(a)})` : ''}` })),
-      el('div', { classe: 'cfg-ligne inv-edition-outils' }, ...reglages, ...outils));
+      el('div', { classe: 'cfg-ligne inv-edition-outils' }, ...reglages, caseFacultatif(c, a), ...outils));
   }
   function blocArticles(c) {
     const liste = el('div', { classe: 'inv-edition-articles' });
@@ -2633,7 +2648,7 @@ const Inventaires = (() => {
                 creation = null;
                 rendre({ garderPosition: true, focus: rattacher ? '.inv-recherche-article input' : '' });
               } }))),
-        el('div', { classe: 'cfg-ligne inv-edition-outils' }, el('label', { classe: 'inv-qte-libelle' }, 'Qté ', qte), ...fleches)));
+        el('div', { classe: 'cfg-ligne inv-edition-outils' }, el('label', { classe: 'inv-qte-libelle' }, 'Qté ', qte), caseFacultatif(c, a), ...fleches)));
     });
 
     triable(liste, (cles) => {
@@ -3071,8 +3086,8 @@ const Inventaires = (() => {
   const copieProfonde = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   /** Article réduit à ce qui se répercute (le nom des articles de la base vient de la fiche). */
   const sigArticle = (a) => (a.separateur ? { separateur: true, nom: a.nom }
-    : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu }
-      : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || '') });
+    : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu, facultatif: a.facultatif === true || undefined }
+      : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || ''), facultatif: a.facultatif === true || undefined });
   /** Instantané d'un contenant du modèle : ce que ses exemplaires doivent reproduire. */
   function instantane(m) {
     return {
@@ -3137,7 +3152,11 @@ const Inventaires = (() => {
       const i = I[id]; const b = B[id]; const mm = M[id];
       const depuisModele = () => { const a = copieProfonde(mm); return a; };
       if (i && mm) {
-        if (forcer || (b && egal(sigArticle(i), sigArticle(b)))) resultat.push(mm.controle || i.controle ? depuisModele() : { ...i, ...depuisModele() });
+        if (forcer || (b && egal(sigArticle(i), sigArticle(b)))) {
+          const a = mm.controle || i.controle ? depuisModele() : { ...i, ...depuisModele() };
+          if (!mm.facultatif) delete a.facultatif; // redevenu obligatoire dans le modèle
+          resultat.push(a);
+        }
         else { resultat.push(i); if (!egal(sigArticle(i), sigArticle(mm))) conserves += 1; }
       } else if (i && !mm) {
         if (b && (forcer || egal(sigArticle(i), sigArticle(b)))) return; // retiré du modèle
@@ -3344,11 +3363,11 @@ const Inventaires = (() => {
       const articles = aCocher(d).map((a) => {
         if (estControle(a)) {
           const val = derniere.valeurs && derniere.valeurs[a.id] !== undefined ? String(derniere.valeurs[a.id]) : '';
-          return { id: a.id, nom: nomArticle(a), controle: a.controle, ok: !manquants.has(a.id), valeur: val };
+          return { id: a.id, nom: nomArticle(a), controle: a.controle, ok: !manquants.has(a.id), valeur: val, ...(estFacultatif(a) ? { facultatif: true } : {}) };
         }
         const att = attendue(a);
         return {
-          id: a.id, nom: nomArticle(a), ok: !manquants.has(a.id),
+          id: a.id, nom: nomArticle(a), ok: !manquants.has(a.id), ...(estFacultatif(a) ? { facultatif: true } : {}),
           ...(att !== null ? { attendu: att, quantite: att } : {}),
           ...(suiviPeremption(a) ? { peremption: datePeremption(d.id, a.id) } : {}),
         };
@@ -3926,7 +3945,7 @@ const Inventaires = (() => {
         el(niveau ? 'h2' : 'h1', { texte: `${x.nom}${x.scellable ? ' (scellable)' : ''}` }),
         x.articles.length ? el('ul', {}, ...x.articles.map((a) => (a.separateur ? el('li', { classe: 'imp-separation', texte: a.nom }) : el('li', {},
           el('span', { classe: 'imp-case', 'aria-hidden': 'true' }),
-          el('span', { classe: 'imp-nom', texte: estControle(a) ? `${nomArticle(a)}${texteAttente(a) ? ` (${texteAttente(a)})` : ''} : ${a.controle === 'oui' ? 'Oui / Non' : '……………'}` : `${nomArticle(a)}${a.quantite ? ` × ${a.quantite}` : ''}` }),
+          el('span', { classe: 'imp-nom', texte: estControle(a) ? `${nomArticle(a)}${texteAttente(a) ? ` (${texteAttente(a)})` : ''} : ${a.controle === 'oui' ? 'Oui / Non' : '……………'}` : `${nomArticle(a)}${a.quantite ? ` × ${a.quantite}` : ''}${estFacultatif(a) ? ' (facultatif)' : ''}` }),
           suiviPeremption(a) ? el('span', { classe: 'imp-date', texte: `Pér. ${afficherDate(datePeremption(x.id, a.id)) || '……/………'}` }) : null)))) : null);
     });
     lancerImpression([

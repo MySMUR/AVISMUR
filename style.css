@@ -2381,3 +2381,7 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .inv-recadrage .aide-question { margin: 0; text-align: center; color: #dbe6f5; }
 .inv-recadrage-actions { display: flex; justify-content: flex-end; gap: .6rem; }
 .inv-recadrage-actions .cfg-bouton { flex: 1; max-width: 12rem; }
+
+/* Article facultatif : son absence ne rend pas l'inventaire non conforme (ex. détecteur de CO). */
+.inv-facultatif { margin-left: .35em; padding: 0 .4em; border-radius: .6em; font-size: .72em; font-weight: 500; font-style: italic; color: var(--gris); background: rgba(0, 0, 0, .06); vertical-align: middle; white-space: nowrap; }
+.inv-case-facultatif { display: inline-flex; align-items: center; gap: .25em; white-space: nowrap; }
