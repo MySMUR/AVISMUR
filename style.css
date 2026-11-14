@@ -2363,3 +2363,21 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .inv-tb-base-table tr.archive input, .inv-tb-base-table tr.archive select { opacity: 0.55; text-decoration: line-through; }
 .inv-tb-base-table tr.faute td { background: #FDECEA; }
 .inv-tb-base-actions { margin: 0.4rem 0; }
+
+/* Recadrage des photos de contenants */
+.inv-recadrage { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; gap: .6rem; padding: max(.8rem, env(safe-area-inset-top)) .8rem max(.8rem, env(safe-area-inset-bottom)); background: #13294b; color: #fff; }
+.inv-recadrage-tete { display: flex; align-items: center; gap: .5rem; }
+.inv-recadrage-tete h2 { flex: 1; margin: 0; font-size: 1.05rem; }
+.inv-recadrage-zone { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.inv-recadrage-scene { position: relative; line-height: 0; touch-action: none; user-select: none; }
+.inv-recadrage-toile { display: block; max-width: calc(100vw - 1.6rem); max-height: calc(100dvh - 10rem); }
+.inv-recadrage-cadre { position: absolute; box-sizing: border-box; border: 2px solid #fff; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55); cursor: move; touch-action: none; }
+.inv-recadrage-scene { overflow: hidden; }
+.inv-recadrage-poignee { position: absolute; width: 1.6rem; height: 1.6rem; background: #fff; border: 2px solid var(--bleu); border-radius: 50%; }
+.inv-recadrage-poignee.nw { left: -2px; top: -2px; cursor: nwse-resize; }
+.inv-recadrage-poignee.ne { right: -2px; top: -2px; cursor: nesw-resize; }
+.inv-recadrage-poignee.sw { left: -2px; bottom: -2px; cursor: nesw-resize; }
+.inv-recadrage-poignee.se { right: -2px; bottom: -2px; cursor: nwse-resize; }
+.inv-recadrage .aide-question { margin: 0; text-align: center; color: #dbe6f5; }
+.inv-recadrage-actions { display: flex; justify-content: flex-end; gap: .6rem; }
+.inv-recadrage-actions .cfg-bouton { flex: 1; max-width: 12rem; }
