@@ -1914,7 +1914,9 @@ const Inventaires = (() => {
       saisie = el('span', { classe: 'inv-valeur-zone' }, entree, unite ? el('span', { classe: 'inv-qte-attendue', texte: unite }) : null);
     }
     ligne.append(saisie);
-    li.append(ligne, noteCommentaire(a));
+    li.append(ligne);
+    const note = noteCommentaire(a);
+    if (note) li.append(note);
     etat_();
     return li;
   }
@@ -3900,7 +3902,9 @@ const Inventaires = (() => {
               echeance.textContent = n.texte ? ` ${n.texte}` : '';
               li.className = n.niveau;
             } });
-          li.append(el('div', { classe: 'inv-peremption' }, el('span', { texte: 'Pér. ' }), champ, echeance), noteCommentaire(a));
+          li.append(el('div', { classe: 'inv-peremption' }, el('span', { texte: 'Pér. ' }), champ, echeance));
+          const note = noteCommentaire(a);
+          if (note) li.append(note);
           return li;
         }
         return el('li', { classe: pe ? pe.niveau : '' }, nomArticle(a),
