@@ -417,6 +417,11 @@ const Inventaires = (() => {
     for (let c = contenant(id); c && !vus.has(c.id); c = contenant(c.parent)) { vus.add(c.id); suite.unshift(c); }
     return suite;
   }
+  /**
+   * Chemin affiché (« F21 › Tiroir F › Sac rouge n°3 ») : un emplacement porte le nom de l'inventaire type attendu
+   * et n'a pas sa place dans le chemin, sauf s'il est lui-même le dernier élément (emplacement vide ouvert).
+   */
+  const cheminNoms = (id, sep = ' › ') => chemin(id).filter((x, i, t) => !x.emplacement || i === t.length - 1).map((x) => x.nom).join(sep);
   /** Le contenant et tout ce qu'il contient. */
   function descendants(id, vus = new Set()) {
     const c = contenant(id);
@@ -441,13 +446,13 @@ const Inventaires = (() => {
     return dansUnMobile(c) && (!structurel || structurel.id !== ici.id);
   };
   /**
-   * Niveau du dessus, pour la flèche retour et l'arborescence : en check-list, un emplacement
-   * (« ici, un exemplaire de tel inventaire type ») s'efface derrière le contenant qui l'occupe.
+   * Niveau du dessus, pour la flèche retour et le chemin : un emplacement (« ici, un exemplaire de tel
+   * inventaire type ») s'efface derrière le contenant qui l'occupe, en check-list comme en gestion.
    */
   function parentVisible(c) {
     const vus = new Set();
     let p = contenant(c.parent);
-    while (p && p.emplacement && !gestion && !vus.has(p.id)) { vus.add(p.id); p = contenant(p.parent); }
+    while (p && p.emplacement && !vus.has(p.id)) { vus.add(p.id); p = contenant(p.parent); }
     return p;
   }
   /** Étages au-dessus d'un contenant, du plus proche au plus lointain. */
@@ -1085,7 +1090,7 @@ const Inventaires = (() => {
     }
     const ok = App.mettreEnFile({
       action: 'verifierInventaire', contenant: c.id,
-      detail: { chemin: chemin(c.id).map((x) => x.nom).join(' > '), articles: articles.map(({ libelle, ...x }) => x), remarque: b.remarque.trim() },
+      detail: { chemin: cheminNoms(c.id, ' > '), articles: articles.map(({ libelle, ...x }) => x), remarque: b.remarque.trim() },
     });
     if (!ok) {
       messageVue('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur');
@@ -1132,7 +1137,7 @@ const Inventaires = (() => {
       liste.forEach((x) => { if (!parOu.has(x.ou)) parOu.set(x.ou, []); parOu.get(x.ou).push(x); });
       return [...parOu.entries()];
     };
-    const nomOu = (id) => (id === b.racine ? '' : chemin(id).slice(chemin(b.racine).length).map((x) => x.nom).join(' › '));
+    const nomOu = (id) => (id === b.racine ? '' : chemin(id).slice(chemin(b.racine).length).filter((x, i, t) => !x.emplacement || i === t.length - 1).map((x) => x.nom).join(' › '));
     const lienOu = (id) => (id === b.racine ? null : el('a', { href: lien(id), classe: 'inv-manquants-ou', surclick: (e) => { e.preventDefault(); fermer(); aller(id); } }, nomOu(id)));
     fond.append(el('div', { classe: 'fenetre inv-tb-fenetre', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
       el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: `${pluriel(b.manquants, 'manquant')}${racine ? ` — ${racine.nom}` : ''}` }),
@@ -1505,7 +1510,7 @@ const Inventaires = (() => {
       noeuds.push(el('details', { classe: 'inv-alertes', open: perimes > 0 },
         el('summary', {}, 'Péremptions : ', [perimes ? pluriel(perimes, 'périmé') : '', alertes.length - perimes ? `${alertes.length - perimes} à moins de ${structure.reglages.alerteJours} jours` : ''].filter(Boolean).join(', ')),
         el('ul', {}, ...alertes.map((x) => el('li', { classe: x.p.niveau },
-          el('a', { href: lien(x.c.id) }, el('strong', { texte: nomArticle(x.a) }), ` — ${chemin(x.c.id).map((y) => y.nom).join(' › ')}`),
+          el('a', { href: lien(x.c.id) }, el('strong', { texte: nomArticle(x.a) }), ` — ${cheminNoms(x.c.id)}`),
           el('span', { texte: `${afficherDate(x.date)} · ${x.p.texte}` }))))));
     }
 
@@ -2300,7 +2305,7 @@ const Inventaires = (() => {
       traduireCibles(p, (cible) => (cible === y.id ? x.id : cible));
       x.ordre = y.ordre;
       y.parent = '';
-      y.desaffecte = { depuis: date, de: versY, deNom: chemin(versY).map((c) => c.nom).join(' › '), par: App.agent() };
+      y.desaffecte = { depuis: date, de: versY, deNom: cheminNoms(versY), par: App.agent() };
     } else {
       // Reprend une gommette libre de ce contenant, de préférence celle d'un contenant du même type.
       const libres = [p.points, ...p.vues.map((v) => v.points)].flat().map((pt) => pt.cible)
@@ -2349,7 +2354,7 @@ const Inventaires = (() => {
       }
       marquer(e.id);
       marquer(p.id);
-      remis.push(`« ${e.nom} » (${chemin(p.id).map((c) => c.nom).join(' › ')})`);
+      remis.push(`« ${e.nom} » (${cheminNoms(p.id)})`);
     });
     if (remis.length) avis = `Emplacement remis en place : ${remis.join(', ')}. Il avait été désaffecté par erreur.`;
   }
@@ -2472,7 +2477,7 @@ const Inventaires = (() => {
       (mots.length ? trouves : trouves.filter(memeType)).slice(0, 12).forEach((c) => {
         const ou = contenant(c.parent);
         resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => choisir(c.id) },
-          el('strong', { texte: c.nom }), el('small', { classe: c.desaffecte ? 'inv-desaffecte' : '', texte: ou ? `actuellement dans ${chemin(ou.id).map((z) => z.nom).join(' › ')}` : (c.desaffecte ? 'désaffecté : à retrouver' : 'hors contenant') }))));
+          el('strong', { texte: c.nom }), el('small', { classe: c.desaffecte ? 'inv-desaffecte' : '', texte: ou ? `actuellement dans ${cheminNoms(ou.id)}` : (c.desaffecte ? 'désaffecté : à retrouver' : 'hors contenant') }))));
       });
     };
     const saisie = el('input', { id: champ, type: 'search', autocomplete: 'off', placeholder: y ? `ex. ${y.nom.replace(/\s*n°\s*\d+$/i, '')}` : 'ex. ampoulier, sacoche', surinput: (e) => filtrer(e.target.value) });
@@ -2509,9 +2514,10 @@ const Inventaires = (() => {
     const noeud = (x0, profondeur) => {
       // Check-list : un emplacement ne s'affiche pas, son occupant prend sa place (sinon « à identifier »).
       let x = x0;
-      if (!gestion && x.emplacement) {
-        const occ = occupantDuJour(x);
-        if (!occ) return el('li', {}, el('span', { classe: 'inv-arbre-lien inv-arbre-vide' }, el('span', { classe: 'inv-arbre-nom', texte: `${x.nom} · à identifier` })));
+      if (x.emplacement) {
+        const occ = gestion ? enfants(x.id)[0] : occupantDuJour(x);
+        if (!occ && gestion) return el('li', {}, el('a', { href: lien(x.id), classe: `inv-arbre-lien inv-arbre-vide${x.id === c.id ? ' actuel' : ''}` }, el('span', { classe: 'inv-arbre-nom', texte: 'Emplacement vide' })));
+        if (!occ) return el('li', {}, el('span', { classe: 'inv-arbre-lien inv-arbre-vide' }, el('span', { classe: 'inv-arbre-nom', texte: 'À identifier (QR, NFC ou liste)' })));
         x = occ;
       }
       const fils = enfants(x.id);
@@ -2520,9 +2526,8 @@ const Inventaires = (() => {
       const lienNoeud = el('a', { href: lien(x.id), classe: `inv-arbre-lien${actuel ? ' actuel' : ''}`, 'aria-current': actuel ? 'page' : null },
         b && b.total ? el('span', { classe: `inv-arbre-etat ${b.classe}`, title: b.texte, 'aria-label': b.texte }) : null,
         el('span', { classe: 'inv-arbre-nom', texte: x.nom }),
-        x.emplacement ? el('small', { texte: fils[0] ? ` ↳ ${fils[0].nom}` : ' ↳ à identifier' }) : null,
         aCocher(x).length ? el('small', { classe: 'inv-arbre-nb', texte: ` ${aCocher(x).length}` }) : null);
-      if (!fils.length || x.emplacement) return el('li', {}, lienNoeud);
+      if (!fils.length) return el('li', {}, lienNoeud);
       // Branches dépliées sur le chemin du contenant affiché et jusqu'au 2e niveau ; les autres repliées.
       const deplie = ouverts.has(x.id) || profondeur < 1;
       return el('li', {}, el('details', { open: deplie }, el('summary', {}, lienNoeud),
@@ -2642,7 +2647,7 @@ const Inventaires = (() => {
     fond.append(el('div', { classe: 'fenetre inv-tb-fenetre', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
       el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: c.nom }),
         el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
-      el('p', { classe: 'fenetre-resume', texte: [...etagesAuDessus(c).reverse().map((x) => x.nom), place && cle(place) !== cle(c.nom) ? `emplacement « ${place} »` : ''].filter(Boolean).join(' › ') }),
+      el('p', { classe: 'fenetre-resume', texte: etagesAuDessus(c).reverse().map((x) => x.nom).join(' › ') }),
       el('p', { classe: `inv-tb-statut ${r.classe}` }, el('span', { classe: 'inv-tb-pictos' }, ...r.pictos),
         el('strong', { texte: sousScelle(c) ? 'Scellé : non ouvert aujourd\'hui' : r.b.texte }),
         sous ? ` · ${pluriel(sous, 'sous-inventaire')}` : ''),
@@ -3252,7 +3257,7 @@ const Inventaires = (() => {
       const ou = usages[f.id] || [];
       const lieux = ou.length
         ? el('p', { classe: 'inv-usages' }, `Dans ${pluriel(ou.length, 'inventaire')} : `,
-          ...ou.flatMap((c, i) => [i ? ', ' : '', el('a', { href: lien(c.id), texte: chemin(c.id).map((x) => x.nom).join(' › ') })]))
+          ...ou.flatMap((c, i) => [i ? ', ' : '', el('a', { href: lien(c.id), texte: cheminNoms(c.id) })]))
         : el('p', { classe: 'inv-usages', texte: 'Utilisé dans aucun inventaire.' });
       if (!admin) {
         return el('div', { classe: 'inv-fiche-detail' },
@@ -3744,7 +3749,7 @@ const Inventaires = (() => {
         };
       });
       const remarque = `Scellé : validé sur la base de l'inventaire du ${new Date(derniere.date).toLocaleDateString('fr-FR')} (${derniere.agent}).`;
-      const ok = App.mettreEnFile({ action: 'verifierInventaire', contenant: d.id, detail: { chemin: chemin(d.id).map((x) => x.nom).join(' > '), articles, remarque, scelle: true } });
+      const ok = App.mettreEnFile({ action: 'verifierInventaire', contenant: d.id, detail: { chemin: cheminNoms(d.id, ' > '), articles, remarque, scelle: true } });
       if (!ok) { avis = 'Non enregistré : la mémoire de l\'appareil est pleine.'; rendre(); return; }
       etat.verifs[d.id] = { date: maintenant, agent: App.agent(), manquants: derniere.manquants, remarque, scelle: true, valeurs: derniere.valeurs || {} };
       n += 1;
@@ -3892,7 +3897,7 @@ const Inventaires = (() => {
   function enregistrerPeremption(c, a, iso) {
     const maj = new Date().toISOString();
     const ok = App.mettreEnFile({ action: 'majPeremption', contenant: c.id, article: a.id,
-      detail: { chemin: chemin(c.id).map((x) => x.nom).join(' > '), nom: nomArticle(a), peremption: iso } });
+      detail: { chemin: cheminNoms(c.id, ' > '), nom: nomArticle(a), peremption: iso } });
     if (!ok) { messageVue('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur'); return; }
     etat.peremptions[`${c.id}/${a.id}`] = { date: iso, maj };
     sauverEtat();
@@ -4366,7 +4371,7 @@ const Inventaires = (() => {
     });
     lancerImpression([
       el('header', { classe: 'imp-entete' }, qrSvg(adresse(c.id)),
-        el('div', {}, el('p', { texte: chemin(c.id).map((x) => x.nom).join(' › ') }),
+        el('div', {}, el('p', { texte: cheminNoms(c.id) }),
           el('p', { texte: `SMUR Avignon · inventaire imprimé le ${new Date().toLocaleDateString('fr-FR')}` }),
           el('p', { texte: 'Date : ……………………   Nom : ……………………………………' }))),
       ...blocs], 'imp-liste');
