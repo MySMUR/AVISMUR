@@ -238,7 +238,7 @@ const Inventaires = (() => {
   const photosDe = (c) => [c.photo, ...c.vues.map((v) => v.photo)].filter(Boolean);
 
   // ---------- Base des articles (catalogue) ----------
-  const CATEGORIES = ['Médicament', 'DM', 'Magasin', 'Kit', 'Biomédical', 'Autre'];
+  const CATEGORIES = ['Médicament', 'DM', 'Magasin', 'Kit', 'Matériel', 'Autre'];
   /** Texte comparable : minuscules, sans accents, espaces simples. */
   const cle = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
   function normaliserFiche(f) {
@@ -2263,7 +2263,7 @@ const Inventaires = (() => {
    *   - couleur du cadre : état du jour du contenant et de tout ce qu'il contient (comme les cartes) ;
    *   - cadenas : contenant scellable non ouvert aujourd'hui, validé par son scellé ;
    *   - en gras : le matériel biomédical (respirateur, échographe, PSE, HemoCue…), c'est-à-dire les articles
-   *     dont la fiche est de catégorie « Biomédical » ; un contenant qui attend un tel article dans sa propre
+   *     dont la fiche est de catégorie « Matériel » ; un contenant qui attend un tel article dans sa propre
    *     liste (ex. « Scope Tempus n°2 » : le scope et ses pochettes) a aussi son nom en gras.
    * Un seul contenant primaire à la fois, sur toute la largeur de l'écran ; le choix est gardé sur l'appareil.
    */
@@ -2276,8 +2276,8 @@ const Inventaires = (() => {
     const listes = descendants(c.id).filter((d) => aCocher(d).length);
     return listes.length > 0 && listes.every((d) => verifScellee(verifDuJour(d.id)));
   }
-  const articleBiomed = (a) => Boolean(fiche(a)) && fiche(a).categorie === 'Biomédical';
-  /** Contenant d'un appareil biomédical (ex. un scope et ses pochettes) : sa liste attend un article « Biomédical ». */
+  const articleBiomed = (a) => Boolean(fiche(a)) && ['Matériel', 'Biomédical'].includes(fiche(a).categorie); // « Biomédical » : ancien nom
+  /** Contenant d'un appareil biomédical (ex. un scope et ses pochettes) : sa liste attend un article « Matériel ». */
   // Un contrôle « scan » (n° d'appareil scanné : puce MySMUR, étiquette biomed, n° de série) désigne aussi un appareil biomédical.
   const appareilScanne = (a) => !a.separateur && a.controle === 'scan';
   const contenantBiomed = (c) => aCocher(c).some((a) => articleBiomed(a) || appareilScanne(a));
