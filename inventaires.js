@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 16;
+  const VERSION_SERVEUR = 17;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -193,6 +193,8 @@ const Inventaires = (() => {
       ...(c.source ? { source: c.source } : {}), // exemplaire : contenant du modèle dont il est la copie
       ...(c.base ? { base: c.base } : {}), // exemplaire : état du modèle lors de la dernière répercussion
       ...(c.supprime ? { supprime: true } : {}),
+      // Vérifié par la check-list ambulancier de ce véhicule (bouteilles d'oxygène) : pas de liste à cocher ici.
+      ...(c.clAmbulancier ? { clAmbulancier: String(c.clAmbulancier) } : {}),
     };
   }
   // ---------- Catégories de contenants ----------
@@ -499,12 +501,51 @@ const Inventaires = (() => {
     return v && jour(new Date(v.date)) === jour() ? v : null;
   };
 
+  // ---------- Contenant vérifié par la check-list ambulancier (bouteilles d'oxygène) ----------
+  const seuilObus = () => (typeof SEUILS_ANOMALIE !== 'undefined' && SEUILS_ANOMALIE.obus !== undefined ? SEUILS_ANOMALIE.obus : 3);
+  /**
+   * Check-list ambulancier du jour du véhicule lié (`clAmbulancier`) et niveaux d'oxygène relevés :
+   * { vehicule, statut (null si pas encore faite), niveaux: [{ nom, valeur sur 10, bas }] }.
+   */
+  function releveAmbulancier(c) {
+    if (!c || !c.clAmbulancier) return null;
+    let statut = null;
+    try { statut = typeof Ambulancier !== 'undefined' ? Ambulancier.infosVehicule(c.clAmbulancier).statut : null; } catch (e) { statut = null; }
+    const niveaux = [];
+    if (statut && statut.reponses) {
+      const vus = new Set();
+      Object.values(typeof MODELES === 'object' && MODELES ? MODELES : {}).forEach((m) => (m.questions || []).forEach((q) => {
+        if (!q || q.type !== 'niveau' || vus.has(q.libelle)) return;
+        vus.add(q.libelle);
+        const v = parseInt(String(statut.reponses[q.libelle] ?? ''), 10);
+        if (Number.isNaN(v)) return;
+        niveaux.push({ nom: q.affiche || q.libelle, valeur: v, bas: v <= seuilObus() });
+      }));
+    }
+    return { vehicule: c.clAmbulancier, statut, niveaux };
+  }
+  /** Empreinte des check-lists ambulancier utiles à l'écran : on ne redessine que si elle change. */
+  function empreinteAmbulancier() {
+    return JSON.stringify(Object.values(structure.contenants).filter((c) => c.clAmbulancier && !c.supprime)
+      .map((c) => { const r = releveAmbulancier(c); return [c.id, r.statut ? r.statut.date : '', r.niveaux.map((n) => n.valeur)]; }));
+  }
+
   /** État d'un contenant et de tout ce qu'il contient. */
   function bilan(id) {
     const b = { total: 0, faits: 0, manquants: 0, perimes: 0, proches: 0, sansDate: 0 };
     descendants(id).forEach((c) => {
       if (dansUnModele(c.id)) return; // un inventaire type ne se vérifie pas
       if (c.emplacement && !occupantDuJour(c)) { b.total += 1; b.vides = (b.vides || 0) + 1; }
+      // Bouteilles d'oxygène : vérifiées par la check-list ambulancier du véhicule.
+      if (c.clAmbulancier) {
+        const r = releveAmbulancier(c);
+        b.total += 1;
+        if (r.statut) {
+          b.faits += 1;
+          const bas = r.niveaux.filter((n) => n.bas).length;
+          if (bas) b.oxygeneBas = (b.oxygeneBas || 0) + bas;
+        }
+      }
       if (aCocher(c).length) {
         b.total += 1;
         const v = verifDuJour(c.id);
@@ -519,7 +560,7 @@ const Inventaires = (() => {
     });
     b.complet = b.total > 0 && b.faits === b.total;
     // Anomalie (ici ou dans un sous-inventaire) : article manquant ou hors limite au dernier inventaire, ou périmé.
-    b.anomalie = b.manquants > 0 || b.perimes > 0;
+    b.anomalie = b.manquants > 0 || b.perimes > 0 || b.oxygeneBas > 0;
     b.classe = b.total === 0 ? 'vide' : (b.complet ? `fait${b.anomalie ? ' anomalie' : ''}` : (b.faits ? 'encours' : 'afaire'));
     b.texte = b.total === 0 ? 'Rien à cocher' : (b.complet ? 'Vérifié aujourd\'hui' : (b.faits ? `${b.faits} sur ${b.total} vérifiés` : 'À vérifier'));
     return b;
@@ -1078,6 +1119,7 @@ const Inventaires = (() => {
     if (b.proches) liste.push(el('span', { classe: 'inv-badge proche', texte: `${b.proches} bientôt périmé${b.proches > 1 ? 's' : ''}` }));
     if (b.sansDate) liste.push(el('span', { classe: 'inv-badge', texte: `${pluriel(b.sansDate, 'date')} à saisir` }));
     if (b.vides) liste.push(el('span', { classe: 'inv-badge proche', texte: `${pluriel(b.vides, 'emplacement')} à identifier` }));
+    if (b.oxygeneBas) liste.push(el('span', { classe: 'inv-badge alerte', texte: `${pluriel(b.oxygeneBas, 'bouteille')} O₂ basse${b.oxygeneBas > 1 ? 's' : ''}` }));
     return liste;
   }
 
@@ -1590,7 +1632,10 @@ const Inventaires = (() => {
         };
         const pastille = edition
           ? el('button', { type: 'button', ...commun, texte: affiche, surclick: () => { placement = placement === p.cible ? '' : p.cible; rendre({ garderPosition: true }); } })
-          : el('a', { href: lien(p.cible), ...commun, texte: affiche });
+          : fils[rang].clAmbulancier
+            // Bouteilles d'oxygène (check-list ambulancier) : niveaux en fenêtre, sans quitter la photo.
+            ? el('button', { type: 'button', ...commun, 'aria-haspopup': 'dialog', texte: affiche, surclick: () => voirOxygene(fils[rang]) })
+            : el('a', { href: lien(p.cible), ...commun, texte: affiche });
         if (scelle) pastille.append(logoCadenas());
         if (edition) glisserPastille(pastille, img, c, vc, p.cible);
         cadre.append(pastille);
@@ -2058,6 +2103,44 @@ const Inventaires = (() => {
     ];
   }
 
+  /** Niveaux d'oxygène relevés par la check-list ambulancier (fenêtre de la gommette, page du contenant). */
+  function blocNiveauxOxygene(c) {
+    const r = releveAmbulancier(c);
+    const v = (typeof VEHICULES !== 'undefined' ? VEHICULES : []).find((x) => x.id === r.vehicule);
+    const nomV = v ? v.nom || v.id : r.vehicule;
+    if (!r.statut) {
+      return el('div', { classe: 'inv-oxygene' },
+        el('p', { classe: 'inv-statut afaire' }, el('strong', { texte: 'À vérifier' })),
+        el('p', { classe: 'aide-question', texte: `Vérifié par la check-list ambulancier de ${nomV}, pas encore faite aujourd'hui.` }));
+    }
+    const bas = r.niveaux.some((n) => n.bas);
+    return el('div', { classe: 'inv-oxygene' },
+      el('p', { classe: `inv-statut fait${bas ? ' anomalie' : ''}` }, el('strong', { texte: '✓ Vérifié aujourd\'hui par l\'ambulancier' })),
+      r.niveaux.length
+        ? el('ul', { classe: 'inv-oxy-liste' }, ...r.niveaux.map((n) => el('li', { classe: n.bas ? 'bas' : (n.valeur <= 5 ? 'moyen' : '') },
+          el('span', { classe: 'inv-oxy-nom', texte: n.nom }),
+          el('span', { classe: 'inv-oxy-jauge', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.max(0, Math.min(10, n.valeur)) * 10}%` })),
+          el('span', { classe: 'inv-oxy-valeur', texte: `${n.valeur}/10 · ${n.valeur * 20} bars` }))))
+        : el('p', { classe: 'aide-question', texte: 'Aucun niveau d\'oxygène dans cette check-list.' }),
+      el('p', { classe: 'inv-mention-validation', texte: `Check-list ${nomV} à ${heure(r.statut.date)}${r.statut.agent ? ` par ${r.statut.agent}` : ''}` }));
+  }
+  function voirOxygene(c) {
+    const fond = el('div', { classe: 'fenetre-fond', surclick: (e) => { if (e.target === fond) fermer(); } });
+    const retour = document.activeElement;
+    const fermer = () => { fond.remove(); document.body.classList.remove('fenetre-ouverte'); if (retour && retour.isConnected) retour.focus(); };
+    const titre = idChamp();
+    fond.append(el('div', { classe: 'fenetre', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
+      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: c.nom }),
+        el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
+      el('div', { classe: 'fenetre-corps' }, blocNiveauxOxygene(c),
+        aCocher(c).length || enfants(c.id).length || gestion
+          ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ouvrir l\'inventaire', surclick: () => { fermer(); aller(c.id); } }) : null)));
+    fond.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
+    document.body.append(fond);
+    document.body.classList.add('fenetre-ouverte');
+    fond.querySelector('.fenetre-fermer').focus();
+  }
+
   /** Fenêtre d'un article de la base : photo en grand et informations (vérification). */
   function voirFiche(f) {
     const fond = el('div', { classe: 'fenetre-fond', surclick: (e) => { if (e.target === fond) fermer(); } });
@@ -2431,7 +2514,7 @@ const Inventaires = (() => {
       });
     });
     detail.peremptions.sort((x, y) => x.jours - y.jours);
-    const anomalie = detail.manquants.length > 0 || b.perimes > 0 || controleKo;
+    const anomalie = detail.manquants.length > 0 || b.perimes > 0 || b.oxygeneBas > 0 || controleKo;
     const classe = b.total === 0 && !detail.controles.length ? 'vide' : (anomalie ? 'anomalie' : b.classe);
     const pictos = [];
     if (sousScelle(c)) pictos.push(logoCadenas());
@@ -3617,8 +3700,9 @@ const Inventaires = (() => {
         })),
       el('p', { classe: 'aide-question', texte: c.categorie ? `${CATEGORIES_CONTENANT[c.categorie].nom} : ${CATEGORIES_CONTENANT[c.categorie].aide}.${c.categorie === 'primaire' ? ' Affiché sur la page des inventaires.' : ' S\'ouvre par recherche, QR code ou NFC, ou depuis son contenant.'}` : 'Seuls les contenants primaires sont affichés sur la page des inventaires.' })) : null;
     const modele = dansUnModele(c.id);
-    const verification = c.emplacement || questionScelle || edition || modele ? null
+    const verification = c.emplacement || questionScelle || edition || modele || (c.clAmbulancier && !aCocher(c).length) ? null
       : (consultation ? blocConsultation(c) : blocVerification(c));
+    const choixAmbulancier = idChamp();
     return [
       barreContenant(c, { h1: !edition }),
       bandeauGestion(),
@@ -3627,6 +3711,16 @@ const Inventaires = (() => {
       edition ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseScellable },
         el('input', { type: 'checkbox', id: caseScellable, checked: c.scellable, surchange: (e) => { c.scellable = e.target.checked; marquer(c.id); } }),
         el('span', {}, 'Contenant scellable', el('small', { texte: 'fermé par un scellé (plomb) une fois vérifié' }))) : null,
+      edition && c.parent ? el('div', { classe: 'champ inv-choix-ambulancier' },
+        el('label', { for: choixAmbulancier, texte: 'Vérifié par la check-list ambulancier' }),
+        el('select', { id: choixAmbulancier, surchange: (e) => {
+          if (e.target.value) c.clAmbulancier = e.target.value; else delete c.clAmbulancier;
+          marquer(c.id);
+          rendre({ garderPosition: true });
+        } }, el('option', { value: '', texte: 'Non (inventaire IADE)' }),
+        ...(typeof VEHICULES !== 'undefined' ? VEHICULES : []).filter((v) => !v.inactif || v.id === c.clAmbulancier)
+          .map((v) => { const o = el('option', { value: v.id, texte: `Oui — check-list de ${v.nom || v.id}` }); o.selected = v.id === c.clAmbulancier; return o; })),
+        el('p', { classe: 'aide-question', texte: 'Ex. bouteilles d\'oxygène : la gommette passe au vert quand la check-list ambulancier du jour est faite ; un clic montre les niveaux.' })) : null,
       edition && !c.parent && !racineExemplaire(c.id) ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseModele },
         el('input', { type: 'checkbox', id: caseModele, checked: c.modele === true, surchange: (e) => {
           if (e.target.checked) c.modele = true; else delete c.modele;
@@ -3654,6 +3748,7 @@ const Inventaires = (() => {
         `Était dans ${c.desaffecte.deNom || '?'}. Il sera réaffecté dès qu'on l'identifiera à sa place lors d'une vérification. `,
         el('button', { type: 'button', classe: 'lien', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) })) : null,
       ...(questionScelle ? [blocQuestionScelle(c)] : []),
+      c.clAmbulancier && !edition && !modele ? blocNiveauxOxygene(c) : null,
       edition || modele ? null : el('p', { classe: `inv-statut ${b.classe}` },
         el('strong', { texte: `${b.complet ? '✓ ' : ''}${b.texte}` }),
         el('span', { classe: 'inv-badges' }, ...badges(b))),
@@ -4236,6 +4331,14 @@ const Inventaires = (() => {
     const modifsGardees = lireJson(CLE_MODIFS, null);
     if (modifsGardees && modifsGardees.ids) modifs = { fiches: {}, reglages: false, ...modifsGardees };
     window.addEventListener('online', synchroniser);
+    // Check-list ambulancier enregistrée ou reçue du serveur : gommettes « oxygène » à jour (vertes une fois faite).
+    let empreinteAmb = empreinteAmbulancier();
+    document.addEventListener('parc-maj', () => {
+      const n = empreinteAmbulancier();
+      if (n === empreinteAmb) return;
+      empreinteAmb = n;
+      if (!edition && !document.body.classList.contains('fenetre-ouverte')) rendre({ garderPosition: true });
+    });
     // Les liens internes passent par aller() (voir la pile ci-dessus).
     // Champs de péremption : le « / » s'ajoute tout seul après les deux chiffres du mois (ou du jour).
     zone.addEventListener('input', (e) => {

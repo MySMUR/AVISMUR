@@ -2419,3 +2419,16 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .inv-commentaire::before { content: '💬 '; font-style: normal; }
 .inv-commentaire-saisie { display: block; width: 100%; margin-top: 0.25rem; padding: 0.3rem 0.5rem; font-size: 0.85rem; border: 1px dashed var(--trait); border-radius: 6px; background: #fff; }
 .inv-commentaire-saisie:focus { border-style: solid; border-color: var(--bleu); }
+
+/* Bouteilles d'oxygène vérifiées par la check-list ambulancier (gommette → fenêtre des niveaux) */
+.inv-oxygene .inv-statut { margin-bottom: 0.6rem; }
+.inv-oxy-liste { list-style: none; margin: 0 0 0.6rem; padding: 0; display: grid; gap: 0.45rem; }
+.inv-oxy-liste li { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.6rem; align-items: center; }
+.inv-oxy-nom { font-weight: 600; }
+.inv-oxy-valeur { color: var(--gris); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.inv-oxy-jauge { grid-column: 1 / -1; height: 0.7rem; border-radius: 999px; background: var(--trait); overflow: hidden; }
+.inv-oxy-jauge > span { display: block; height: 100%; background: var(--rhone); border-radius: inherit; }
+.inv-oxy-liste li.moyen .inv-oxy-jauge > span { background: var(--orange); }
+.inv-oxy-liste li.bas .inv-oxy-jauge > span { background: var(--erreur); }
+.inv-oxy-liste li.bas .inv-oxy-valeur { color: var(--erreur); font-weight: 600; }
+.inv-choix-ambulancier select { max-width: 100%; }
