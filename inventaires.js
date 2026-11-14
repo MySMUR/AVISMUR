@@ -3472,6 +3472,78 @@ const Inventaires = (() => {
   const estPersonnalise = (e) => personnalisations(e).length > 0;
   const toutPersonnalise = (e) => estPersonnalise(e) || enfants(e.id).some(toutPersonnalise);
 
+  /** Ce qu'un contenant d'exemplaire a de propre, en phrases lisibles (comparé à sa dernière répercussion). */
+  function differencesLisibles(e) {
+    const b = e.base;
+    if (!b) return [];
+    const v = vueExemplaire(e);
+    const lignes = [];
+    const oui = (x) => (x ? 'oui' : 'non');
+    const nomBase = (a) => (a.separateur ? `séparation « ${a.nom} »` : (fiche(a) ? fiche(a).denomination : (a.refNom || a.nom || 'article')));
+    const nomLocal = (a) => (a.separateur ? `séparation « ${a.nom} »` : nomArticle(a));
+    personnalisations(e).forEach((k) => {
+      if (k === 'nom') lignes.push(`Nom : « ${b.nom} » → « ${e.nom} »`);
+      else if (k === 'ordre') lignes.push('Place changée parmi les sous-inventaires');
+      else if (k === 'photo') lignes.push(!e.photo ? 'Photo retirée' : (!b.photo ? 'Photo ajoutée' : 'Photo remplacée'));
+      else if (k === 'nomVue') lignes.push(`Nom de la vue : « ${b.nomVue || '—'} » → « ${e.nomVue || '—'} »`);
+      else if (k === 'vues') lignes.push(`Vues supplémentaires modifiées (${pluriel((b.vues || []).length, 'vue')} dans le type, ${(v.vues || []).length} ici)`);
+      else if (k === 'scellable') lignes.push(`Scellable : ${oui(b.scellable)} → ${oui(e.scellable)}`);
+      else if (k === 'categorie') lignes.push(`Catégorie : ${b.categorie || '—'} → ${e.categorie || '—'}`);
+      else if (k === 'etiquette') lignes.push('Format d\'étiquette QR propre');
+      else if (k === 'points') lignes.push('Gommettes de la photo déplacées, ajoutées ou retirées');
+      else if (k === 'enfants') {
+        enfants(e.id).filter((x) => !(contenant(x.source) || {}).modele && (!x.source || !(b.enfants || []).includes(x.source)))
+          .forEach((x) => lignes.push(`Sous-inventaire ajouté : ${x.nom}`));
+        (b.enfants || []).filter((id) => !v.enfants.includes(id))
+          .forEach((id) => lignes.push(`Sous-inventaire retiré : ${(contenant(id) || {}).nom || 'contenant supprimé du type'}`));
+      } else if (k === 'articles') {
+        const B = Object.fromEntries((b.articles || []).map((a) => [a.id, a]));
+        const I = Object.fromEntries(e.articles.map((a) => [a.id, a]));
+        e.articles.filter((a) => !B[a.id]).forEach((a) => {
+          lignes.push(`Ajouté : ${nomLocal(a)}${!a.separateur && a.quantite ? ` × ${a.quantite}` : ''}`);
+        });
+        (b.articles || []).filter((a) => !I[a.id]).forEach((a) => lignes.push(`Retiré : ${nomBase(a)}`));
+        e.articles.filter((a) => B[a.id]).forEach((a) => {
+          const sa = sigArticle(a); const sb = sigArticle(B[a.id]);
+          if (egal(sa, sb)) return;
+          const d = [];
+          if (a.separateur) d.push(`nom « ${sb.nom} » → « ${sa.nom} »`);
+          else if (sa.controle || sb.controle) {
+            if (sa.nom !== sb.nom) d.push(`nom « ${sb.nom} » → « ${sa.nom} »`);
+            if (['controle', 'min', 'max', 'unite', 'echelle', 'seuil', 'attendu'].some((c) => !egal(sa[c], sb[c]))) d.push('réglages du contrôle');
+          } else {
+            if (sa.ref !== sb.ref || sa.nom !== sb.nom) d.push(`était « ${nomBase(B[a.id])} »`);
+            if (sa.quantite !== sb.quantite) d.push(`quantité ${sb.quantite || '—'} → ${sa.quantite || '—'}`);
+            if (!egal(sa.quantiteMin, sb.quantiteMin)) d.push(sa.quantiteMin ? 'quantité devenue minimale' : 'quantité devenue exacte');
+          }
+          if (!egal(sa.facultatif, sb.facultatif)) d.push(sa.facultatif ? 'devenu facultatif' : 'devenu obligatoire');
+          if (!egal(sa.commentaire, sb.commentaire)) d.push(sa.commentaire ? `commentaire « ${sa.commentaire} »` : 'commentaire retiré');
+          lignes.push(`Modifié : ${nomLocal(a)} (${d.join(', ') || 'détail modifié'})`);
+        });
+        const communs = (l) => l.map((a) => a.id).filter((id) => B[id] && I[id]);
+        if (!egal(communs(e.articles), communs(b.articles || []))) lignes.push('Ordre des articles changé');
+      }
+    });
+    return lignes;
+  }
+
+  /** Panneau détaillant, contenant par contenant, ce qu'un exemplaire a de propre par rapport à l'inventaire type. */
+  function panneauDifferences(e) {
+    const debut = chemin(e.id).length;
+    const blocs = descendants(e.id).map((x) => ({ x, lignes: differencesLisibles(x) })).filter((d) => d.lignes.length);
+    const enRetard = descendants(e.id).some((x) => {
+      const src = contenant(x.source);
+      return src && x.base && !egal(sansNoms(instantane(src).articles), sansNoms(x.base.articles));
+    });
+    return el('div', { classe: 'inv-diff' },
+      blocs.length ? null : el('p', { texte: 'Aucune différence propre à cet exemplaire.' }),
+      ...blocs.map(({ x, lignes }) => el('div', { classe: 'inv-diff-bloc' },
+        el('a', { href: lien(x.id), classe: 'inv-diff-titre', texte: x.id === e.id ? e.nom : chemin(x.id).slice(debut).map((y) => y.nom).join(' › ') }),
+        el('ul', {}, ...lignes.map((l) => el('li', { texte: l }))))),
+      enRetard ? el('p', { classe: 'aide-question', texte: 'Le type a aussi évolué depuis la dernière répercussion : ces nouveautés arriveront en appuyant sur « Répercuter ».' }) : null,
+      blocs.length ? el('p', { classe: 'aide-question', texte: 'Ces différences sont conservées lors d\'une répercussion. Pour en annuler une, ouvrez le contenant puis « Revenir au modèle ».' }) : null);
+  }
+
   /** Copie d'un contenant du modèle (et de tout ce qu'il contient) dans un exemplaire. */
   function copierDepuisModele(m, parent, ordre) {
     const copie = normaliser({ ...copieProfonde(m), id: nouvelId(), parent, ordre, source: m.id, base: instantane(m) });
@@ -3589,6 +3661,7 @@ const Inventaires = (() => {
     return crees;
   }
 
+  const diffsOuvertes = new Set(); // exemplaires dont le détail « personnalisé » est déplié
   /** Bloc affiché en tête d'un inventaire type (racine ou sous-inventaire). */
   function blocModele(c) {
     const m = racineModele(c.id);
@@ -3602,8 +3675,20 @@ const Inventaires = (() => {
     const liste = el('div', { classe: 'inv-exemplaires' });
     exemplaires.forEach((e) => {
       const i = idChamp();
-      liste.append(el('label', { classe: 'cfg-case', for: i }, el('input', { type: 'checkbox', id: i, checked: true, value: e.id }),
-        el('span', {}, el('a', { href: lien(e.id), texte: e.nom }), toutPersonnalise(e) ? el('small', { texte: ' · personnalisé' }) : null)));
+      const perso = toutPersonnalise(e);
+      const panneau = perso ? panneauDifferences(e) : null;
+      if (panneau) { panneau.id = `${i}-diff`; panneau.hidden = !diffsOuvertes.has(e.id); }
+      const bouton = perso ? el('button', { type: 'button', classe: 'lien inv-perso', 'aria-controls': `${i}-diff`, 'aria-expanded': String(!panneau.hidden),
+        texte: `personnalisé ${panneau.hidden ? '▸' : '▾'}`, surclick: (ev) => {
+          panneau.hidden = !panneau.hidden;
+          if (panneau.hidden) diffsOuvertes.delete(e.id); else diffsOuvertes.add(e.id);
+          ev.currentTarget.setAttribute('aria-expanded', String(!panneau.hidden));
+          ev.currentTarget.textContent = `personnalisé ${panneau.hidden ? '▸' : '▾'}`;
+        } }) : null;
+      liste.append(el('div', { classe: 'inv-exemplaire' },
+        el('label', { classe: 'cfg-case', for: i }, el('input', { type: 'checkbox', id: i, checked: true, value: e.id }),
+          el('span', {}, el('a', { href: lien(e.id), texte: e.nom }))),
+        bouton, panneau));
     });
     const boutonRepercuter = el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: `Répercuter sur les exemplaires cochés`, surclick: () => {
       const choisis = [...liste.querySelectorAll('input:checked')].map((x) => contenant(x.value)).filter(Boolean);
