@@ -35,6 +35,7 @@ const Inventaires = (() => {
   let modifs = { ids: {}, fiches: {}, reglages: false }; // contenants et fiches modifiés sur l'appareil, pas encore envoyés
   let rattacher = ''; // article sans fiche que l'on rattache à la base des articles
   let rechercheAjout = ''; // recherche en cours dans « Ajouter un article »
+  let toutAfficherAjout = false; // tous les résultats de cette recherche affichés, sans limite
   let creation = null; // fiche en cours de création ({ denomination, … }) depuis « Ajouter un article »
   let ajoutSousOuvert = false; // formulaire « Ajouter un sous-inventaire » déplié (mode Modifier)
   let baseOuverte = ''; // fiche dépliée dans la base des articles ('nouvelle' : création)
@@ -2024,6 +2025,7 @@ const Inventaires = (() => {
    * (Le QR code et la puce NFC, lus sur place, ouvrent toujours l'inventaire pour le vérifier.)
    */
   let recherchePrimaire = '';
+  let toutAfficherRecherche = false;
   function encadreRecherche(tous) {
     const panneau = el('section', { id: 'inv-panneau-recherche', classe: 'inv-panneau-recherche', 'aria-label': 'Chercher un inventaire', hidden: !rechercheOuverte });
     if (!rechercheOuverte) return panneau;
@@ -2041,7 +2043,7 @@ const Inventaires = (() => {
       // Sur le nom du contenant lui-même : « sac rouge » trouve les sacs rouges, pas tout ce qu'ils contiennent.
       const trouves = tous.filter((c) => !c.emplacement && mots.every((m) => cle(c.nom).includes(m)))
         .sort((a, b) => (dansPrimaire(b) - dansPrimaire(a)) || a.nom.localeCompare(b.nom, 'fr'));
-      trouves.slice(0, 12).forEach((c) => {
+      trouves.slice(0, toutAfficherRecherche ? trouves.length : 12).forEach((c) => {
         const verifiable = gestion || dansPrimaire(c);
         const parents = etagesAuDessus(c).reverse().map((x) => x.nom).join(' › ');
         const ligne = carte(c);
@@ -2051,7 +2053,12 @@ const Inventaires = (() => {
         ligne.addEventListener('click', () => { if (!gestion) fixerContexte(verifiable ? recherchePrimaire : '', !verifiable); });
         resultats.append(el('li', {}, ligne));
       });
-      if (trouves.length > 12) resultats.append(el('li', { classe: 'aide-question', texte: `${trouves.length - 12} autre(s) : précisez la recherche.` }));
+      if (trouves.length > 12 && !toutAfficherRecherche) {
+        resultats.append(el('li', {}, el('button', {
+          type: 'button', classe: 'inv-resultat inv-voir-tout',
+          surclick: () => { toutAfficherRecherche = true; filtrer(); },
+        }, el('strong', { texte: `Afficher les ${trouves.length - 12} autres résultats` }))));
+      }
       if (!trouves.length) resultats.append(el('li', { classe: 'aide-question', texte: 'Aucun inventaire à ce nom.' }));
     };
     const choix = gestion || !primaires.length ? null : el('div', { classe: 'inv-recherche-primaire' },
@@ -2067,7 +2074,7 @@ const Inventaires = (() => {
         : 'Sans contenant primaire choisi, l\'inventaire trouvé s\'ouvre en consultation seule.' }));
     panneau.append(choix,
       el('label', { for: champ, classe: 'invisible', texte: 'Nom de l\'inventaire' }),
-      el('input', { id: champ, type: 'search', classe: 'inv-recherche-champ', valeur: recherche, autocomplete: 'off', placeholder: 'F25, sac rouge, ampoulier…', surinput: (e) => { recherche = e.target.value; filtrer(); } }),
+      el('input', { id: champ, type: 'search', classe: 'inv-recherche-champ', valeur: recherche, autocomplete: 'off', placeholder: 'F25, sac rouge, ampoulier…', surinput: (e) => { recherche = e.target.value; toutAfficherRecherche = false; filtrer(); } }),
       resultats);
     filtrer();
     return panneau;
@@ -2767,13 +2774,18 @@ const Inventaires = (() => {
       const texte = rechercheAjout.trim();
       if (cle(texte).length < 2) return;
       const trouvees = chercherFiches(texte);
-      trouvees.slice(0, 8).forEach((f) => {
+      trouvees.slice(0, toutAfficherAjout ? trouvees.length : 8).forEach((f) => {
         const deja = dansLaListe.has(f.id);
         resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => ajouterFiche(f), ...garderFocus },
           el('strong', { texte: f.denomination }),
           el('small', { texte: `${resumeFiche(f)}${deja ? ' · déjà dans cet inventaire' : ''}` }))));
       });
-      if (trouvees.length > 8) resultats.append(el('li', { classe: 'aide-question', texte: `${trouvees.length - 8} autre(s) : précisez la recherche.` }));
+      if (trouvees.length > 8 && !toutAfficherAjout) {
+        resultats.append(el('li', {}, el('button', {
+          type: 'button', classe: 'inv-resultat inv-voir-tout', ...garderFocus,
+          surclick: () => { toutAfficherAjout = true; afficherResultats(); },
+        }, el('strong', { texte: `Afficher les ${trouvees.length - 8} autres résultats` }))));
+      }
       // On ne propose de créer que si la dénomination exacte n'existe pas déjà.
       if (!trouvees.some((f) => cle(f.denomination) === cle(texte))) {
         resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat inv-creer', surclick: ouvrirCreation, ...garderFocus },
@@ -2787,7 +2799,7 @@ const Inventaires = (() => {
         // Android renvoie le texte quand le clavier se ferme : sans changement, on ne reconstruit pas la liste
         // (sinon la proposition touchée disparaît avant que le clic n'arrive).
         if (e.target.value === rechercheAjout) return;
-        rechercheAjout = e.target.value; creation = null; zoneCreation.innerHTML = ''; afficherResultats();
+        rechercheAjout = e.target.value; toutAfficherAjout = false; creation = null; zoneCreation.innerHTML = ''; afficherResultats();
       },
       surkeydown: (e) => {
         if (e.key !== 'Enter') return;

@@ -1369,6 +1369,7 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .inv-resultat:hover, .inv-resultat:focus-visible { border-color: var(--bleu); }
 .inv-resultat small { color: var(--gris); font-size: 0.85rem; }
 .inv-resultat.inv-creer { border-style: dashed; color: var(--bleu); background: var(--ciel); }
+.inv-resultat.inv-voir-tout { border-style: dashed; color: var(--bleu); text-align: center; }
 .inv-zone-creation:not(:empty) { margin-top: 0.4rem; }
 .inv-fiche { padding: 0.8rem 0.9rem; background: #F6F9FD; border: 2px solid var(--bleu); border-radius: var(--rayon); }
 .inv-fiche h3 { margin: 0 0 0.6rem; font-size: 1.05rem; }
