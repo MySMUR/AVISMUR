@@ -67,7 +67,7 @@ Chaque agent peut publier une information, une alerte ou un rappel (bouton « No
 
 Classement : **Urgent**, puis **En cours** (importantes d'abord, puis celles dont c'est le dernier jour, puis les plus récentes), **À venir** (par date de début), **Terminées cette semaine** (repliées). Filtres : « Pour moi » (selon le métier de l'agent ; « Tout le service » par défaut pour l'encadrement) et par type.
 
-**Mettre fin** : tout le monde peut mettre fin à une information jugée obsolète (« Plus d'actualité », avec confirmation) ; le nom de la personne est noté.
+**Mettre fin** : tout le monde peut mettre fin à une information jugée obsolète (« Clôturer », avec confirmation) ; le nom de la personne est noté.
 
 **Hors ligne** : le dernier mur reçu est gardé sur l'appareil ; une publication ou une fin passe par la file d'attente (« En attente d'envoi » sur la carte). Une publication pas encore envoyée peut être annulée.
 

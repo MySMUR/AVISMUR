@@ -365,7 +365,7 @@ const Infos = (() => {
         boutonCommentaires,
         st === 'terminee' ? null : el('button', {
           type: 'button', classe: 'info-bouton', surclick: () => { confirmerFin = info.id; rendre(); focaliser(`[data-id="${CSS.escape(info.id)}"] .info-confirmation .danger`); },
-        }, info.enAttente ? 'Annuler la publication' : 'Plus d\'actualité')),
+        }, info.enAttente ? 'Annuler la publication' : 'Clôturer')),
     ouvert ? filCommentaires(info, commentaires) : null));
   }
 
