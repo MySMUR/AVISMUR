@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 17;
+  const VERSION_SERVEUR = 18;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -1421,6 +1421,7 @@ const Inventaires = (() => {
 
   // ----- Premier niveau -----
   function vueRacine() {
+    if (gestion && estAdmin()) reparerEmplacements();
     const racines = enfants('');
     const tous = Object.values(structure.contenants).filter((c) => !c.supprime && (gestion || !dansUnModele(c.id)));
     // Base des articles et tableau de bord : par le menu. Ici, une loupe discrète déplie la recherche.
@@ -2245,6 +2246,8 @@ const Inventaires = (() => {
    * l'identifie ailleurs (perte de matériel possible : signalé sur la page des inventaires).
    */
   function affecterLocal(x, y, date = new Date().toISOString(), dans = '') {
+    if (y && y.emplacement) { const e = y; y = enfants(e.id).find((c) => c.id !== x.id) || null; if (!y) { if (x.parent === e.id) return; dans = e.id; } }
+    if (dansUnModele(x.id) || (y && dansUnModele(y.id))) return;
     const versY = y ? y.parent : dans;
     const p = contenant(versY);
     if (!versY || !p) return;
@@ -2274,10 +2277,41 @@ const Inventaires = (() => {
       if (e.dans) affecterLocal(x, null, e.date, e.dans);
       else { const y = structure.contenants[e.place]; if (y && y.parent === e.vers) affecterLocal(x, y, e.date); }
     });
+    App.fileAttente().filter((e) => e.action === 'ignorerDesaffectation').forEach((e) => {
+      const c = contenant(e.contenant);
+      if (c && c.desaffecte && !c.parent && !c.desaffecte.ignore) c.desaffecte.ignore = { le: e.date, par: App.agent() };
+    });
+  }
+  /*
+   * Réparation (administrateur, gestion des inventaires) : avant le correctif, rouvrir un emplacement déjà pointé
+   * pouvait désaffecter l'emplacement lui-même (il porte le nom de l'inventaire type attendu, ex. « Sac ROUGE »)
+   * au lieu de son occupant. On le remet dans son contenant, avec les gommettes, et l'occupant y retourne.
+   */
+  function reparerEmplacements() {
+    const remis = [];
+    Object.values(structure.contenants).filter((e) => !e.supprime && e.emplacement && e.desaffecte && !e.parent).forEach((e) => {
+      const p = contenant(e.desaffecte.de);
+      if (!p || p.supprime) return;
+      // Le contenant qui a pris sa place : même rang, contenant mobile d'un des modèles attendus.
+      const modeles = modelesEmplacement(e);
+      const x = enfants(p.id).find((c) => c.categorie === 'mobile' && !c.emplacement && c.ordre === e.ordre && (!c.source || modeles.includes(c.source)));
+      e.parent = p.id;
+      delete e.desaffecte;
+      if (x && !enfants(e.id).length) {
+        traduireCibles(p, (cible) => (cible === x.id ? e.id : cible));
+        x.parent = e.id;
+        x.ordre = 0;
+        marquer(x.id);
+      }
+      marquer(e.id);
+      marquer(p.id);
+      remis.push(`« ${e.nom} » (${chemin(p.id).map((c) => c.nom).join(' › ')})`);
+    });
+    if (remis.length) avis = `Emplacement remis en place : ${remis.join(', ')}. Il avait été désaffecté par erreur.`;
   }
   /** Contenants mobiles désaffectés (à retrouver), du plus ancien au plus récent. */
   const aRetrouver = () => Object.values(structure.contenants)
-    .filter((c) => !c.supprime && c.desaffecte && !c.parent && !dansUnModele(c.id))
+    .filter((c) => !c.supprime && c.desaffecte && !c.desaffecte.ignore && !c.parent && !c.emplacement && !dansUnModele(c.id))
     .sort((a, b) => String(a.desaffecte.depuis).localeCompare(String(b.desaffecte.depuis)));
   /** Publie sur le mur d'accueil un contenant mobile à retrouver, avec le commentaire libre de l'agent. */
   function publierARetrouver(c) {
@@ -2291,6 +2325,16 @@ const Inventaires = (() => {
       surPublie: () => { avis = navigator.onLine ? 'Alerte publiée sur le mur.' : 'Alerte enregistrée : elle sera publiée sur le mur au retour du réseau.'; rendre({ garderPosition: true }); },
     });
   }
+  /** Alerte ignorée (pas de publication) : le contenant reste désaffecté, noté sur sa fiche, mais n'est plus signalé ici. */
+  function ignorerARetrouver(c) {
+    const date = new Date().toISOString();
+    const ok = App.mettreEnFile({ action: 'ignorerDesaffectation', contenant: c.id, date });
+    if (!ok) { messageVue('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur'); return; }
+    c.desaffecte.ignore = { le: date, par: App.agent() };
+    sauverStructure();
+    avis = `Alerte ignorée : « ${c.nom} » reste désaffecté (noté sur sa fiche) jusqu'à ce qu'on l'identifie quelque part.`;
+    rendre({ garderPosition: true });
+  }
   function encadreARetrouver() {
     const liste = aRetrouver();
     if (!liste.length) return null;
@@ -2302,16 +2346,21 @@ const Inventaires = (() => {
         const quand = d.depuis ? new Date(d.depuis) : null;
         return el('li', {}, el('a', { href: lien(c.id) }, el('strong', { texte: c.nom })),
           el('span', { texte: ` — était dans ${d.deNom || '?'}${quand ? `, désaffecté le ${quand.toLocaleDateString('fr-FR')} à ${heure(d.depuis)}` : ''}${d.par ? ` (${d.par})` : ''}` }),
-          el('button', { type: 'button', classe: 'lien inv-publier-mur', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) }));
+          el('span', { classe: 'inv-a-retrouver-actions' },
+            el('button', { type: 'button', classe: 'lien inv-publier-mur', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) }),
+            el('button', { type: 'button', classe: 'lien inv-ignorer-alerte', texte: 'Ignorer', title: 'Ne pas publier et ne plus signaler ici (le contenant reste désaffecté)', surclick: () => ignorerARetrouver(c) })));
       })));
   }
   /** Le contenant `x`, identifié par l'agent, est celui qui se trouve à la place de `y`. */
   function confirmerIdentification(y, idX, dans = '') {
+    // Un emplacement ne quitte jamais son contenant : c'est son occupant qui est remplacé (ou, vide, il reçoit le contenant).
+    if (y && y.emplacement) { const e = y; y = enfants(e.id)[0] || null; if (!y) dans = e.id; }
+    if ((y && dansUnModele(y.id)) || (dans && dansUnModele(dans))) { messageVue('Un inventaire type ne se range pas dans un contenant.', 'erreur'); return; }
     const x = contenant(idX);
     if (!x) { messageVue('Inventaire inconnu : vérifiez l\'étiquette ou la saisie.', 'erreur'); return; }
     if (y && x.id === y.id) { noterPointage(y.parent, y.id); identification = ''; aller(y.id); return; }
     if (!y && x.parent === dans) { noterPointage(dans, x.id); identification = ''; aller(x.id); return; }
-    if (x.categorie !== 'mobile' || dansUnModele(x.id)) { messageVue(`« ${x.nom} » n'est pas un contenant mobile : choisissez celui qui se trouve réellement ici.`, 'erreur'); return; }
+    if (x.categorie !== 'mobile' || x.emplacement || dansUnModele(x.id)) { messageVue(`« ${x.nom} » n'est pas un contenant mobile : choisissez celui qui se trouve réellement ici.`, 'erreur'); return; }
     const vers = y ? y.parent : dans;
     const emp = contenant(vers) && contenant(vers).emplacement ? contenant(vers) : null;
     if (emp && !modelesEmplacement(emp).includes(x.source)) {
@@ -3746,6 +3795,7 @@ const Inventaires = (() => {
       })() : null,
       c.desaffecte && !c.parent ? el('p', { classe: 'note-parc anomalie' }, el('strong', { texte: 'Désaffecté — à retrouver. ' }),
         `Était dans ${c.desaffecte.deNom || '?'}. Il sera réaffecté dès qu'on l'identifiera à sa place lors d'une vérification. `,
+        c.desaffecte.ignore ? el('small', { classe: 'inv-trace', texte: `Alerte ignorée${c.desaffecte.ignore.par ? ` par ${c.desaffecte.ignore.par}` : ''}${c.desaffecte.ignore.le ? ` le ${new Date(c.desaffecte.ignore.le).toLocaleDateString('fr-FR')}` : ''}. ` }) : null,
         el('button', { type: 'button', classe: 'lien', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) })) : null,
       ...(questionScelle ? [blocQuestionScelle(c)] : []),
       c.clAmbulancier && !edition && !modele ? blocNiveauxOxygene(c) : null,
@@ -4364,7 +4414,7 @@ const Inventaires = (() => {
         rendre();
         return;
       }
-      if (cible && !gestion && !enConsultation(cible) && cible.categorie === 'mobile' && cible.parent && cible.parent === idCourant() && !mobilePointe(cible)) {
+      if (cible && !gestion && !enConsultation(cible) && cible.categorie === 'mobile' && !cible.emplacement && cible.parent && cible.parent === idCourant() && !mobilePointe(cible)) {
         identification = cible.id;
         rendre();
         return;

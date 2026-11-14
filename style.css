@@ -1699,7 +1699,10 @@ textarea:focus { border-color: var(--bleu); }
 .inv-a-retrouver a { color: var(--erreur); }
 .inv-desaffecte { color: var(--erreur) !important; font-weight: 700; }
 .inv-mobile-ici { display: inline-block; margin: 0.2rem 0 0.6rem; }
-.inv-publier-mur { display: block; margin-top: 0.2rem; font-size: 0.92rem; }
+.inv-a-retrouver-actions { display: flex; flex-wrap: wrap; gap: 0.3rem 1.2rem; margin-top: 0.2rem; }
+.inv-publier-mur, .inv-ignorer-alerte { font-size: 0.92rem; }
+.inv-ignorer-alerte { color: var(--gris) !important; }
+.inv-trace { display: block; margin-top: 0.2rem; color: var(--gris); font-weight: 400; }
 
 /* Emplacements de contenants mobiles (ex. « Ampoulier A » dans un sac) */
 .inv-tag-emplacement { color: #0E6B5C; border-color: #0E6B5C; background: #E6F4F1; }

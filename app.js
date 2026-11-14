@@ -389,6 +389,8 @@ async function envoyerFileAttente() {
           rep = await appeler('deplacerContenant', {
             contenant: suivante.contenant, place: suivante.place, dans: suivante.dans, idSaisie: suivante.id, dateSaisie: suivante.date,
           });
+        } else if (suivante.action === 'ignorerDesaffectation') {
+          rep = await appeler('ignorerDesaffectation', { contenant: suivante.contenant, idSaisie: suivante.id, dateSaisie: suivante.date });
         } else if (suivante.action === 'majPeremption') {
           rep = await appeler('majPeremption', {
             contenant: suivante.contenant, article: suivante.article, detail: suivante.detail, idSaisie: suivante.id, dateSaisie: suivante.date,
