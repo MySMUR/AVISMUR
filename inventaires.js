@@ -3780,23 +3780,21 @@ const Inventaires = (() => {
    */
   function blocTraceur(c) {
     const caseTraceur = idChamp();
-    const champNom = idChamp();
-    const nom = el('div', { classe: 'champ' }, el('label', { for: champNom, texte: 'Nom du traceur' }),
-      el('input', { id: champNom, maxlength: '60', valeur: c.traceur || '', placeholder: 'Nom du traceur dans GeoTraceSMUR', surchange: (e) => {
-        const t = e.target.value.trim();
-        if (t) c.traceur = t; else delete c.traceur;
+    // Nom choisi dans la liste de GeoTraceSMUR (traceurs.js) : liaison exacte avec l'onglet du traceur.
+    const choix = el('div', { classe: 'champ' }, el('span', { classe: 'inv-libelle', texte: 'Traceur' }),
+      Traceurs.champ({ appeler: App.appeler, valeur: c.traceur || '', proprietaire: { genre: 'contenant', id: c.id }, surchange: (nom) => {
+        if (nom) c.traceur = nom; else delete c.traceur;
         marquer(c.id);
       } }));
-    nom.hidden = !c.traceur;
+    choix.hidden = !c.traceur;
     const coche = el('input', { type: 'checkbox', id: caseTraceur, checked: Boolean(c.traceur), surchange: (e) => {
-      nom.hidden = !e.target.checked;
-      if (e.target.checked) nom.querySelector('input').focus();
-      else { delete c.traceur; nom.querySelector('input').value = ''; marquer(c.id); }
+      choix.hidden = !e.target.checked;
+      if (!e.target.checked && c.traceur) { delete c.traceur; marquer(c.id); rendre({ garderPosition: true }); }
     } });
     return el('div', { classe: 'inv-bloc-traceur' },
       el('label', { classe: 'cfg-case inv-case-fiche', for: caseTraceur }, coche,
         el('span', {}, 'Muni d\'un traceur GeoTraceSMUR', el('small', { texte: 'son contenant primaire est signalé à GeoTrace à chaque vérification ou identification' }))),
-      nom);
+      choix);
   }
 
   // ---------- Contenant scellable : « est-il scellé ? » ----------
@@ -3931,7 +3929,7 @@ const Inventaires = (() => {
         ...(typeof VEHICULES !== 'undefined' ? VEHICULES : []).filter((v) => !v.inactif || v.id === c.clAmbulancier)
           .map((v) => { const o = el('option', { value: v.id, texte: `Oui — check-list de ${v.nom || v.id}` }); o.selected = v.id === c.clAmbulancier; return o; })),
         el('p', { classe: 'aide-question', texte: 'Ex. bouteilles d\'oxygène : la gommette passe au vert quand la check-list ambulancier du jour est faite ; un clic montre les niveaux.' })) : null,
-      edition && c.categorie === 'mobile' && !c.emplacement && !modele ? blocTraceur(c) : null,
+      edition && c.categorie === 'mobile' && !c.emplacement && !modele && typeof Traceurs !== 'undefined' ? blocTraceur(c) : null,
       edition && !c.parent && !racineExemplaire(c.id) ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseModele },
         el('input', { type: 'checkbox', id: caseModele, checked: c.modele === true, surchange: (e) => {
           if (e.target.checked) c.modele = true; else delete c.modele;

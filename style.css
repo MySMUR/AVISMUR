@@ -2446,3 +2446,9 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .inv-oxy-liste li.bas .inv-oxy-jauge > span { background: var(--erreur); }
 .inv-oxy-liste li.bas .inv-oxy-valeur { color: var(--erreur); font-weight: 600; }
 .inv-choix-ambulancier select { max-width: 100%; }
+
+/* Choix d'un traceur GeoTraceSMUR (traceurs.js) */
+.traceur-ligne { display: flex; gap: .4rem; align-items: center; }
+.traceur-ligne select, .traceur-ligne input { flex: 1; min-width: 0; }
+.traceur-note { display: block; color: var(--gris); margin-top: .2rem; }
+.traceur-note:empty { display: none; }

@@ -472,7 +472,6 @@ const Materiel = (() => {
       periodicite: el('input', { type: 'number', min: '1', max: '120', valeur: base.periodicite }),
       statut: selectListe(statuts(), base.statut),
       traceur: el('input', { type: 'checkbox', coche: base.traceur }),
-      nomTraceur: el('input', { valeur: base.nomTraceur, placeholder: 'Nom du traceur dans GeoTraceSMUR' }),
       remarques: el('textarea', { rows: '3', valeur: base.remarques }),
     };
     // Photo : une nouvelle photo (prise ou choisie) remplace l'ancienne ; « Retirer » la supprime de la fiche.
@@ -496,7 +495,12 @@ const Materiel = (() => {
     const blocPhoto = el('div', { classe: 'mat-photo-bloc' }, el('p', { classe: 'mat-libelle', texte: 'Photo du matériel' }), apercu,
       el('div', { classe: 'mat-boutons' },
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Prendre ou choisir une photo', surclick: () => fichierPhoto.click() }), boutonRetirer, fichierPhoto));
-    const blocTraceur = champ('Nom du traceur', e.nomTraceur);
+    // Nom du traceur choisi dans la liste de GeoTraceSMUR (traceurs.js) : liaison exacte avec l'onglet du traceur.
+    let nomTraceur = base.nomTraceur || '';
+    const choixTraceur = typeof Traceurs !== 'undefined' && outils.appeler
+      ? Traceurs.champ({ appeler: outils.appeler, valeur: nomTraceur, proprietaire: { genre: 'materiel', id: base.id }, surchange: (n) => { nomTraceur = n; } })
+      : (() => { const i = el('input', { valeur: nomTraceur, placeholder: 'Nom du traceur dans GeoTraceSMUR' }); i.addEventListener('change', () => { nomTraceur = i.value.trim(); }); return i; })();
+    const blocTraceur = el('div', { classe: 'champ mat-champ' }, el('span', { classe: 'mat-libelle', texte: 'Traceur GeoTraceSMUR' }), choixTraceur);
     const majTraceur = () => { blocTraceur.hidden = !e.traceur.checked; };
     e.traceur.addEventListener('change', majTraceur);
     majTraceur();
@@ -506,7 +510,7 @@ const Materiel = (() => {
       ...base,
       type: e.type.valeur(), modele: e.modele.value.trim(), numInterne: e.numInterne.value.trim(), numBiomed: e.numBiomed.value.trim(),
       numSerie: e.numSerie.value.trim(), revision: e.revision.value, periodicite: Number(e.periodicite.value) || '',
-      statut: e.statut.value, traceur: e.traceur.checked, nomTraceur: e.traceur.checked ? e.nomTraceur.value.trim() : '', remarques: e.remarques.value.trim(),
+      statut: e.statut.value, traceur: e.traceur.checked, nomTraceur: e.traceur.checked ? nomTraceur.trim() : '', remarques: e.remarques.value.trim(),
       photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
     });
 
