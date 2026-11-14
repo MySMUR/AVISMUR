@@ -228,6 +228,7 @@ const Inventaires = (() => {
   function definirVueParDefaut(c, cle) {
     const i = c.vues.findIndex((v) => v.id === cle);
     if (i === -1) return;
+    c.vues.forEach((x, j) => { if (!x.nom) x.nom = `Vue ${j + 2}`; }); // chaque vue garde le nom affiché
     const v = c.vues[i];
     const ancienne = { id: v.id, nom: c.nomVue || 'Vue 1', photo: c.photo, points: c.points };
     c.photo = v.photo; c.points = v.points; c.nomVue = v.nom || `Vue ${i + 2}`;
