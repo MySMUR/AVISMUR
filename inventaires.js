@@ -258,18 +258,38 @@ const Inventaires = (() => {
     return [f.categorie || 'Sans catégorie', f.refInterne ? `réf. ${f.refInterne}` : '', f.horsStock ? 'dotation hors stock' : '',
       f.consommable ? '' : 'non consommable', f.perissable ? 'périssable' : '', f.archive ? 'archivé' : ''].filter(Boolean).join(' · ');
   }
-  /** Fiches dont la dénomination ou une référence contient tous les mots cherchés. */
+  /**
+   * Fiches correspondant à tous les mots cherchés, les plus pertinentes d'abord.
+   * Un mot doit se trouver dans la dénomination ; il peut aussi se trouver dans une référence,
+   * mais seulement à partir de 3 caractères (sinon « 8 » trouverait toutes les réf. contenant un 8).
+   * Classement : dénomination identique, puis mots entiers, puis débuts de mots, puis le reste.
+   */
   function chercherFiches(texte, { archives = false, categorie = '' } = {}) {
-    const mots = cle(texte).split(' ').filter(Boolean);
+    const recherche = cle(texte);
+    const mots = recherche.split(' ').filter(Boolean);
+    const decouper = (t) => t.split(/[\s,;/()\-]+/).filter(Boolean);
+    const score = (f) => {
+      const nom = cle(f.denomination);
+      const refs = cle(`${f.refInterne} ${f.refFournisseur}`);
+      const motsNom = decouper(nom);
+      // Les virgules décimales (« 3,5 ») restent aussi cherchables telles quelles.
+      const motsNomBruts = nom.split(' ');
+      const trouve = mots.every((m) => nom.includes(m) || (m.length >= 3 && refs.includes(m)));
+      if (!trouve) return -1;
+      if (nom === recherche) return 0;
+      const entier = (m) => motsNom.includes(m) || motsNomBruts.includes(m);
+      if (mots.every(entier)) return 1;
+      const debut = (m) => motsNom.some((w) => w.startsWith(m)) || motsNomBruts.some((w) => w.startsWith(m));
+      if (mots.every(debut)) return 2;
+      if (mots.every((m) => nom.includes(m))) return 3;
+      return 4; // trouvé grâce à une référence
+    };
     return Object.values(structure.catalogue)
       .filter((f) => (archives || !f.archive) && (!categorie || f.categorie === categorie))
-      .filter((f) => { const t = cle(`${f.denomination} ${f.refInterne} ${f.refFournisseur}`); return mots.every((m) => t.includes(m)); })
-      .sort((x, y) => {
-        // Les dénominations qui commencent par la recherche d'abord.
-        const dx = cle(x.denomination).startsWith(mots[0] || '') ? 0 : 1;
-        const dy = cle(y.denomination).startsWith(mots[0] || '') ? 0 : 1;
-        return dx - dy || x.denomination.localeCompare(y.denomination, 'fr');
-      });
+      .map((f) => ({ f, s: score(f) }))
+      .filter((x) => x.s >= 0)
+      .sort((x, y) => x.s - y.s || x.f.denomination.localeCompare(y.f.denomination, 'fr', { numeric: true }))
+      .map((x) => x.f);
   }
   /** Autre fiche (non archivée) qui porte déjà ce nom ou cette réf. interne. */
   function doublon(f) {
