@@ -458,7 +458,9 @@ const Inventaires = (() => {
       });
     });
     b.complet = b.total > 0 && b.faits === b.total;
-    b.classe = b.total === 0 ? 'vide' : (b.complet ? 'fait' : (b.faits ? 'encours' : 'afaire'));
+    // Anomalie (ici ou dans un sous-inventaire) : article manquant ou hors limite au dernier inventaire, ou périmé.
+    b.anomalie = b.manquants > 0 || b.perimes > 0;
+    b.classe = b.total === 0 ? 'vide' : (b.complet ? `fait${b.anomalie ? ' anomalie' : ''}` : (b.faits ? 'encours' : 'afaire'));
     b.texte = b.total === 0 ? 'Rien à cocher' : (b.complet ? 'Vérifié aujourd\'hui' : (b.faits ? `${b.faits} sur ${b.total} vérifiés` : 'À vérifier'));
     return b;
   }
@@ -1514,19 +1516,16 @@ const Inventaires = (() => {
         const rang = fils.findIndex((f) => f.id === p.cible);
         if (rang === -1) return;
         const b = bilan(fils[rang].id);
+        // Validé par le scellé (« Oui, il est scellé ») : cadenas à la place du ✓, couleur du dernier inventaire.
+        const scelle = !edition && b.complet && sousScelle(fils[rang]);
         const commun = {
-          classe: `inv-point ${b.classe}${placement === p.cible ? ' deplace' : ''}`, style: `left:${p.x * 100}%;top:${p.y * 100}%`,
+          classe: `inv-point ${b.classe}${scelle ? ' scelle' : ''}${placement === p.cible ? ' deplace' : ''}`, style: `left:${p.x * 100}%;top:${p.y * 100}%`,
           'aria-label': `${fils[rang].nom} : ${b.texte}`, title: fils[rang].nom,
         };
         const pastille = edition
           ? el('button', { type: 'button', ...commun, texte: String(rang + 1), surclick: () => { placement = placement === p.cible ? '' : p.cible; rendre({ garderPosition: true }); } })
-          : el('a', { href: lien(p.cible), ...commun, texte: b.complet ? '✓' : String(rang + 1) });
-        // Contenant scellable : petit cadenas en coin de pastille.
-        if (fils[rang].scellable) {
-          const cadenas = logoCadenas();
-          cadenas.classList.add('inv-point-cadenas');
-          pastille.append(cadenas);
-        }
+          : el('a', { href: lien(p.cible), ...commun, texte: scelle ? '' : (b.complet ? '✓' : String(rang + 1)) });
+        if (scelle) pastille.append(logoCadenas());
         if (edition) glisserPastille(pastille, img, c, vc, p.cible);
         cadre.append(pastille);
       });

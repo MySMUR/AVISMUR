@@ -1175,6 +1175,7 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 /* État : la couleur double toujours un texte (« Vérifié », « À vérifier »…) ou un ✓. */
 .inv-statut { margin: 0.2rem 0 0.9rem; padding: 0.55rem 0.8rem; border-left: 6px solid var(--trait); background: var(--ciel); border-radius: 0 var(--rayon) var(--rayon) 0; }
 .inv-statut.fait { border-left-color: var(--rhone); }
+.inv-statut.fait.anomalie { border-left-color: var(--orange); }
 .inv-statut.encours, .inv-statut.afaire { border-left-color: var(--orange); }
 .inv-badges { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; }
 .inv-statut .inv-badges { margin-left: 0.5rem; }
@@ -1203,6 +1204,10 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
   box-shadow: 0 1px 5px rgb(0 0 0 / 0.45);
 }
 .inv-repere.fait, .inv-point.fait { background: var(--rhone); }
+.inv-repere.fait.anomalie, .inv-point.fait.anomalie { background: var(--orange); }
+.inv-carte.fait.anomalie { border-left-color: var(--orange); }
+.inv-carte.fait.anomalie .inv-carte-etat { color: #8A4B00; }
+.inv-point.scelle .inv-tb-cadenas { width: 1.35rem; height: 1.35rem; color: #fff; }
 .inv-repere.vide, .inv-point.vide { background: var(--gris); }
 .inv-repere:empty { width: 3.4rem; height: 3.4rem; border-radius: 10px; background: var(--ciel); box-shadow: none; border-color: var(--trait); }
 .inv-repere img { width: 3.4rem; height: 3.4rem; object-fit: cover; border-radius: 8px; }
@@ -1722,6 +1727,7 @@ textarea:focus { border-color: var(--bleu); }
   .inv-arbre-nb { margin-left: auto; font-variant-numeric: tabular-nums; }
   .inv-arbre-etat { width: 0.6rem; height: 0.6rem; flex-shrink: 0; border-radius: 50%; background: var(--orange); }
   .inv-arbre-etat.fait { background: var(--rhone); }
+  .inv-arbre-etat.fait.anomalie { background: var(--orange); }
   .inv-arbre-legende { margin: 0.6rem 0 0; font-size: 0.8rem; }
 }
 
@@ -2101,7 +2107,6 @@ details.inv-tb-legende li { display: inline-flex; align-items: center; gap: 0.35
 
 /* Cadenas sur la pastille d'un contenant scellable */
 .inv-point { overflow: visible; }
-.inv-point .inv-point-cadenas { position: absolute; right: -0.35rem; bottom: -0.35rem; width: 1.15rem; height: 1.15rem; padding: 0.12rem; border-radius: 50%; background: #fff; color: var(--bleu); box-shadow: 0 0 0 1px rgba(0,0,0,.25); pointer-events: none; }
 
 /* Barre du haut : nom du contenant parent à côté de la flèche, niveau affiché en dessous, icône « changer ». */
 .inv-retour-nom {
