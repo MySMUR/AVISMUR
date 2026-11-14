@@ -176,7 +176,9 @@ const Inventaires = (() => {
         const mm = (v, d) => Math.min(150, Math.max(15, Math.round(Number(v) || d)));
         const largeur = mm(c.etiquette.largeur || c.etiquette.taille, 40);
         return { largeur, hauteur: mm(c.etiquette.hauteur || c.etiquette.taille, largeur),
-          logo: ['nfc', 'smur'].includes(c.etiquette.logo) ? c.etiquette.logo : '' };
+          logo: ['nfc', 'smur'].includes(c.etiquette.logo) ? c.etiquette.logo : '',
+          ...(/^#[0-9a-f]{6}$/i.test(c.etiquette.couleur || '') && c.etiquette.couleur.toLowerCase() !== '#1d4f9f' ? { couleur: c.etiquette.couleur.toLowerCase() } : {}),
+          ...(c.etiquette.negatif === true ? { negatif: true } : {}) };
       })() } : {}),
       ...(c.modele ? { modele: true } : {}),
       ...(c.desaffecte ? { desaffecte: c.desaffecte } : {}), // mobile dont la place a été prise : à retrouver
@@ -3125,6 +3127,13 @@ const Inventaires = (() => {
     const formats = [[40, 40], [30, 30], [60, 30], [50, 25], [70, 35], [25, 50]];
     const reglages = el('div', { classe: 'inv-etiquette-reglages' },
       champMm('largeur', 'Largeur (mm)'), champMm('hauteur', 'Hauteur (mm)'),
+      el('div', { classe: 'inv-etiquette-couleurs' }, el('span', { texte: 'Couleur :' }),
+        ...PALETTE_ETIQUETTE.map((coul) => el('button', {
+          type: 'button', classe: `inv-pastille${(r0.couleur || COULEUR_DEFAUT_ETIQUETTE) === coul.toLowerCase() ? ' choisie' : ''}`,
+          style: `background:${coul}`, title: coul, 'aria-label': `Couleur ${coul}`,
+          surclick: () => { regler('couleur', coul); rendre({ garderPosition: true }); } })),
+        el('input', { type: 'color', valeur: r0.couleur || COULEUR_DEFAUT_ETIQUETTE, 'aria-label': 'Autre couleur', surchange: (e) => { regler('couleur', e.target.value); rendre({ garderPosition: true }); } }),
+        el('label', { classe: 'inv-negatif' }, el('input', { type: 'checkbox', checked: r0.negatif === true, surchange: (e) => regler('negatif', e.target.checked) }), el('span', { texte: 'Négatif' }))),
       el('label', {}, el('span', { texte: 'Logo' }),
         el('select', { surchange: (e) => regler('logo', e.target.value) },
           ...[['', 'Aucun'], ['nfc', 'Pictogramme NFC sur le côté (puce au dos)'], ['smur', 'Croix SMUR au centre']].map(([v, t]) => el('option', { value: v, selected: r0.logo === v, texte: t })))),
@@ -3763,6 +3772,33 @@ const Inventaires = (() => {
   /** Réglages d'étiquette d'un contenant (par défaut : carré de 40 mm, sans logo). */
   const reglageEtiquette = (c) => ({ largeur: 40, hauteur: 40, logo: '', ...(c.etiquette || {}) });
   const COULEURS_ETIQUETTE = { bleu: '#1D4F9F', fonce: '#163E7E', accent: '#163E7E', encre: '#13294B', orange: '#E07A12' };
+  const COULEUR_DEFAUT_ETIQUETTE = '#1D4F9F';
+  const PALETTE_ETIQUETTE = ['#1D4F9F', '#13294B', '#C62828', '#E07A12', '#2E7D32', '#6A1B9A', '#00838F', '#455A64'];
+  /** Mélange une couleur « #rrggbb » avec du noir (t > 0) ou du blanc (t < 0). */
+  function nuance(hex, t) {
+    const n = parseInt(hex.slice(1), 16);
+    const c = [n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.round(t >= 0 ? v * (1 - t) : v + (255 - v) * -t));
+    return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+  }
+  function luminance(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const l = [n >> 16, (n >> 8) & 255, n & 255].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+    return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2];
+  }
+  /**
+   * Couleurs d'une étiquette. Normal : fond blanc, décor dans la couleur choisie (assombrie si trop claire pour
+   * se lire sur du blanc). Négatif : fond de la couleur choisie, décor et textes en blanc ; le QR code reste
+   * sombre sur une pastille blanche (beaucoup de lecteurs ne lisent pas un QR code inversé).
+   */
+  function paletteEtiquette(r) {
+    let c = /^#[0-9a-f]{6}$/i.test(r.couleur || '') ? r.couleur : COULEUR_DEFAUT_ETIQUETTE;
+    if (r.negatif) {
+      while (luminance(c) > 0.3) c = nuance(c, 0.1); // texte blanc lisible sur le fond
+      return { fond: c, bleu: '#fff', fonce: '#fff', accent: '#fff', encre: luminance(c) < 0.06 ? c : nuance(c, 0.55), tuile: '#fff', negatif: true };
+    }
+    while (luminance(c) > 0.25) c = nuance(c, 0.1);
+    return { fond: '#fff', bleu: c, fonce: nuance(c, 0.25), accent: nuance(c, 0.25), encre: luminance(c) < 0.06 ? c : nuance(c, 0.55), tuile: '', negatif: false };
+  }
   const LOGOS_ETIQUETTE = {
     nfc: (k) => [el('svg:rect', { x: 3, y: 2, width: 18, height: 20, rx: 3, fill: 'none', stroke: k.bleu, 'stroke-width': 1.8 }),
       el('svg:path', { d: 'M8 16V8l8 8V8', fill: 'none', stroke: k.bleu, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })],
@@ -3813,7 +3849,7 @@ const Inventaires = (() => {
    * Correction d'erreur H : le logo central reste lisible.
    */
   function etiquetteSvg(c, reglage = reglageEtiquette(c)) {
-    const k = COULEURS_ETIQUETTE;
+    const k = paletteEtiquette(reglage);
     const W = reglage.largeur, H = reglage.hauteur, petit = Math.min(W, H);
     const q = qrcode(0, 'H');
     q.addData(adresse(c.id));
@@ -3829,7 +3865,7 @@ const Inventaires = (() => {
     const marge = ep * 1.6; // du bord au cadre intérieur
     const coin = Math.min(7, petit * 0.18);
     const enfants = [
-      el('svg:rect', { width: W, height: H, fill: '#fff' }),
+      el('svg:rect', { width: W, height: H, fill: k.fond }),
       el('svg:rect', { x: ep / 2 + 0.3, y: ep / 2 + 0.3, width: W - ep - 0.6, height: H - ep - 0.6, rx: Math.min(3, petit * 0.07), fill: 'none', stroke: k.bleu, 'stroke-width': ep }),
     ];
     const a = ep / 2 + 0.3, cr = Math.min(3, petit * 0.07);
@@ -3922,11 +3958,12 @@ const Inventaires = (() => {
         + `M${col + 3} ${r + 2}H${col + 4}a1 1 0 0 1 1 1V${r + 4}a1 1 0 0 1 -1 1H${col + 3}a1 1 0 0 1 -1 -1V${r + 3}a1 1 0 0 1 1 -1Z`;
     });
     enfants.push(
+      ...(k.tuile ? [el('svg:rect', { x: qr.x, y: qr.y, width: qr.s, height: qr.s, rx: mod * 2.5, fill: k.tuile })] : []),
       el('svg:g', { transform: `translate(${qr.x + o} ${qr.y + o}) scale(${mod})` }, el('svg:path', { d: trace, fill: k.encre })));
     if (L) {
       const p = (L + 1) * mod, x = qr.x + o + (l0 - 0.5) * mod, y = qr.y + o + (l0 - 0.5) * mod;
-      enfants.push(el('svg:rect', { x, y, width: p, height: p, rx: p * 0.12, fill: '#fff', stroke: k.bleu, 'stroke-width': mod * 0.35 }),
-        el('svg:svg', { x: x + p * 0.12, y: y + p * 0.12, width: p * 0.76, height: p * 0.76, viewBox: '0 0 24 24' }, ...LOGOS_ETIQUETTE[reglage.logo](k)));
+      enfants.push(el('svg:rect', { x, y, width: p, height: p, rx: p * 0.12, fill: '#fff', stroke: k.negatif ? k.encre : k.bleu, 'stroke-width': mod * 0.35 }),
+        el('svg:svg', { x: x + p * 0.12, y: y + p * 0.12, width: p * 0.76, height: p * 0.76, viewBox: '0 0 24 24' }, ...LOGOS_ETIQUETTE[reglage.logo](k.negatif ? { ...k, bleu: k.encre } : k)));
     }
 
     // Textes

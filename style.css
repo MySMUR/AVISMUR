@@ -1308,6 +1308,11 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .inv-etiquette-reglages { display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
 .inv-etiquette-reglages label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; color: var(--gris); }
 .inv-etiquette-reglages input { width: 6rem; }
+.inv-etiquette-couleurs { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; width: 100%; font-size: .85rem; color: var(--gris); }
+.inv-pastille { width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(19, 41, 75, .3); cursor: pointer; padding: 0; }
+.inv-pastille.choisie { box-shadow: 0 0 0 2px var(--encre, #13294B); }
+.inv-etiquette-couleurs input[type=color] { width: 2rem; height: 1.7rem; padding: 0; border: 0; background: none; }
+.inv-negatif { display: inline-flex; align-items: center; gap: .3rem; margin-left: .5rem; }
 .inv-etiquette-formats { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; width: 100%; font-size: .85rem; color: var(--gris); }
 .inv-apercu-reel { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(19, 41, 75, .55); }
 .inv-apercu-reel-boite { display: flex; flex-direction: column; gap: .8rem; max-width: 100%; max-height: 100%; overflow: auto; padding: 1rem; background: #fff; border-radius: 12px; }
