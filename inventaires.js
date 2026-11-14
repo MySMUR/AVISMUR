@@ -1020,6 +1020,17 @@ const Inventaires = (() => {
   }
 
   /** Carte cliquable d'un contenant : repère (numéro du point ou vignette), nom, état. */
+  /** Photo d'un contenant : la principale, sinon celle de sa première vue qui en a une. */
+  const photoDe = (x) => (x ? x.photo || ((x.vues || []).find((v) => v.photo) || {}).photo || '' : '');
+  /** Miniature d'un sous-inventaire (à côté de son numéro), s'il a une photo. */
+  function miniature(x) {
+    const id = photoDe(x);
+    if (!id) return null;
+    const bloc = el('span', { classe: 'inv-carte-photo', 'aria-hidden': 'true' });
+    const poser = (d) => { if (d) bloc.append(el('img', { src: d, alt: '' })); else bloc.remove(); };
+    if (Photos.enMemoire(id)) poser(Photos.enMemoire(id)); else obtenirPhoto(id).then(poser, () => bloc.remove());
+    return bloc;
+  }
   function carte(c, numero) {
     const b = bilan(c.id);
     const repere = el('span', { classe: `inv-repere ${b.classe}`, 'aria-hidden': 'true', texte: numero ? String(numero) : '' });
@@ -1032,7 +1043,7 @@ const Inventaires = (() => {
     const occupant = c.emplacement ? (gestion ? enfants(c.id)[0] : occupantDuJour(c)) : null;
     // Check-list : un emplacement occupé se présente sous le nom du contenant qui l'occupe (pas celui de l'inventaire type).
     if (c.emplacement && !gestion) {
-      return el('a', { classe: `inv-carte ${b.classe}`, href: lien(c.id) }, repere,
+      return el('a', { classe: `inv-carte ${b.classe}`, href: lien(c.id) }, repere, numero ? miniature(occupant || c) : null,
         el('span', { classe: 'inv-carte-texte' },
           el('strong', { texte: occupant ? occupant.nom : c.nom }),
           occupant ? null : el('span', { classe: 'inv-carte-occupant vide', texte: 'à identifier (QR, NFC ou liste)' }),
@@ -1040,7 +1051,7 @@ const Inventaires = (() => {
           el('span', { classe: 'inv-badges' }, ...badges(b))),
         el('span', { classe: 'inv-chevron', 'aria-hidden': 'true', texte: '›' }));
     }
-    return el('a', { classe: `inv-carte ${b.classe}`, href: lien(c.id) }, repere,
+    return el('a', { classe: `inv-carte ${b.classe}`, href: lien(c.id) }, repere, numero ? miniature(c.emplacement ? occupant || c : c) : null,
       el('span', { classe: 'inv-carte-texte' },
         el('strong', {}, c.nom, c.categorie && c.categorie !== 'primaire' && !c.emplacement ? el('span', { classe: `inv-tag-scellable inv-tag-${c.categorie}`, texte: CATEGORIES_CONTENANT[c.categorie].nom }) : null,
           c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null,
