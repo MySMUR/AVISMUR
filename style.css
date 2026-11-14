@@ -1209,7 +1209,10 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .inv-carte.fait.anomalie .inv-carte-etat { color: #8A4B00; }
 .inv-point.scelle .inv-tb-cadenas { width: 1.35rem; height: 1.35rem; color: #fff; }
 .inv-repere.vide, .inv-point.vide { background: var(--gris); }
-.inv-repere:empty { width: 3.4rem; height: 3.4rem; border-radius: 10px; background: var(--ciel); box-shadow: none; border-color: var(--trait); }
+.inv-repere:empty:not(.vierge) { width: 3.4rem; height: 3.4rem; border-radius: 10px; background: var(--ciel); box-shadow: none; border-color: var(--trait); }
+/* Gommettes à texte choisi : 2 ou 3 caractères tiennent dans le rond. */
+.inv-repere.long, .inv-point.long { font-size: 0.88rem; letter-spacing: -0.02em; }
+.inv-repere.tres-long, .inv-point.tres-long { font-size: 0.72rem; letter-spacing: -0.04em; }
 .inv-repere img { width: 3.4rem; height: 3.4rem; object-fit: cover; border-radius: 8px; }
 .inv-repere:has(img) { width: auto; height: auto; padding: 0; border: 0; border-radius: 10px; background: none; box-shadow: none; }
 .inv-outils { margin: 0.3rem 0 0.6rem; }
@@ -1442,6 +1445,8 @@ h1 .inv-tag-scellable { font-size: 0.8rem; vertical-align: 0.35em; }
 .inv-liste-triable > li.inv-ligne-triable > .inv-outils { grid-column: 2; }
 .inv-liste-triable > li.inv-ligne-triable > .inv-reglages-rapides { grid-column: 2; }
 /* Réglages rapides d'un sous-inventaire : Immobile / Mobile, scellable */
+.inv-texte-gommette { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; }
+.inv-texte-gommette input { width: 3.2rem; padding: 0.2rem 0.3rem; text-align: center; font-weight: 700; }
 .inv-reglages-rapides { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.3rem; }
 .inv-segment { display: inline-flex; }
 .inv-segment .cfg-mini { border-radius: 0; }

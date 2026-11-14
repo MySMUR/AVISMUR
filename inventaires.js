@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 15;
+  const VERSION_SERVEUR = 16;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -254,6 +254,28 @@ const Inventaires = (() => {
     c.vues = c.vues.map((v) => ({ ...v, points: t(v.points) }));
   }
   const photosDe = (c) => [c.photo, ...c.vues.map((v) => v.photo)].filter(Boolean);
+  /**
+   * Texte des gommettes d'un sous-inventaire (le même sur toutes les vues) : `undefined` = numéro automatique
+   * (rang dans la liste), '' = gommette sans texte, sinon 1 à 3 caractères (lettres, chiffres…).
+   */
+  function texteChoisi(c, cible) {
+    const p = vuesDe(c).flatMap((v) => v.points).find((x) => x.cible === cible && typeof x.texte === 'string');
+    return p ? p.texte : undefined;
+  }
+  const texteGommette = (c, cible, rang) => { const t = texteChoisi(c, cible); return t === undefined ? String(rang + 1) : t; };
+  function fixerTexteGommette(c, cible, texte) {
+    vuesDe(c).forEach((v) => v.points.forEach((p) => {
+      if (p.cible !== cible) return;
+      if (texte === undefined) delete p.texte; else p.texte = texte;
+    }));
+  }
+  /** Pose (ou repose) la gommette de `cible` sur la vue `vc`, en gardant son texte. */
+  function poserGommette(c, vc, cible, pos) {
+    const t = texteChoisi(c, cible);
+    majVue(c, vc.cle, { points: vc.points.filter((p) => p.cible !== cible).concat({ cible, x: pos.x, y: pos.y, ...(t === undefined ? {} : { texte: t }) }) });
+  }
+  /** Classes d'affichage d'une gommette selon son texte (vide, texte long). */
+  const classesTexte = (t) => (t === '' ? ' vierge' : Array.from(t).length > 1 ? ` long${Array.from(t).length > 2 ? ' tres-long' : ''}` : '');
 
   // ---------- Base des articles (catalogue) ----------
   const CATEGORIES = ['Médicament', 'DM', 'Magasin', 'Kit', 'Matériel', 'Autre'];
@@ -1071,9 +1093,11 @@ const Inventaires = (() => {
     if (Photos.enMemoire(id)) poser(Photos.enMemoire(id)); else obtenirPhoto(id).then(poser, () => bloc.remove());
     return bloc;
   }
-  function carte(c, numero) {
+  /** `numero` : rang du sous-inventaire (gommette) ; `texte` : texte de sa gommette s'il remplace le numéro. */
+  function carte(c, numero, texte) {
     const b = bilan(c.id);
-    const repere = el('span', { classe: `inv-repere ${b.classe}`, 'aria-hidden': 'true', texte: numero ? String(numero) : '' });
+    const t = numero ? (texte === undefined ? String(numero) : texte) : '';
+    const repere = el('span', { classe: `inv-repere ${b.classe}${numero ? classesTexte(t) : ''}`, 'aria-hidden': 'true', texte: t });
     if (!numero && c.photo) {
       const vignette = (donnees) => { if (donnees) repere.append(el('img', { src: donnees, alt: '' })); };
       if (Photos.enMemoire(c.photo)) vignette(Photos.enMemoire(c.photo));
@@ -1258,7 +1282,7 @@ const Inventaires = (() => {
       pastille.classList.remove('saisie');
       try { pastille.releasePointerCapture(idPointeur); } catch (err) { /* déjà libéré */ }
       if (poser && bouge) {
-        majVue(c, vc.cle, { points: vc.points.filter((q) => q.cible !== cible).concat({ cible, ...position(e) }) });
+        poserGommette(c, vc, cible, position(e));
         placement = '';
         marquer(c.id);
       }
@@ -1531,7 +1555,8 @@ const Inventaires = (() => {
       if (placement) {
         // Aperçu de la gommette qui suit la souris : on voit où elle sera posée, même sur une photo sombre.
         const rang = fils.findIndex((f) => f.id === placement);
-        const apercu = el('span', { classe: 'inv-point inv-apercu', 'aria-hidden': 'true', texte: rang === -1 ? '' : String(rang + 1), hidden: true });
+        const texteApercu = rang === -1 ? '' : texteGommette(c, placement, rang);
+        const apercu = el('span', { classe: `inv-point inv-apercu${classesTexte(texteApercu)}`, 'aria-hidden': 'true', texte: texteApercu, hidden: true });
         cadre.append(apercu);
         cadre.addEventListener('pointermove', (e) => {
           if (e.pointerType !== 'mouse') return;
@@ -1546,8 +1571,7 @@ const Inventaires = (() => {
         if (!placement) return;
         const r = img.getBoundingClientRect();
         const borne = (v) => Math.min(1, Math.max(0, v));
-        majVue(c, vc.cle, { points: vc.points.filter((p) => p.cible !== placement)
-          .concat({ cible: placement, x: borne((e.clientX - r.left) / r.width), y: borne((e.clientY - r.top) / r.height) }) });
+        poserGommette(c, vc, placement, { x: borne((e.clientX - r.left) / r.width), y: borne((e.clientY - r.top) / r.height) });
         placement = '';
         marquer(c.id);
         rendre({ garderPosition: true });
@@ -1558,13 +1582,15 @@ const Inventaires = (() => {
         const b = bilan(fils[rang].id);
         // Validé par le scellé (« Oui, il est scellé ») : cadenas à la place du ✓, couleur du dernier inventaire.
         const scelle = !edition && b.complet && sousScelle(fils[rang]);
+        const t = texteGommette(c, p.cible, rang);
+        const affiche = edition ? t : scelle ? '' : (b.complet ? '✓' : t);
         const commun = {
-          classe: `inv-point ${b.classe}${scelle ? ' scelle' : ''}${placement === p.cible ? ' deplace' : ''}`, style: `left:${p.x * 100}%;top:${p.y * 100}%`,
+          classe: `inv-point ${b.classe}${scelle ? ' scelle' : ''}${placement === p.cible ? ' deplace' : ''}${scelle ? '' : classesTexte(affiche)}`, style: `left:${p.x * 100}%;top:${p.y * 100}%`,
           'aria-label': `${fils[rang].nom} : ${b.texte}`, title: fils[rang].nom,
         };
         const pastille = edition
-          ? el('button', { type: 'button', ...commun, texte: String(rang + 1), surclick: () => { placement = placement === p.cible ? '' : p.cible; rendre({ garderPosition: true }); } })
-          : el('a', { href: lien(p.cible), ...commun, texte: scelle ? '' : (b.complet ? '✓' : String(rang + 1)) });
+          ? el('button', { type: 'button', ...commun, texte: affiche, surclick: () => { placement = placement === p.cible ? '' : p.cible; rendre({ garderPosition: true }); } })
+          : el('a', { href: lien(p.cible), ...commun, texte: affiche });
         if (scelle) pastille.append(logoCadenas());
         if (edition) glisserPastille(pastille, img, c, vc, p.cible);
         cadre.append(pastille);
@@ -1647,11 +1673,33 @@ const Inventaires = (() => {
     return bloc;
   }
 
+  /**
+   * Texte de la gommette d'un sous-inventaire : numéro automatique (champ vide), lettres ou chiffres
+   * au choix (3 caractères au plus), ou « Vide » : gommette sans texte.
+   */
+  function champTexteGommette(c, f, i) {
+    const actuel = texteChoisi(c, f.id);
+    const id = idChamp();
+    const appliquer = (t) => { fixerTexteGommette(c, f.id, t); marquer(c.id); rendre({ garderPosition: true }); };
+    return el('span', { classe: 'inv-texte-gommette' },
+      el('label', { for: id, texte: 'Gommette' }),
+      el('input', {
+        id, maxlength: '3', size: '3', autocomplete: 'off', valeur: actuel || '', placeholder: actuel === '' ? '—' : String(i + 1),
+        title: 'Texte de la gommette : laisser vide pour le numéro automatique',
+        surchange: (e) => { const v = Array.from(e.target.value.trim()).slice(0, 3).join(''); appliquer(v ? v : undefined); },
+      }),
+      el('button', {
+        type: 'button', classe: `cfg-mini${actuel === '' ? ' inv-actif' : ''}`, 'aria-pressed': String(actuel === ''),
+        title: actuel === '' ? 'Revenir au numéro automatique' : 'Gommette sans texte', texte: 'Vide',
+        surclick: () => appliquer(actuel === '' ? undefined : ''),
+      }));
+  }
+
   function blocEnfants(c, fils) {
     if (!fils.length && !edition) return null;
     const liste = el('ul', { classe: 'inv-liste' });
     fils.forEach((f, i) => {
-      const li = el('li', { 'data-cle': f.id }, carte(f, i + 1));
+      const li = el('li', { 'data-cle': f.id }, carte(f, i + 1, texteGommette(c, f.id, i)));
       if (edition) {
         const vc = vueCourante(c);
         const point = vc.points.some((p) => p.cible === f.id);
@@ -1679,7 +1727,8 @@ const Inventaires = (() => {
             surclick: () => { placement = f.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); },
           }) : null,
           point ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Retirer le point', surclick: () => { majVue(c, vc.cle, { points: vc.points.filter((p) => p.cible !== f.id) }); marquer(c.id); rendre({ garderPosition: true }); } }) : null,
-          ailleurs.length ? el('small', { classe: 'aide-question', texte: `aussi sur : ${ailleurs.join(', ')}` }) : null));
+          ailleurs.length ? el('small', { classe: 'aide-question', texte: `aussi sur : ${ailleurs.join(', ')}` }) : null,
+          point || ailleurs.length ? champTexteGommette(c, f, i) : null));
       }
       liste.append(li);
     });
@@ -3203,13 +3252,15 @@ const Inventaires = (() => {
   const sigArticle = (a) => (a.separateur ? { separateur: true, nom: a.nom }
     : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined }
       : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || ''), quantiteMin: a.quantiteMin === true || undefined, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined });
+  /** Gommette réduite à ce qui se répercute : position et texte éventuel. */
+  const sigPoint = (p) => ({ cible: p.cible, x: p.x, y: p.y, ...(typeof p.texte === 'string' ? { texte: p.texte } : {}) });
   /** Instantané d'un contenant du modèle : ce que ses exemplaires doivent reproduire. */
   function instantane(m) {
     return {
       nom: m.nom, ordre: m.ordre, photo: m.photo, scellable: m.scellable, categorie: m.categorie, etiquette: m.etiquette,
-      points: m.points.map((p) => ({ cible: p.cible, x: p.x, y: p.y })),
+      points: m.points.map(sigPoint),
       nomVue: m.nomVue,
-      vues: m.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map((p) => ({ cible: p.cible, x: p.x, y: p.y })) })),
+      vues: m.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map(sigPoint) })),
       articles: m.articles.map((a) => ({ id: a.id, ...sigArticle(a), ...(a.ref ? { refNom: a.nom } : {}) })),
       enfants: enfants(m.id).map((x) => x.id),
     };
@@ -3219,9 +3270,9 @@ const Inventaires = (() => {
     const versModele = (id) => (contenant(id) || {}).source || id;
     return {
       nom: e.nom, ordre: e.ordre, photo: e.photo, scellable: e.scellable, categorie: e.categorie, etiquette: e.etiquette,
-      points: e.points.map((p) => ({ cible: versModele(p.cible), x: p.x, y: p.y })),
+      points: e.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })),
       nomVue: e.nomVue,
-      vues: e.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map((p) => ({ cible: versModele(p.cible), x: p.x, y: p.y })) })),
+      vues: e.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })) })),
       articles: e.articles.map((a) => ({ id: a.id, ...sigArticle(a) })),
       enfants: enfants(e.id).filter((x) => !(contenant(x.source) || {}).modele).map((x) => x.source).filter(Boolean),
     };
