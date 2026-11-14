@@ -220,6 +220,20 @@ const Inventaires = (() => {
       if (v) Object.assign(v, champs);
     }
   }
+  /**
+   * Fait de la vue `cle` la vue affichée en premier par défaut : elle prend la place de la vue principale,
+   * l'ancienne principale devient la première vue supplémentaire (même identifiant que la vue promue).
+   * Les noms implicites (« Vue 1 », « Vue 3 »…) sont figés pour que chaque vue garde le sien.
+   */
+  function definirVueParDefaut(c, cle) {
+    const i = c.vues.findIndex((v) => v.id === cle);
+    if (i === -1) return;
+    const v = c.vues[i];
+    const ancienne = { id: v.id, nom: c.nomVue || 'Vue 1', photo: c.photo, points: c.points };
+    c.photo = v.photo; c.points = v.points; c.nomVue = v.nom || `Vue ${i + 2}`;
+    c.vues.splice(i, 1);
+    c.vues.unshift(ancienne);
+  }
   const vueActive = new Map(); // contenant → clé de la vue affichée
   function vueCourante(c) {
     const toutes = vuesDe(c);
@@ -1486,9 +1500,11 @@ const Inventaires = (() => {
       const onglets = el('div', { classe: 'inv-onglets-vues', role: 'tablist', 'aria-label': 'Vues' },
         ...vues.map((v) => {
           const nb = v.points.filter((p) => fils.some((f) => f.id === p.cible)).length;
+          const defaut = edition && plusieurs && !v.cle; // repère, en gestion, la vue affichée en premier
           return el('button', { type: 'button', role: 'tab', classe: 'inv-onglet-vue', 'aria-selected': String(v.cle === vc.cle),
+            ...(defaut ? { title: 'Vue affichée en premier' } : {}),
             surclick: () => { vueActive.set(c.id, v.cle); rendre({ garderPosition: true }); } },
-          v.nom, nb ? el('small', { texte: ` · ${nb}` }) : null);
+          defaut ? '★ ' : null, v.nom, nb ? el('small', { texte: ` · ${nb}` }) : null);
         }),
         peutAjouter ? el('button', { type: 'button', classe: 'inv-onglet-vue inv-onglet-ajout', 'aria-label': 'Ajouter une vue', title: 'Ajouter une vue (autre angle)', texte: '＋ Vue', surclick: () => {
           const v = { id: nouvelId(), nom: `Vue ${c.vues.length + 2}`, photo: '', points: [] };
@@ -1608,6 +1624,13 @@ const Inventaires = (() => {
         el('input', { type: 'file', id: choisir, accept: 'image/*', classe: 'invisible', surchange: recevoir }),
         vc.photo ? el('button', { type: 'button', classe: 'bouton-photo', texte: '✂ Recadrer', surclick: recadrerActuelle }) : null,
         vc.photo && !vc.cle ? el('button', { type: 'button', classe: 'lien danger', texte: 'Retirer la photo', surclick: () => { majVue(c, '', { photo: '', points: [] }); marquer(c.id); rendre({ garderPosition: true }); } }) : null,
+        vc.cle ? el('button', { type: 'button', classe: 'bouton-photo', texte: '★ Afficher en premier', title: 'Cette vue s\'ouvrira par défaut', surclick: () => {
+          definirVueParDefaut(c, vc.cle);
+          vueActive.set(c.id, '');
+          marquer(c.id);
+          rendre({ garderPosition: true });
+          messageVue(`« ${vuesDe(c)[0].nom} » s'affichera en premier.`);
+        } }) : null,
         vc.cle ? el('button', { type: 'button', classe: 'lien danger', texte: confirmer === `vue-${vc.cle}` ? 'Confirmer : supprimer cette vue' : 'Supprimer cette vue', surclick: () => {
           if (confirmer !== `vue-${vc.cle}`) { confirmer = `vue-${vc.cle}`; rendre({ garderPosition: true }); return; }
           confirmer = '';
