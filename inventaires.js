@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 18;
+  const VERSION_SERVEUR = 19;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -195,6 +195,8 @@ const Inventaires = (() => {
       ...(c.supprime ? { supprime: true } : {}),
       // Vérifié par la check-list ambulancier de ce véhicule (bouteilles d'oxygène) : pas de liste à cocher ici.
       ...(c.clAmbulancier ? { clAmbulancier: String(c.clAmbulancier) } : {}),
+      // Muni d'un traceur GeoTraceSMUR : nom du traceur (= son onglet dans GeoTrace). Exemplaire seulement.
+      ...(c.traceur && !c.modele ? { traceur: String(c.traceur).slice(0, 60) } : {}),
     };
   }
   // ---------- Catégories de contenants ----------
@@ -1200,6 +1202,7 @@ const Inventaires = (() => {
       el('span', { classe: 'inv-carte-texte' },
         el('strong', {}, c.nom, c.categorie && c.categorie !== 'primaire' && !c.emplacement ? el('span', { classe: `inv-tag-scellable inv-tag-${c.categorie}`, texte: CATEGORIES_CONTENANT[c.categorie].nom }) : null,
           c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null,
+          c.traceur ? el('span', { classe: 'inv-tag-scellable', title: `Traceur GeoTraceSMUR : ${c.traceur}`, texte: '📡' }) : null,
           c.modele ? el('span', { classe: 'inv-tag-scellable inv-tag-modele', texte: `Type · ${pluriel(exemplairesDe(c.id).length, 'exemplaire')}` }) : null,
           c.emplacement ? el('span', { classe: 'inv-tag-scellable inv-tag-emplacement', texte: 'Emplacement' }) : null),
         c.emplacement ? el('span', { classe: `inv-carte-occupant${occupant ? '' : ' vide'}`, texte: occupant ? `↳ ${occupant.nom}` : '↳ à identifier (QR, NFC ou liste)' }) : null,
@@ -3651,6 +3654,7 @@ const Inventaires = (() => {
     const copies = descendants(c.id).map((x) => {
       const copie = normaliser(JSON.parse(JSON.stringify(x)));
       copie.id = nouvelId();
+      delete copie.traceur; // un traceur est collé sur un seul objet : la copie n'en a pas
       correspondance[x.id] = copie.id;
       return copie;
     });
@@ -3677,6 +3681,32 @@ const Inventaires = (() => {
       el('ul', { classe: 'inv-liste-modele' }, ...c.articles.map((a) => (a.separateur
         ? el('li', { classe: 'inv-separation', texte: a.nom })
         : el('li', {}, nomArticle(a), a.quantite ? el('span', { classe: 'inv-qte-attendue', texte: ` × ${a.quantite}` }) : null)))));
+  }
+
+  // ---------- Traceur GeoTraceSMUR (contenant mobile) ----------
+  /**
+   * Un exemplaire de contenant mobile (sac, ampoulier, scope…) peut porter un traceur GeoTraceSMUR.
+   * Le serveur signale alors à GeoTrace le contenant primaire où il est vérifié ou identifié (GeoTrace.gs).
+   */
+  function blocTraceur(c) {
+    const caseTraceur = idChamp();
+    const champNom = idChamp();
+    const nom = el('div', { classe: 'champ' }, el('label', { for: champNom, texte: 'Nom du traceur' }),
+      el('input', { id: champNom, maxlength: '60', valeur: c.traceur || '', placeholder: 'Nom du traceur dans GeoTraceSMUR', surchange: (e) => {
+        const t = e.target.value.trim();
+        if (t) c.traceur = t; else delete c.traceur;
+        marquer(c.id);
+      } }));
+    nom.hidden = !c.traceur;
+    const coche = el('input', { type: 'checkbox', id: caseTraceur, checked: Boolean(c.traceur), surchange: (e) => {
+      nom.hidden = !e.target.checked;
+      if (e.target.checked) nom.querySelector('input').focus();
+      else { delete c.traceur; nom.querySelector('input').value = ''; marquer(c.id); }
+    } });
+    return el('div', { classe: 'inv-bloc-traceur' },
+      el('label', { classe: 'cfg-case inv-case-fiche', for: caseTraceur }, coche,
+        el('span', {}, 'Muni d\'un traceur GeoTraceSMUR', el('small', { texte: 'son contenant primaire est signalé à GeoTrace à chaque vérification ou identification' }))),
+      nom);
   }
 
   // ---------- Contenant scellable : « est-il scellé ? » ----------
@@ -3811,6 +3841,7 @@ const Inventaires = (() => {
         ...(typeof VEHICULES !== 'undefined' ? VEHICULES : []).filter((v) => !v.inactif || v.id === c.clAmbulancier)
           .map((v) => { const o = el('option', { value: v.id, texte: `Oui — check-list de ${v.nom || v.id}` }); o.selected = v.id === c.clAmbulancier; return o; })),
         el('p', { classe: 'aide-question', texte: 'Ex. bouteilles d\'oxygène : la gommette passe au vert quand la check-list ambulancier du jour est faite ; un clic montre les niveaux.' })) : null,
+      edition && c.categorie === 'mobile' && !c.emplacement && !modele ? blocTraceur(c) : null,
       edition && !c.parent && !racineExemplaire(c.id) ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseModele },
         el('input', { type: 'checkbox', id: caseModele, checked: c.modele === true, surchange: (e) => {
           if (e.target.checked) c.modele = true; else delete c.modele;
