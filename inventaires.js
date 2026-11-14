@@ -1612,6 +1612,21 @@ const Inventaires = (() => {
         const ailleurs = vuesDe(c).filter((v) => v.cle !== vc.cle && v.points.some((p) => p.cible === f.id)).map((v) => v.nom);
         li.classList.add('inv-ligne-triable');
         li.prepend(poignee(f.nom));
+        // Réglages rapides sans ouvrir le sous-inventaire : Immobile / Mobile, scellable.
+        const regler = (faire) => { faire(); marquer(f.id); rendre({ garderPosition: true }); };
+        const reglages = el('div', { classe: 'inv-reglages-rapides' },
+          f.emplacement ? null : el('span', { classe: 'inv-segment', role: 'group', 'aria-label': `Catégorie de ${f.nom}` },
+            ...['immobile', 'mobile'].map((cle) => el('button', {
+              type: 'button', classe: `cfg-mini${f.categorie === cle ? ' inv-actif' : ''}`, 'aria-pressed': String(f.categorie === cle),
+              title: CATEGORIES_CONTENANT[cle].aide, texte: CATEGORIES_CONTENANT[cle].nom,
+              surclick: () => { if (f.categorie !== cle) regler(() => { f.categorie = cle; }); },
+            }))),
+          el('button', {
+            type: 'button', classe: `cfg-mini${f.scellable ? ' inv-actif' : ''}`, 'aria-pressed': String(f.scellable),
+            title: 'Fermé par un scellé (plomb) une fois vérifié', texte: `${f.scellable ? '🔒' : '🔓'} Scellable`,
+            surclick: () => regler(() => { f.scellable = !f.scellable; }),
+          }));
+        li.append(reglages);
         li.append(el('div', { classe: 'cfg-ligne inv-outils' },
           vc.photo ? el('button', {
             type: 'button', classe: `cfg-mini${placement === f.id ? ' inv-actif' : ''}`, texte: point ? 'Déplacer le point' : `Placer sur ${vuesDe(c).length > 1 ? `« ${vc.nom} »` : 'la photo'}`,

@@ -1429,6 +1429,13 @@ h1 .inv-tag-scellable { font-size: 0.8rem; vertical-align: 0.35em; }
 /* Sous-inventaires : poignée à gauche de la carte */
 .inv-liste-triable > li.inv-ligne-triable { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 0.2rem; }
 .inv-liste-triable > li.inv-ligne-triable > .inv-outils { grid-column: 2; }
+.inv-liste-triable > li.inv-ligne-triable > .inv-reglages-rapides { grid-column: 2; }
+/* Réglages rapides d'un sous-inventaire : Immobile / Mobile, scellable */
+.inv-reglages-rapides { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.3rem; }
+.inv-segment { display: inline-flex; }
+.inv-segment .cfg-mini { border-radius: 0; }
+.inv-segment .cfg-mini:first-child { border-radius: 8px 0 0 8px; }
+.inv-segment .cfg-mini:last-child { border-radius: 0 8px 8px 0; margin-left: -2px; }
 .inv-repere-date, .inv-poignee, .inv-plus { -webkit-tap-highlight-color: transparent; }
 
 /* Photos des articles de la base */
