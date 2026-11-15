@@ -470,18 +470,28 @@ const Materiel = (() => {
       liste.replaceChildren(el('p', { classe: 'mat-vide', texte: toutes.length ? 'Aucun appareil ne correspond.' : (estAdmin() ? 'Aucun matériel enregistré. Commencez par « + Nouveau matériel ».' : 'Aucun matériel enregistré pour le moment.') }));
       return;
     }
+    // Un groupe par matériel type (« Type > modèle », avec sa photo en tête) ; les matériels uniques par type.
     const groupes = new Map();
-    visibles.forEach((f) => { if (!groupes.has(f.type)) groupes.set(f.type, []); groupes.get(f.type).push(f); });
+    visibles.forEach((f) => {
+      const cle = f.modeleType ? `t:${f.modeleType}` : `u:${f.type}`;
+      if (!groupes.has(cle)) groupes.set(cle, { modele: f.modeleType ? modeleDe(f.modeleType) : null, type: f.type, membres: [] });
+      groupes.get(cle).membres.push(f);
+    });
+    const ordre = [...groupes.values()].sort((a, b) => (types().indexOf(a.type) - types().indexOf(b.type))
+      || (Number(!a.modele) - Number(!b.modele)) || String(a.modele ? a.modele.modele : '').localeCompare(String(b.modele ? b.modele.modele : ''), 'fr'));
     const blocs = [];
-    groupes.forEach((membres, type) => {
+    ordre.forEach(({ modele, type, membres }) => {
+      const nom = modele ? nomModele(modele) : (groupes.has(`u:${type}`) && [...groupes.keys()].some((k) => k.startsWith('t:') && groupes.get(k).type === type) ? `${type} (matériels uniques)` : type);
       const tousCoches = membres.every((f) => selection.has(f.id));
       blocs.push(el('section', { classe: 'mat-groupe' },
         el('h2', { classe: 'mat-groupe-titre' },
           estAdmin() ? el('input', {
-            type: 'checkbox', coche: tousCoches, 'aria-label': `Sélectionner tous les ${type}`,
+            type: 'checkbox', coche: tousCoches, 'aria-label': `Sélectionner tous les ${nom}`,
             surchange: (e) => { membres.forEach((f) => (e.target.checked ? selection.add(f.id) : selection.delete(f.id))); rendre(); },
           }) : null,
-          el('span', { texte: type }), el('small', { texte: String(membres.length) })),
+          modele && (modele.photo || modele.photoDonnees) ? vignette({ ...modele, type: nom, numInterne: '' }, 'mat-vignette mat-vignette-type') : null,
+          modele ? el('button', { type: 'button', classe: 'lien mat-groupe-nom', texte: nom, title: 'Ouvrir le matériel type', surclick: () => ouvrirModele(modele) }) : el('span', { texte: nom }),
+          el('small', { texte: String(membres.length) })),
         el('ul', { classe: 'mat-lignes' }, membres.map((f) => ligne(f, interventions, attente)))));
     });
     liste.replaceChildren(...blocs);
@@ -497,7 +507,7 @@ const Materiel = (() => {
       }) : null,
       el('button', { type: 'button', classe: 'mat-ouvrir', surclick: () => ouvrirFiche(f.id) },
         el('span', { classe: 'mat-num', texte: f.numInterne || '?' }),
-        aPhoto(f) ? vignette(f, 'mat-vignette') : null,
+        (f.photo || f.photoDonnees || (!f.modeleType && aPhoto(f))) ? vignette({ ...f, photoModele: '', photoModeleDonnees: '' }, 'mat-vignette') : null,
         el('span', { classe: 'mat-corps' },
           el('span', { classe: 'mat-nom' }, el('strong', { texte: nomAppareil(f) }), f.modele ? el('span', { texte: ` · ${f.modele}` }) : null,
             f.traceur ? el('span', { classe: 'mat-traceur', title: `Traceur GeoTraceSMUR${f.nomTraceur ? ` : ${f.nomTraceur}` : ''}`, texte: '📡' }) : null),
