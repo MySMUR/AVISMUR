@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 19;
+  const VERSION_SERVEUR = 20;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -194,7 +194,10 @@ const Inventaires = (() => {
       ...(c.base ? { base: c.base } : {}), // exemplaire : état du modèle lors de la dernière répercussion
       ...(c.supprime ? { supprime: true } : {}),
       // Vérifié par la check-list ambulancier de ce véhicule (bouteilles d'oxygène) : pas de liste à cocher ici.
+      // 'auto' : véhicule du contenant primaire (utile dans un inventaire type). `clElements` : éléments de la
+      // check-list vérifiés ici (clés des réponses) ; vide = tous les niveaux d'oxygène.
       ...(c.clAmbulancier ? { clAmbulancier: String(c.clAmbulancier) } : {}),
+      ...(c.clAmbulancier && Array.isArray(c.clElements) && c.clElements.length ? { clElements: c.clElements.map(String) } : {}),
       // Muni d'un traceur GeoTraceSMUR : nom du traceur (= son onglet dans GeoTrace). Exemplaire seulement.
       ...(c.traceur && !c.modele ? { traceur: String(c.traceur).slice(0, 60) } : {}),
     };
@@ -510,31 +513,67 @@ const Inventaires = (() => {
 
   // ---------- Contenant vérifié par la check-list ambulancier (bouteilles d'oxygène) ----------
   const seuilObus = () => (typeof SEUILS_ANOMALIE !== 'undefined' && SEUILS_ANOMALIE.obus !== undefined ? SEUILS_ANOMALIE.obus : 3);
+  const listeVehicules = () => (typeof VEHICULES !== 'undefined' ? VEHICULES : []);
+  /** Véhicule dont la check-list ambulancier vérifie ce contenant ('auto' : celui du contenant primaire). */
+  function vehiculeAmbulancier(c) {
+    if (!c || !c.clAmbulancier) return null;
+    if (c.clAmbulancier !== 'auto') return listeVehicules().find((v) => v.id === c.clAmbulancier) || { id: c.clAmbulancier };
+    const p = primaireDe(c.id);
+    if (!p) return null;
+    const nom = cle(p.nom);
+    return listeVehicules().find((v) => cle(v.id) === nom || (v.nom && cle(v.nom) === nom))
+      || listeVehicules().find((v) => new RegExp(`(^|[^a-z0-9])${cle(v.id)}([^a-z0-9]|$)`).test(nom)) || null;
+  }
   /**
-   * Check-list ambulancier du jour du véhicule lié (`clAmbulancier`) et niveaux d'oxygène relevés :
-   * { vehicule, statut (null si pas encore faite), niveaux: [{ nom, valeur sur 10, bas }] }.
+   * Éléments que la check-list ambulancier peut vérifier : niveaux (obus, bouteilles) et éléments des listes à cocher.
+   * Pour un véhicule : ceux de son modèle ; sans véhicule (inventaire type) : ceux de tous les modèles.
+   */
+  function elementsAmbulancier(v) {
+    const modeles = typeof MODELES === 'object' && MODELES ? MODELES : {};
+    const sources = v && modeles[v.modele] ? [modeles[v.modele]] : Object.values(modeles);
+    const concerne = (x) => !v || ((!x.seulementPour || x.seulementPour.includes(v.id)) && (!x.exclusPour || !x.exclusPour.includes(v.id)));
+    const vus = new Map();
+    sources.forEach((m) => (m.questions || []).forEach((q) => {
+      if (!q || !concerne(q)) return;
+      if (q.type === 'niveau' && !vus.has(q.libelle)) vus.set(q.libelle, { cle: q.libelle, nom: q.affiche || q.libelle, type: 'niveau', groupe: 'Oxygène' });
+      if (q.type === 'groupe') {
+        q.items.map((i) => (typeof i === 'string' ? { libelle: i } : i)).filter(concerne).forEach((i) => {
+          const k = i.colonne || `${q.titre} [${i.libelle}]`;
+          if (!vus.has(k)) vus.set(k, { cle: k, nom: i.libelle, type: 'item', groupe: q.titre });
+        });
+      }
+    }));
+    return [...vus.values()];
+  }
+  /**
+   * Check-list ambulancier du jour du véhicule lié et état des éléments vérifiés ici :
+   * { vehicule, statut (null si pas encore faite), niveaux: [{ nom, valeur sur 10, bas }], items: [{ nom, ok }] }.
    */
   function releveAmbulancier(c) {
     if (!c || !c.clAmbulancier) return null;
-    let statut = null;
-    try { statut = typeof Ambulancier !== 'undefined' ? Ambulancier.infosVehicule(c.clAmbulancier).statut : null; } catch (e) { statut = null; }
-    const niveaux = [];
-    if (statut && statut.reponses) {
-      const vus = new Set();
-      Object.values(typeof MODELES === 'object' && MODELES ? MODELES : {}).forEach((m) => (m.questions || []).forEach((q) => {
-        if (!q || q.type !== 'niveau' || vus.has(q.libelle)) return;
-        vus.add(q.libelle);
-        const v = parseInt(String(statut.reponses[q.libelle] ?? ''), 10);
-        if (Number.isNaN(v)) return;
-        niveaux.push({ nom: q.affiche || q.libelle, valeur: v, bas: v <= seuilObus() });
-      }));
-    }
-    return { vehicule: c.clAmbulancier, statut, niveaux };
+    const v = vehiculeAmbulancier(c);
+    const r = { vehicule: v, statut: null, niveaux: [], items: [] };
+    if (!v) return r;
+    try { r.statut = typeof Ambulancier !== 'undefined' ? Ambulancier.infosVehicule(v.id).statut : null; } catch (e) { r.statut = null; }
+    const tous = elementsAmbulancier(listeVehicules().find((x) => x.id === v.id) || null);
+    const choisis = c.clElements && c.clElements.length
+      ? c.clElements.map((k) => tous.find((x) => x.cle === k) || elementsAmbulancier(null).find((x) => x.cle === k)).filter(Boolean)
+      : tous.filter((x) => x.type === 'niveau');
+    r.attendus = choisis;
+    if (!r.statut || !r.statut.reponses) return r;
+    choisis.forEach((x) => {
+      const rep = r.statut.reponses[x.cle];
+      if (x.type === 'niveau') {
+        const n = parseInt(String(rep ?? ''), 10);
+        if (!Number.isNaN(n)) r.niveaux.push({ nom: x.nom, valeur: n, bas: n <= seuilObus() });
+      } else if (rep === 'OK' || rep === 'Manquant') r.items.push({ nom: x.nom, ok: rep === 'OK' });
+    });
+    return r;
   }
   /** Empreinte des check-lists ambulancier utiles à l'écran : on ne redessine que si elle change. */
   function empreinteAmbulancier() {
     return JSON.stringify(Object.values(structure.contenants).filter((c) => c.clAmbulancier && !c.supprime)
-      .map((c) => { const r = releveAmbulancier(c); return [c.id, r.statut ? r.statut.date : '', r.niveaux.map((n) => n.valeur)]; }));
+      .map((c) => { const r = releveAmbulancier(c); return [c.id, r.statut ? r.statut.date : '', r.niveaux.map((n) => n.valeur), r.items.map((i) => i.ok)]; }));
   }
 
   /** État d'un contenant et de tout ce qu'il contient. */
@@ -545,13 +584,15 @@ const Inventaires = (() => {
       if (dansUnModele(c.id)) return; // un inventaire type ne se vérifie pas
       if (c.emplacement && !occupantDuJour(c)) { b.total += 1; b.vides = (b.vides || 0) + 1; }
       // Bouteilles d'oxygène : vérifiées par la check-list ambulancier du véhicule.
-      if (c.clAmbulancier) {
-        const r = releveAmbulancier(c);
+      const r = c.clAmbulancier ? releveAmbulancier(c) : null;
+      if (r && r.vehicule) {
         b.total += 1;
         if (r.statut) {
           b.faits += 1;
           const bas = r.niveaux.filter((n) => n.bas).length;
           if (bas) b.oxygeneBas = (b.oxygeneBas || 0) + bas;
+          const manque = r.items.filter((i) => !i.ok).length;
+          if (manque) b.ambManquants = (b.ambManquants || 0) + manque;
         }
       }
       if (aCocher(c).length) {
@@ -573,7 +614,7 @@ const Inventaires = (() => {
     });
     b.complet = b.total > 0 && b.faits === b.total;
     // Anomalie (ici ou dans un sous-inventaire) : article manquant ou hors limite au dernier inventaire, ou périmé.
-    b.anomalie = b.manquants > 0 || b.perimes > 0 || b.oxygeneBas > 0;
+    b.anomalie = b.manquants > 0 || b.perimes > 0 || b.oxygeneBas > 0 || b.ambManquants > 0;
     b.classe = b.total === 0 ? 'vide' : (b.complet ? `fait${b.anomalie ? ' anomalie' : ''}` : (b.faits ? 'encours' : 'afaire'));
     b.texte = b.total === 0 ? 'Rien à cocher' : (b.complet ? 'Vérifié aujourd\'hui' : (b.faits ? `${b.faits} sur ${b.total} vérifiés` : 'À vérifier'));
     return b;
@@ -1167,6 +1208,7 @@ const Inventaires = (() => {
     if (b.proches) liste.push(el('span', { classe: 'inv-badge proche', texte: `${b.proches} bientôt périmé${b.proches > 1 ? 's' : ''}` }));
     if (b.sansDate) liste.push(el('span', { classe: 'inv-badge', texte: `${pluriel(b.sansDate, 'date')} à saisir` }));
     if (b.vides) liste.push(el('span', { classe: 'inv-badge proche', texte: `${pluriel(b.vides, 'emplacement')} à identifier` }));
+    if (b.ambManquants) liste.push(el('span', { classe: 'inv-badge alerte', texte: `${pluriel(b.ambManquants, 'manquant')} (ambulancier)` }));
     if (b.oxygeneBas) liste.push(el('span', { classe: 'inv-badge alerte', texte: `${pluriel(b.oxygeneBas, 'bouteille')} O₂ basse${b.oxygeneBas > 1 ? 's' : ''}` }));
     return liste;
   }
@@ -1682,7 +1724,7 @@ const Inventaires = (() => {
         };
         const pastille = edition
           ? el('button', { type: 'button', ...commun, texte: affiche, surclick: () => { placement = placement === p.cible ? '' : p.cible; rendre({ garderPosition: true }); } })
-          : fils[rang].clAmbulancier
+          : fils[rang].clAmbulancier && vehiculeAmbulancier(fils[rang])
             // Bouteilles d'oxygène (check-list ambulancier) : niveaux en fenêtre, sans quitter la photo.
             ? el('button', { type: 'button', ...commun, 'aria-haspopup': 'dialog', texte: affiche, surclick: () => voirOxygene(fils[rang]) })
             : el('a', { href: lien(p.cible), ...commun, texte: affiche });
@@ -2155,25 +2197,34 @@ const Inventaires = (() => {
     ];
   }
 
-  /** Niveaux d'oxygène relevés par la check-list ambulancier (fenêtre de la gommette, page du contenant). */
+  /** Éléments vérifiés par la check-list ambulancier (fenêtre de la gommette, page du contenant). */
   function blocNiveauxOxygene(c) {
     const r = releveAmbulancier(c);
-    const v = (typeof VEHICULES !== 'undefined' ? VEHICULES : []).find((x) => x.id === r.vehicule);
-    const nomV = v ? v.nom || v.id : r.vehicule;
+    if (!r.vehicule) {
+      return el('p', { classe: 'aide-question', texte: 'Vérifié par la check-list ambulancier, mais le véhicule n\'est pas reconnu (nom du contenant primaire).' });
+    }
+    const nomV = r.vehicule.nom || r.vehicule.id;
     if (!r.statut) {
       return el('div', { classe: 'inv-oxygene' },
         el('p', { classe: 'inv-statut afaire' }, el('strong', { texte: 'À vérifier' })),
-        el('p', { classe: 'aide-question', texte: `Vérifié par la check-list ambulancier de ${nomV}, pas encore faite aujourd'hui.` }));
+        el('p', { classe: 'aide-question', texte: `Vérifié par la check-list ambulancier de ${nomV}, pas encore faite aujourd'hui.` }),
+        r.attendus.length ? el('ul', { classe: 'inv-amb-attendus' }, ...r.attendus.map((x) => el('li', { texte: x.nom }))) : null);
     }
-    const bas = r.niveaux.some((n) => n.bas);
+    const anomalie = r.niveaux.some((n) => n.bas) || r.items.some((i) => !i.ok);
     return el('div', { classe: 'inv-oxygene' },
-      el('p', { classe: `inv-statut fait${bas ? ' anomalie' : ''}` }, el('strong', { texte: '✓ Vérifié aujourd\'hui par l\'ambulancier' })),
+      el('p', { classe: `inv-statut fait${anomalie ? ' anomalie' : ''}` }, el('strong', { texte: '✓ Vérifié aujourd\'hui par l\'ambulancier' })),
       r.niveaux.length
         ? el('ul', { classe: 'inv-oxy-liste' }, ...r.niveaux.map((n) => el('li', { classe: n.bas ? 'bas' : (n.valeur <= 5 ? 'moyen' : '') },
           el('span', { classe: 'inv-oxy-nom', texte: n.nom }),
           el('span', { classe: 'inv-oxy-jauge', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.max(0, Math.min(10, n.valeur)) * 10}%` })),
           el('span', { classe: 'inv-oxy-valeur', texte: `${n.valeur}/10 · ${n.valeur * 20} bars` }))))
-        : el('p', { classe: 'aide-question', texte: 'Aucun niveau d\'oxygène dans cette check-list.' }),
+        : null,
+      r.items.length
+        ? el('ul', { classe: 'inv-amb-items' }, ...r.items.map((i) => el('li', { classe: i.ok ? 'ok' : 'manquant' },
+          el('span', { classe: 'inv-amb-picto', 'aria-hidden': 'true', texte: i.ok ? '✓' : '✗' }),
+          el('span', { texte: i.ok ? i.nom : `${i.nom} : manquant` }))))
+        : null,
+      !r.niveaux.length && !r.items.length ? el('p', { classe: 'aide-question', texte: 'Aucun des éléments vérifiés ici ne figure dans cette check-list.' }) : null,
       el('p', { classe: 'inv-mention-validation', texte: `Check-list ${nomV} à ${heure(r.statut.date)}${r.statut.agent ? ` par ${r.statut.agent}` : ''}` }));
   }
   function voirOxygene(c) {
@@ -2614,7 +2665,7 @@ const Inventaires = (() => {
       });
     });
     detail.peremptions.sort((x, y) => x.jours - y.jours);
-    const anomalie = detail.manquants.length > 0 || b.perimes > 0 || b.oxygeneBas > 0 || controleKo;
+    const anomalie = detail.manquants.length > 0 || b.perimes > 0 || b.oxygeneBas > 0 || b.ambManquants > 0 || controleKo;
     const classe = b.total === 0 && !detail.controles.length ? 'vide' : (anomalie ? 'anomalie' : b.classe);
     const pictos = [];
     if (sousScelle(c)) pictos.push(logoCadenas());
@@ -3441,6 +3492,7 @@ const Inventaires = (() => {
   function instantane(m) {
     return {
       nom: m.nom, ordre: m.ordre, photo: m.photo, scellable: m.scellable, categorie: m.categorie, etiquette: m.etiquette,
+      clAmbulancier: m.clAmbulancier, clElements: m.clElements,
       points: m.points.map(sigPoint),
       nomVue: m.nomVue,
       vues: m.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map(sigPoint) })),
@@ -3453,6 +3505,7 @@ const Inventaires = (() => {
     const versModele = (id) => (contenant(id) || {}).source || id;
     return {
       nom: e.nom, ordre: e.ordre, photo: e.photo, scellable: e.scellable, categorie: e.categorie, etiquette: e.etiquette,
+      clAmbulancier: e.clAmbulancier, clElements: e.clElements,
       points: e.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })),
       nomVue: e.nomVue,
       vues: e.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })) })),
@@ -3461,7 +3514,7 @@ const Inventaires = (() => {
     };
   }
   const sansNoms = (articles) => (articles || []).map(({ refNom, ...a }) => a);
-  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', nomVue: 'nom de la vue', vues: 'vues', scellable: 'scellable', categorie: 'catégorie', etiquette: 'format d\'étiquette', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
+  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', nomVue: 'nom de la vue', vues: 'vues', scellable: 'scellable', categorie: 'catégorie', etiquette: 'format d\'étiquette', clAmbulancier: 'check-list ambulancier', clElements: 'éléments vérifiés par l\'ambulancier', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
   /** Champs d'un contenant d'exemplaire modifiés localement depuis la dernière répercussion. */
   function personnalisations(e) {
     if (!e.base) return [];
@@ -3606,14 +3659,14 @@ const Inventaires = (() => {
    * `forcer` : « Revenir au modèle » (ce contenant seulement : ses sous-inventaires gardent leurs personnalisations).
    * Renvoie { modifies, conserves }.
    */
-  const LIBELLES_CONFLIT = { nom: 'Nom', ordre: 'Place parmi les sous-inventaires', photo: 'Photo', nomVue: 'Nom de la vue', scellable: 'Scellable', categorie: 'Catégorie', etiquette: 'Format d\'étiquette QR' };
+  const LIBELLES_CONFLIT = { nom: 'Nom', ordre: 'Place parmi les sous-inventaires', photo: 'Photo', nomVue: 'Nom de la vue', scellable: 'Scellable', categorie: 'Catégorie', etiquette: 'Format d\'étiquette QR', clAmbulancier: 'Check-list ambulancier', clElements: 'Éléments vérifiés par l\'ambulancier' };
   function repercuter(e, m, forcer = false, racine = false, decider = () => false) {
     const bilanR = { modifies: 0, conserves: 0 };
     const base = e.base || instantane(m); // exemplaire ancien sans base : tout est considéré comme non modifié
     const v = vueExemplaire(e);
     const nm = instantane(m);
     const avant = canonique(e);
-    ['nom', 'ordre', 'photo', 'nomVue', 'scellable', 'categorie', 'etiquette'].forEach((k) => {
+    ['nom', 'ordre', 'photo', 'nomVue', 'scellable', 'categorie', 'etiquette', 'clAmbulancier', 'clElements'].forEach((k) => {
       if (racine && (k === 'nom' || k === 'ordre')) return; // le sac garde son nom et sa place
       // Étiquette : un exemplaire sans format propre suit toujours le modèle (formats effacés par un ancien serveur).
       const suit = k === 'etiquette' && !v.etiquette;
@@ -3968,6 +4021,45 @@ const Inventaires = (() => {
         surclick: () => { if (sel.value) fixer([...acceptes, sel.value]); } })));
   }
 
+  /** Gestion : contenant vérifié par la check-list ambulancier (véhicule, éléments vérifiés ici). */
+  function blocChoixAmbulancier(c) {
+    const id = idChamp();
+    const auto = primaireDe(c.id);
+    const vAuto = c.clAmbulancier === 'auto' ? vehiculeAmbulancier(c) : null;
+    const regler = (faire) => { faire(); marquer(c.id); rendre({ garderPosition: true }); };
+    const option = (valeur, texte) => { const o = el('option', { value: valeur, texte }); o.selected = (c.clAmbulancier || '') === valeur; return o; };
+    const bloc = el('div', { classe: 'champ inv-choix-ambulancier' },
+      el('label', { for: id, texte: 'Vérifié par la check-list ambulancier' }),
+      el('select', { id, surchange: (e) => regler(() => {
+        if (e.target.value) c.clAmbulancier = e.target.value; else { delete c.clAmbulancier; delete c.clElements; }
+      }) }, option('', 'Non (inventaire IADE)'),
+      option('auto', `Oui — véhicule du contenant primaire${auto && !auto.modele ? ` (${auto.nom})` : ''}`),
+      ...listeVehicules().filter((v) => !v.inactif || v.id === c.clAmbulancier).map((v) => option(v.id, `Oui — check-list de ${v.nom || v.id}`))));
+    if (!c.clAmbulancier) {
+      bloc.append(el('p', { classe: 'aide-question', texte: 'La gommette passe au vert quand la check-list ambulancier du jour est faite ; un clic montre ce qui a été relevé.' }));
+      return bloc;
+    }
+    if (c.clAmbulancier === 'auto' && auto && !auto.modele && !vAuto) {
+      bloc.append(el('p', { classe: 'note-parc anomalie', texte: `Aucun véhicule ne correspond à « ${auto.nom} » : nommez le contenant primaire comme le véhicule (ex. F21) ou choisissez le véhicule.` }));
+    }
+    const v = c.clAmbulancier === 'auto' ? vAuto : listeVehicules().find((x) => x.id === c.clAmbulancier);
+    const elements = elementsAmbulancier(v || null);
+    const choisis = new Set(c.clElements || []);
+    const groupes = [...new Set(elements.map((x) => x.groupe))];
+    bloc.append(el('p', { classe: 'aide-question', texte: 'Éléments vérifiés ici (aucun coché : tous les niveaux d\'oxygène) :' }),
+      ...groupes.map((g) => el('fieldset', { classe: 'inv-amb-groupe' }, el('legend', { texte: g }),
+        ...elements.filter((x) => x.groupe === g).map((x) => {
+          const i = idChamp();
+          return el('label', { classe: 'cfg-case', for: i },
+            el('input', { type: 'checkbox', id: i, checked: choisis.has(x.cle), surchange: (e) => regler(() => {
+              const s2 = new Set(c.clElements || []);
+              if (e.target.checked) s2.add(x.cle); else s2.delete(x.cle);
+              if (s2.size) c.clElements = [...s2]; else delete c.clElements;
+            }) }), el('span', { texte: x.nom }));
+        }))));
+    return bloc;
+  }
+
   function vueContenant(c) {
     const fils = enfants(c.id);
     const b = bilan(c.id);
@@ -3996,7 +4088,6 @@ const Inventaires = (() => {
     const modele = dansUnModele(c.id);
     const verification = c.emplacement || questionScelle || edition || modele || (c.clAmbulancier && !aCocher(c).length) ? null
       : (consultation ? blocConsultation(c) : blocVerification(c));
-    const choixAmbulancier = idChamp();
     return [
       barreContenant(c, { h1: !edition }),
       bandeauGestion(),
@@ -4005,16 +4096,7 @@ const Inventaires = (() => {
       edition ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseScellable },
         el('input', { type: 'checkbox', id: caseScellable, checked: c.scellable, surchange: (e) => { c.scellable = e.target.checked; marquer(c.id); } }),
         el('span', {}, 'Contenant scellable', el('small', { texte: 'fermé par un scellé (plomb) une fois vérifié' }))) : null,
-      edition && c.parent ? el('div', { classe: 'champ inv-choix-ambulancier' },
-        el('label', { for: choixAmbulancier, texte: 'Vérifié par la check-list ambulancier' }),
-        el('select', { id: choixAmbulancier, surchange: (e) => {
-          if (e.target.value) c.clAmbulancier = e.target.value; else delete c.clAmbulancier;
-          marquer(c.id);
-          rendre({ garderPosition: true });
-        } }, el('option', { value: '', texte: 'Non (inventaire IADE)' }),
-        ...(typeof VEHICULES !== 'undefined' ? VEHICULES : []).filter((v) => !v.inactif || v.id === c.clAmbulancier)
-          .map((v) => { const o = el('option', { value: v.id, texte: `Oui — check-list de ${v.nom || v.id}` }); o.selected = v.id === c.clAmbulancier; return o; })),
-        el('p', { classe: 'aide-question', texte: 'Ex. bouteilles d\'oxygène : la gommette passe au vert quand la check-list ambulancier du jour est faite ; un clic montre les niveaux.' })) : null,
+      edition && c.parent ? blocChoixAmbulancier(c) : null,
       edition && c.categorie === 'mobile' && !c.emplacement && !modele && typeof Traceurs !== 'undefined' ? blocTraceur(c) : null,
       edition && !c.parent && !racineExemplaire(c.id) ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseModele },
         el('input', { type: 'checkbox', id: caseModele, checked: c.modele === true, surchange: (e) => {

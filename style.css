@@ -2452,3 +2452,11 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .traceur-ligne select, .traceur-ligne input { flex: 1; min-width: 0; }
 .traceur-note { display: block; color: var(--gris); margin-top: .2rem; }
 .traceur-note:empty { display: none; }
+.inv-amb-items { list-style: none; margin: 0 0 0.6rem; padding: 0; display: grid; gap: 0.3rem; }
+.inv-amb-items li { display: flex; gap: 0.5rem; align-items: baseline; }
+.inv-amb-items .inv-amb-picto { font-weight: 700; color: var(--rhone); }
+.inv-amb-items li.manquant { color: var(--erreur); font-weight: 600; }
+.inv-amb-items li.manquant .inv-amb-picto { color: var(--erreur); }
+.inv-amb-attendus { margin: 0 0 0.6rem 1.2rem; padding: 0; color: var(--gris); }
+.inv-amb-groupe { border: 1px solid var(--trait); border-radius: var(--rayon); margin: 0.4rem 0; padding: 0.3rem 0.7rem 0.5rem; display: grid; gap: 0.15rem; }
+.inv-amb-groupe legend { font-weight: 600; padding: 0 0.3rem; }
