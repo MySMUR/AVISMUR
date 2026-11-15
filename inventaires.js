@@ -178,7 +178,10 @@ const Inventaires = (() => {
         return { largeur, hauteur: mm(c.etiquette.hauteur || c.etiquette.taille, largeur),
           logo: ['nfc', 'smur'].includes(c.etiquette.logo) ? c.etiquette.logo : '',
           ...(/^#[0-9a-f]{6}$/i.test(c.etiquette.couleur || '') && c.etiquette.couleur.toLowerCase() !== '#1d4f9f' ? { couleur: c.etiquette.couleur.toLowerCase() } : {}),
-          ...(c.etiquette.negatif === true ? { negatif: true } : {}) };
+          ...(c.etiquette.negatif === true ? { negatif: true } : {}),
+          // Deux lignes libres (ex. nom et téléphone), imprimées en pied d'étiquette.
+          ...(String(c.etiquette.champ1 || '').trim() ? { champ1: String(c.etiquette.champ1).trim().slice(0, 40) } : {}),
+          ...(String(c.etiquette.champ2 || '').trim() ? { champ2: String(c.etiquette.champ2).trim().slice(0, 40) } : {}) };
       })() } : {}),
       ...(c.modele ? { modele: true } : {}),
       ...(c.desaffecte ? { desaffecte: c.desaffecte } : {}), // mobile dont la place a été prise : à retrouver
@@ -3417,6 +3420,10 @@ const Inventaires = (() => {
           surclick: () => { regler('couleur', coul); rendre({ garderPosition: true }); } })),
         el('input', { type: 'color', valeur: r0.couleur || COULEUR_DEFAUT_ETIQUETTE, 'aria-label': 'Autre couleur', surchange: (e) => { regler('couleur', e.target.value); rendre({ garderPosition: true }); } }),
         el('label', { classe: 'inv-negatif' }, el('input', { type: 'checkbox', checked: r0.negatif === true, surchange: (e) => regler('negatif', e.target.checked) }), el('span', { texte: 'Négatif' }))),
+      el('label', {}, el('span', { texte: 'Ligne libre 1 (ex. nom)' }),
+        el('input', { type: 'text', maxlength: 40, valeur: r0.champ1 || '', surchange: (e) => regler('champ1', e.target.value) })),
+      el('label', {}, el('span', { texte: 'Ligne libre 2 (ex. téléphone)' }),
+        el('input', { type: 'text', maxlength: 40, inputmode: 'tel', valeur: r0.champ2 || '', surchange: (e) => regler('champ2', e.target.value) })),
       el('label', {}, el('span', { texte: 'Logo' }),
         el('select', { surchange: (e) => regler('logo', e.target.value) },
           ...[['', 'Aucun'], ['nfc', 'Pictogramme NFC sur le côté (puce au dos)'], ['smur', 'Croix SMUR au centre']].map(([v, t]) => el('option', { value: v, selected: r0.logo === v, texte: t })))),
@@ -4384,6 +4391,7 @@ const Inventaires = (() => {
     const primaire = c.categorie === 'immobile' ? chemin(c.id)[0] : null;
     const nom = c.nom || '';
     const sous = primaire && primaire.id !== c.id ? primaire.nom : '';
+    const perso = [reglage.champ1, reglage.champ2].filter(Boolean);
     const ratio = W / H;
     const mode = ratio > 1.3 ? 'paysage' : (ratio < 0.77 ? 'portrait' : 'carre');
 
@@ -4406,7 +4414,7 @@ const Inventaires = (() => {
       const S = H - 2 * ecart;
       qr = { x: ecart, y: ecart, s: S };
       const x0 = ecart + S + ep * 2.5, l = W - x0 - ecart;
-      const hTrace = Math.min(H * 0.22, l / 4.6);
+      const hTrace = perso.length ? H * (perso.length > 1 ? 0.3 : 0.18) : Math.min(H * 0.22, l / 4.6);
       zoneTrace = { x: x0, y: H - ecart - hTrace, l, h: hTrace };
       const hTexte = zoneTrace.y - ecart - ep;
       zoneNom = { x: x0, y: ecart + ep * 0.5, l, h: hTexte * (sous ? 0.66 : 1), lignes: 3, centre: true };
@@ -4415,20 +4423,25 @@ const Inventaires = (() => {
       const S = W - 2 * ecart;
       qr = { x: ecart, y: ecart, s: S };
       const y0 = ecart + S + ep * 0.5, l = W - 2 * ecart;
-      const hTrace = Math.min((H - y0) * 0.28, l / 4.6);
+      const hTrace = perso.length ? (H - y0) * (perso.length > 1 ? 0.36 : 0.22) : Math.min((H - y0) * 0.28, l / 4.6);
       zoneTrace = { x: ecart, y: H - ecart - hTrace, l, h: hTrace };
       const hTexte = zoneTrace.y - y0 - ep * 0.5;
       zoneNom = { x: ecart, y: y0, l, h: hTexte * (sous ? 0.62 : 1), lignes: 3, centre: true };
       if (sous) zoneSous = { x: ecart, y: y0 + zoneNom.h, l, h: hTexte * 0.38, lignes: 2, centre: true };
     } else {
-      const bande = petit * 0.15;
+      // Bandeaux un peu plus hauts avec le pictogramme NFC ou des lignes libres (QR légèrement réduit).
+      const bande = petit * (reglage.logo === 'nfc' || perso.length ? 0.19 : 0.15);
       const S = Math.min(W - 2 * ecart, H - 2 * (marge + bande));
       qr = { x: (W - S) / 2, y: (H - S) / 2, s: S };
       // Bandeaux entre le cadre et la zone calme : texte en haut, primaire ou tracé en bas.
       const hb = qr.y - ecart;
       zoneNom = { x: coin * 0.5 + ep, y: ecart, l: W - 2 * (coin * 0.5 + ep), h: hb, lignes: 1, centre: true };
       const yBas = qr.y + S + 0.3;
-      if (sous) zoneSous = { x: coin * 0.5 + ep, y: yBas, l: W - 2 * (coin * 0.5 + ep), h: hb, lignes: 1, centre: true };
+      if (perso.length) {
+        const zx = coin * 0.5 + ep, zl = W - 2 * zx;
+        if (sous) { zoneSous = { x: zx, y: yBas, l: zl, h: hb * 0.4, lignes: 1, centre: true }; zoneTrace = { x: zx, y: yBas + hb * 0.4, l: zl, h: hb * 0.6 }; }
+        else zoneTrace = { x: zx, y: yBas, l: zl, h: hb };
+      } else if (sous) zoneSous = { x: coin * 0.5 + ep, y: yBas, l: W - 2 * (coin * 0.5 + ep), h: hb, lignes: 1, centre: true };
       else zoneTrace = { x: coin * 0.6 + ep, y: yBas + hb * 0.2, l: W - 2 * (coin * 0.6 + ep), h: hb * 0.72 };
     }
 
@@ -4436,11 +4449,11 @@ const Inventaires = (() => {
     let badge = null;
     if (reglage.logo === 'nfc') {
       if (mode === 'paysage') { // au pied de la colonne de texte, contre le QR ; le tracé part après
-        const b = Math.min(8, zoneTrace.l * 0.3, Math.max(zoneTrace.h * 1.1, 3.5));
+        const b = Math.min(14, zoneTrace.l * 0.35, Math.max(qr.s * 0.3, 5));
         badge = { x: zoneTrace.x, y: qr.y + qr.s - b - 0.4, b };
         zoneTrace.x += b + ep; zoneTrace.l -= b + ep;
       } else if (mode === 'portrait') { // juste sous le QR, centré ; le nom descend d'autant
-        const b = Math.min(8, W * 0.28, Math.max(3.5, zoneNom.h * 0.35));
+        const b = Math.min(14, W * 0.35, Math.max(5, zoneNom.h * 0.5));
         badge = { x: (W - b) / 2, y: qr.y + qr.s + ep * 0.4, b };
         const decale = b + ep * 0.8;
         zoneNom.y += decale; zoneNom.h -= decale * (zoneSous ? 0.62 : 1);
@@ -4449,12 +4462,12 @@ const Inventaires = (() => {
         const cote = (W - qr.s) / 2 - ecart; // place libre à droite du QR
         // (le filet orange de la zone calme est à 0,4 mm du QR : le pictogramme reste à l'extérieur)
         const hb = qr.y - ecart;
-        if (cote - 0.4 - ep * 0.9 >= 3) { // à droite du QR, calé sur son bas
-          const b = Math.min(8, cote - 0.4 - ep * 0.9);
+        if (cote - 0.4 - ep * 0.9 >= Math.max(5, hb * 0.92)) { // à droite du QR, calé sur son bas
+          const b = Math.min(14, cote - 0.4 - ep * 0.9);
           badge = { x: qr.x + qr.s + 0.4 + ep * 0.6, y: qr.y + qr.s - b, b };
         } else { // sous le QR, calé sur son bord droit
           const z = zoneSous || zoneTrace;
-          const b = Math.min(8, hb * 0.92);
+          const b = Math.min(14, hb * 0.96);
           badge = { x: qr.x + qr.s - b, y: qr.y + qr.s + (hb - b) / 2, b };
           z.l = badge.x - ep - z.x;
         }
@@ -4511,7 +4524,15 @@ const Inventaires = (() => {
     ecrire(zoneSous, sous, false, policeNom ? policeNom * 0.85 : 99); // le primaire reste plus discret que le nom
 
     // Tracé ECG prolongé par Avignon : la ville seulement s'il y a la place.
-    if (zoneTrace) {
+    if (zoneTrace && perso.length) {
+      // Lignes libres : une ligne chacune, même taille, plus discrètes que le nom.
+      const z = zoneTrace, hl = z.h / perso.length;
+      const ajust = perso.map((t) => ajusterTexte(t, z.l, hl, Math.min(hl * 0.85, petit * 0.12, policeNom ? policeNom * 0.8 : 99), 1, true));
+      const police = Math.min(...ajust.map((a) => a.police));
+      perso.forEach((t, i) => enfants.push(el('svg:text', {
+        x: z.x + z.l / 2, y: z.y + hl * i + hl / 2 + police * 0.35, 'text-anchor': 'middle',
+        'font-family': 'system-ui, sans-serif', 'font-size': police, 'font-weight': 600, fill: k.fonce, texte: t })));
+    } else if (zoneTrace) {
       // Avec la ville si elle tient avec une hauteur lisible (≥ 3,5 mm), sinon le complexe QRS seul.
       const eVille = Math.min(zoneTrace.h / 60, (zoneTrace.l * 0.94) / (TRACE_QRS.l * 0.8 + TRACE_AVIGNON.l));
       const avecVille = eVille * 60 >= 3.5;
@@ -4533,7 +4554,7 @@ const Inventaires = (() => {
     if (badge) {
       const { x, y, b } = badge;
       enfants.push(el('svg:svg', { x, y, width: b, height: b, viewBox: LOGO_NFC.viewBox, role: 'img', 'aria-label': 'NFC' },
-        el('svg:path', { d: LOGO_NFC.d, fill: k.bleu, 'fill-rule': 'evenodd' })));
+        el('svg:path', { d: LOGO_NFC.d, fill: k.negatif ? '#fff' : k.encre, 'fill-rule': 'evenodd' })));
     }
     return el('svg:svg', {
       classe: 'inv-etiquette-qr', viewBox: `0 0 ${W} ${H}`, width: `${W}mm`, height: `${H}mm`, role: 'img',
