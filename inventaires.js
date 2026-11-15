@@ -571,6 +571,8 @@ const Inventaires = (() => {
   function mobilePointe(m) {
     return brouillonsDuJour().pointes[`m:${m.id}`] === m.parent || Boolean(verifDuJour(m.id));
   }
+  /** Contenant mobile à ne pas nommer en check-list : pas encore pointé aujourd'hui (ni en consultation). */
+  const masquerMobile = (m) => m.categorie === 'mobile' && !m.emplacement && Boolean(m.parent) && !enConsultation(m) && !mobilePointe(m);
   /** Identification à rouvrir au prochain affichage (icône « changer de contenant »). */
   let aIdentifier = '';
   /** L'agent s'est trompé ou a changé de contenant : on oublie le pointage et on redemande lequel est là. */
@@ -1180,6 +1182,14 @@ const Inventaires = (() => {
       const vignette = (donnees) => { if (donnees) repere.append(el('img', { src: donnees, alt: '' })); };
       if (Photos.enMemoire(c.photo)) vignette(Photos.enMemoire(c.photo));
       else obtenirPhoto(c.photo).then(vignette);
+    }
+    // Check-list : un contenant mobile pas encore pointé aujourd'hui reste anonyme — l'agent doit le lire ou le scanner.
+    if (!gestion && masquerMobile(c)) {
+      return el('a', { classe: `inv-carte ${b.classe}`, href: lien(c.id) }, repere,
+        el('span', { classe: 'inv-carte-texte' },
+          el('strong', { texte: 'Contenant mobile' }),
+          el('span', { classe: 'inv-carte-occupant vide', texte: 'à identifier (QR, NFC ou liste)' })),
+        el('span', { classe: 'inv-chevron', 'aria-hidden': 'true', texte: '›' }));
     }
     const sous = c.emplacement ? 0 : enfants(c.id).length;
     const occupant = c.emplacement ? (gestion ? enfants(c.id)[0] : occupantDuJour(c)) : null;
@@ -2664,16 +2674,14 @@ const Inventaires = (() => {
     }
     if (chemin(vers).some((c) => c.id === x.id)) { messageVue('Un contenant ne peut pas être rangé dans lui-même.', 'erreur'); return; }
     const parent = contenant(vers);
-    const ancien = contenant(x.parent);
-    const retrouve = Boolean(x.desaffecte);
     const date = new Date().toISOString();
     const ok = App.mettreEnFile({ action: 'deplacerContenant', contenant: x.id, ...(y ? { place: y.id } : { dans }), vers, date });
     if (!ok) { messageVue('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur'); return; }
     affecterLocal(x, y, date, dans);
     noterPointage(vers, x.id);
     identification = '';
-    avis = `« ${x.nom} » est maintenant dans « ${parent ? parent.nom : '?'} »${ancien ? ` (il était dans « ${ancien.nom} »)` : (retrouve ? ' : il est retrouvé' : '')}.`
-      + (y ? ` « ${y.nom} » est désaffecté : à retrouver, il est signalé sur la page des inventaires.` : '');
+    // Ni l'emplacement précédent ni le contenant prévu ne sont dévoilés : les écarts sortent en fin de vérification.
+    avis = `« ${x.nom} » identifié dans « ${parent ? parent.nom : '?'} ».`;
     aller(x.id);
   }
   /** Emplacement à plusieurs inventaires types : une photo par modèle, l'agent touche celui qu'il a sous les yeux. */
@@ -2718,11 +2726,11 @@ const Inventaires = (() => {
       const mots = cle(texte).split(' ').filter(Boolean);
       const trouves = mobiles.filter((c) => mots.every((m) => cle(c.nom).includes(m)))
         .sort((a, b) => (memeType(b) - memeType(a)) || (Boolean(b.desaffecte) - Boolean(a.desaffecte)) || a.nom.localeCompare(b.nom, 'fr'));
-      if (!mots.length && !trouves.some(memeType)) return;
-      (mots.length ? trouves : trouves.filter(memeType)).slice(0, 12).forEach((c) => {
+      if (!mots.length) return; // aucune suggestion avant saisie : rien ne doit trahir le contenant prévu
+      trouves.slice(0, 12).forEach((c) => {
         const ou = contenant(c.parent);
         resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => choisir(c.id) },
-          el('strong', { texte: c.nom }), el('small', { classe: c.desaffecte ? 'inv-desaffecte' : '', texte: ou ? `actuellement dans ${cheminNoms(ou.id)}` : (c.desaffecte ? 'désaffecté : à retrouver' : 'hors contenant') }))));
+          el('strong', { texte: c.nom }), el('small', { classe: c.desaffecte ? 'inv-desaffecte' : '', texte: c.desaffecte ? 'désaffecté : à retrouver' : '' }))));
       });
     };
     const saisie = el('input', { id: champ, type: 'search', autocomplete: 'off', placeholder: y ? `ex. ${y.nom.replace(/\s*n°\s*\d+$/i, '')}` : 'ex. ampoulier, sacoche', surinput: (e) => filtrer(e.target.value) });
@@ -2740,7 +2748,7 @@ const Inventaires = (() => {
           el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !nfc, surclick: () => scanner({ qr: false, nfc: true }, choisir) }, logoNfc(), el('span', { texte: 'Lire sa puce NFC' }))),
         el('label', { for: champ, classe: 'inv-libelle-recherche inv-libelle-identif', texte: 'Ou choisissez-le :' }), saisie, resultats),
       el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
-      el('p', { classe: 'aide-question', texte: y ? `Identifié ici la dernière fois : « ${y.nom} » — à pointer de nouveau chaque jour. Si c'en est un autre, il prend sa place et « ${y.nom} » est désaffecté jusqu'à ce qu'on le retrouve ailleurs.` : `Le contenant choisi sera rangé dans « ${parent ? parent.nom : ''} ». S'il était désaffecté, il est retrouvé.` }),
+      el('p', { classe: 'aide-question', texte: `Lisez le nom sur le contenant ou scannez-le : il est à identifier à chaque vérification. Le contenant choisi sera rangé dans « ${parent ? parent.nom : ''} ».` }),
     ];
   }
 
@@ -2759,6 +2767,7 @@ const Inventaires = (() => {
     const noeud = (x0, profondeur) => {
       // Check-list : un emplacement ne s'affiche pas, son occupant prend sa place (sinon « à identifier »).
       let x = x0;
+      if (!gestion && masquerMobile(x)) return el('li', {}, el('span', { classe: 'inv-arbre-lien inv-arbre-vide' }, el('span', { classe: 'inv-arbre-nom', texte: 'À identifier (QR, NFC ou liste)' })));
       if (x.emplacement) {
         const occ = gestion ? enfants(x.id)[0] : occupantDuJour(x);
         if (!occ && gestion) return el('li', {}, el('a', { href: lien(x.id), classe: `inv-arbre-lien inv-arbre-vide${x.id === c.id ? ' actuel' : ''}` }, el('span', { classe: 'inv-arbre-nom', texte: 'Emplacement vide' })));
