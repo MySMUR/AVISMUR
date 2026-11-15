@@ -2512,3 +2512,7 @@ body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color:
 .mat-periode { display: flex; gap: 0.4rem; }
 .mat-periode input { width: 5rem; flex: 0 0 auto; }
 .mat-periode select { flex: 1; }
+
+.mat-evenement { display: inline-flex; flex-direction: column; align-items: flex-start; text-align: left; }
+.mat-evenement small { font-weight: normal; opacity: 0.8; }
+.mat-evenements-edition input { flex: 1; }

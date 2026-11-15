@@ -109,7 +109,7 @@ const Materiel = (() => {
     return [...base, ...new Set(autres)];
   };
   const statuts = () => (donnees && donnees.statuts) || STATUTS_DEFAUT;
-  const typesIntervention = () => (donnees && donnees.typesIntervention) || INTERVENTIONS_DEFAUT;
+  const typesIntervention = () => ((donnees && donnees.typesIntervention) || INTERVENTIONS_DEFAUT).filter((t) => t !== 'Évènement');
   const nomAppareil = (f) => `${f.type || 'Matériel'}${f.numInterne ? ` n° ${f.numInterne}` : ''}`;
 
   // ---------- Photos ----------
@@ -210,7 +210,7 @@ const Materiel = (() => {
         (d.materiels || []).forEach((id, n) => {
           interventions.push({
             id: `${e.id}-${n}`, materiel: id, date: d.date, type: d.type, description: d.description, intervenant: d.intervenant,
-            prochaineRevision: d.prochaineRevision, saisiPar: e.agent || '', attente: true, idFile: e.id,
+            prochaineRevision: d.prochaineRevision, evenement: d.evenement || '', saisiPar: e.agent || '', attente: true, idFile: e.id,
           });
           if (d.prochaineRevision && parId.has(id)) {
             const f = resoudre(parId.get(id), modeles);
@@ -239,6 +239,7 @@ const Materiel = (() => {
       const dates = new Map(r.plans.map((p) => [p.id, p.prochaine]));
       COMMUNS.forEach((k) => { r[k] = m[k]; });
       r.plans = plansDe(m).map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, unite: p.unite || 'mois', prochaine: dates.get(p.id) || '' }));
+      r.evenements = (m.evenements || []).map((v) => ({ ...v }));
       r.photoModele = m.photo || '';
       r.photoModeleDonnees = m.photoDonnees || '';
     }
@@ -612,10 +613,11 @@ const Materiel = (() => {
           ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ouvrir le matériel type', surclick: () => { d.close(); ouvrirModele(modeleDe(f.modeleType)); } })
           : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Créer un matériel type', title: 'Fiche type reprenant le type, le modèle, la périodicité et la photo de cet appareil', surclick: () => { d.close(); ouvrirModele(null, f); } }),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Dupliquer', title: 'Nouvel appareil du même type et du même modèle', surclick: () => { d.close(); ouvrirEdition(null, f); } })) : null,
+      blocEvenements(f, historique, () => d),
       el('h3', { texte: 'Main courante de l\'appareil' }),
       el('p', { classe: 'aide-question', texte: 'Création et modifications de la fiche (consignées automatiquement), révisions, interventions, réparations et notes.' }),
       historique.length ? el('ol', { classe: 'mat-historique' }, historique.map((i) => el('li', { classe: i.attente ? 'attente' : '' },
-        el('p', { classe: 'mat-histo-tete' }, el('strong', { texte: i.type }), i.maintenance ? el('span', { texte: ` · ${i.maintenance}` }) : null, el('span', { texte: ` · ${dateFr(i.date)}` }),
+        el('p', { classe: 'mat-histo-tete' }, el('strong', { texte: i.type === 'Évènement' && i.evenement ? i.evenement : i.type }), i.maintenance ? el('span', { texte: ` · ${i.maintenance}` }) : null, el('span', { texte: ` · ${dateFr(i.date)}` }),
           i.intervenant ? el('span', { texte: ` · ${i.intervenant}` }) : null, i.attente ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null),
         i.description ? el('p', { classe: 'mat-histo-texte', texte: i.description, style: 'white-space: pre-line' }) : null,
         i.prochaineRevision ? el('p', { classe: 'mat-histo-note', texte: `Prochaine échéance${i.maintenance ? ` (${i.maintenance})` : ''} fixée au ${dateFr(i.prochaineRevision)}` }) : null,
@@ -1024,6 +1026,61 @@ const Materiel = (() => {
   }
 
 
+  // ---------- Évènements ponctuels ----------
+  /** Liste éditable des évènements d'un matériel type : [{ id, libelle }]. */
+  function editeurEvenements(depart, actif) {
+    const liste = depart.map((v) => ({ ...v }));
+    const zoneListe = el('div', { classe: 'mat-evenements-edition' });
+    const ajout = el('button', { type: 'button', classe: 'cfg-mini', texte: '+ Ajouter un évènement', hidden: !actif, surclick: () => { liste.push({ id: idPlan(), libelle: '' }); rendreListe(); zoneListe.querySelector('div:last-child input')?.focus(); } });
+    function rendreListe() {
+      zoneListe.replaceChildren(...(liste.length ? liste.map((v, n) => el('div', { classe: 'mat-boutons' },
+        el('input', { valeur: v.libelle, placeholder: 'ex. Changement cellule O2', 'aria-label': 'Nom de l\'évènement', disabled: !actif, surinput: (ev) => { v.libelle = ev.target.value; } }),
+        actif ? el('button', { type: 'button', classe: 'cfg-mini danger', texte: 'Retirer', surclick: () => { liste.splice(n, 1); rendreListe(); } }) : null))
+        : [el('p', { classe: 'mat-vide', texte: 'Aucun évènement.' })]));
+    }
+    rendreListe();
+    return {
+      bloc: el('div', {}, zoneListe, el('div', { classe: 'mat-boutons' }, ajout)),
+      valeur: () => liste.map((v) => ({ id: v.id, libelle: String(v.libelle || '').trim() })).filter((v) => v.libelle),
+    };
+  }
+
+  /** Fiche d'un appareil : un bouton par évènement du matériel type, avec la date de la dernière fois. */
+  function blocEvenements(f, historique, dialogue) {
+    const evts = f.evenements || [];
+    if (!evts.length) return null;
+    return el('div', { classe: 'mat-evenements' },
+      el('h3', { texte: 'Évènements' }),
+      el('div', { classe: 'mat-boutons' }, evts.map((v) => {
+        const dernier = historique.find((i) => i.type === 'Évènement' && normaliser(i.evenement) === normaliser(v.libelle));
+        return el('button', {
+          type: 'button', classe: 'cfg-bouton mat-evenement', disabled: !estAdmin(),
+          title: estAdmin() ? 'Enregistrer la date de cet évènement' : '',
+          surclick: () => { dialogue().close(); ouvrirEvenement(f, v); },
+        }, el('strong', { texte: v.libelle }), el('small', { texte: dernier ? ` · dernier le ${dateFr(dernier.date)}` : ' · jamais enregistré' }));
+      })));
+  }
+
+  /** Date d'un évènement ponctuel (aujourd'hui par défaut, modifiable), avec une remarque facultative. */
+  function ouvrirEvenement(f, v) {
+    const date = el('input', { type: 'date', valeur: aujourdhui(), max: aujourdhui(), required: true });
+    const remarque = el('textarea', { rows: '2', placeholder: 'Facultatif : n° de lot, intervenant…' });
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
+    let d;
+    const contenu = el('form', {
+      classe: 'mat-form', novalidate: true,
+      sursubmit: (ev) => {
+        ev.preventDefault();
+        if (!date.value) { message.textContent = 'Indiquez la date.'; return; }
+        d.close();
+        enfiler('ajouterIntervention', { materiels: [f.id], date: date.value, type: 'Évènement', evenement: v.libelle, description: remarque.value.trim(), intervenant: '', prochaineRevision: '' });
+        ouvrirFiche(f.id);
+      },
+    }, champ('Date', date), champ('Remarque', remarque), message,
+    el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Enregistrer' })));
+    d = fenetre(`${v.libelle} · ${nomAppareil(f)}`, contenu);
+  }
+
   // ---------- Lecture d'un QR code / code-barres (caméra) ----------
   const scanDisponible = () => 'BarcodeDetector' in window && Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
   /** Valeur utile d'un code lu : « Biomed 12345 » (puce ou étiquette MySMUR) → 12345, sinon le texte lu. */
@@ -1140,6 +1197,7 @@ const Materiel = (() => {
       biomed: el('input', { type: 'checkbox', coche: base.biomed !== false }),
       maintenance: el('input', { type: 'checkbox', coche: base.maintenance !== false }),
       logiciel: el('input', { type: 'checkbox', coche: base.logiciel === true }),
+      evenements: editeurEvenements(base.evenements || [], admin),
     };
     const blocPeriodicite = el('div', { classe: 'champ mat-champ' }, el('span', { classe: 'mat-libelle', texte: 'Maintenances préventives (les échéances se renseignent sur chaque appareil)' }), e.plans.bloc);
     const majOptions = () => { blocPeriodicite.hidden = !e.maintenance.checked; };
@@ -1185,6 +1243,7 @@ const Materiel = (() => {
     let d;
     const lire = () => ({
       ...base, type: e.type.valeur(), modele: e.modele.value.trim(), plans: e.plans.valeur().map(({ id, libelle, periodicite, unite }) => ({ id, libelle, periodicite, unite: unite || 'mois' })),
+      evenements: e.evenements.valeur(),
       remarques: e.remarques.value.trim(), photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
       biomed: e.biomed.checked, maintenance: e.maintenance.checked, logiciel: e.logiciel.checked,
     });
@@ -1212,6 +1271,9 @@ const Materiel = (() => {
         el('label', { classe: 'mat-case-libelle' }, e.maintenance, el('span', { texte: 'Maintenance préventive' })),
         el('label', { classe: 'mat-case-libelle' }, e.logiciel, el('span', { texte: 'Version logiciel à suivre (renseignée sur chaque appareil)' })),
         blocPeriodicite),
+      el('fieldset', { classe: 'mat-cadre' }, el('legend', { texte: 'Évènements ponctuels' }),
+        el('p', { classe: 'aide-question', texte: 'Évènements sans échéance (ex. « Changement cellule O2 ») : sur chaque appareil, un bouton enregistre la date à laquelle il a eu lieu.' }),
+        e.evenements.bloc),
       el('div', { classe: 'mat-photo-bloc' }, el('p', { classe: 'mat-libelle', texte: 'Photo (affichée pour les appareils sans photo propre)' }), apercu,
         admin ? el('div', { classe: 'mat-boutons' },
           el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Prendre ou choisir une photo', surclick: () => fichierPhoto.click() }), boutonRecadrer, boutonRetirer, fichierPhoto) : null),
