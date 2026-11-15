@@ -58,13 +58,26 @@ const Inventaires = (() => {
    * où l'on est : sans contenant primaire choisi, l'inventaire trouvé s'ouvre en consultation seule (rien à cocher).
    */
   const CLE_CONTEXTE = 'avismur_inv_contexte';
+  // Le contenant primaire est gardé sur l'appareil (localStorage, 12 h) : une étiquette QR ou NFC lue hors de
+  // l'application ouvre un nouvel onglet, qui doit savoir où l'on est. La consultation demandée reste propre à l'onglet.
+  const DUREE_CONTEXTE = 12 * 3600 * 1000;
   let contexte = (() => {
-    try { const x = JSON.parse(sessionStorage.getItem(CLE_CONTEXTE)); if (x && typeof x === 'object') return { primaire: String(x.primaire || ''), consultation: x.consultation === true }; } catch (e) { /* stockage indisponible */ }
-    return { primaire: '', consultation: false };
+    let primaire = '';
+    let consultation = false;
+    try {
+      const x = JSON.parse(localStorage.getItem(CLE_CONTEXTE));
+      if (x && typeof x === 'object' && Date.now() - Number(x.t || 0) < DUREE_CONTEXTE) primaire = String(x.primaire || '');
+    } catch (e) { /* stockage indisponible */ }
+    try {
+      const x = JSON.parse(sessionStorage.getItem(CLE_CONTEXTE));
+      if (x && typeof x === 'object') { consultation = x.consultation === true; if (!primaire) primaire = String(x.primaire || ''); }
+    } catch (e) { /* stockage indisponible */ }
+    return { primaire, consultation };
   })();
   function fixerContexte(primaire, consultation) {
     contexte = { primaire: primaire || '', consultation: Boolean(consultation) };
     try { sessionStorage.setItem(CLE_CONTEXTE, JSON.stringify(contexte)); } catch (e) { /* stockage indisponible */ }
+    try { if (contexte.primaire) localStorage.setItem(CLE_CONTEXTE, JSON.stringify({ primaire: contexte.primaire, t: Date.now() })); } catch (e) { /* stockage indisponible */ }
   }
   let dernierAffiche = null;
   let pile = []; // inventaires ouverts à la suite : remonter d'un niveau revient en arrière dans l'historique du téléphone
@@ -1448,6 +1461,16 @@ const Inventaires = (() => {
       surclick: (e) => { if (long) { long = false; e.preventDefault(); return; } retour(); },
     }, picto('retour'));
   }
+  /** Liste « Je suis dans… » : tous les contenants primaires, celui donné en premier (toujours modifiable). */
+  function choixPrimaire(actuel = '', suggere = '') {
+    const primaires = Object.values(structure.contenants).filter((x) => !x.supprime && x.categorie === 'primaire' && !dansUnModele(x.id))
+      .sort((x, y) => (y.id === suggere) - (x.id === suggere) || x.nom.localeCompare(y.nom, 'fr'));
+    if (!primaires.length) return null;
+    return el('select', { classe: 'inv-bande-action', 'aria-label': 'Je suis dans…', title: 'Changer le contenant primaire où je me trouve',
+      surchange: (e) => { if (e.target.value && e.target.value !== actuel) { fixerContexte(e.target.value, false); rendre({ garderPosition: true }); } } },
+      actuel ? null : el('option', { value: '', texte: 'Je suis dans…' }),
+      ...primaires.map((x) => el('option', { value: x.id, texte: actuel ? x.nom : `Je suis dans ${x.nom}`, selected: x.id === actuel })));
+  }
   /** Bande du contenant primaire : où l'on est (ou « consultation seule » après une recherche par le nom). */
   function bandeauPrimaire(c) {
     if (gestion) return null;
@@ -1456,24 +1479,19 @@ const Inventaires = (() => {
     if (enConsultation(c) && ici && structurel && structurel.id !== ici.id && !contexte.consultation) {
       // Contenant mobile enregistré ailleurs : on reste où l'on est ; il se vérifie une fois identifié à sa place ici.
       return el('div', { classe: 'inv-bande-primaire consultation', role: 'status' }, picto('lieu'),
-        el('span', { classe: 'inv-bande-texte' }, 'Vous êtes dans ', el('strong', { texte: ici.nom }), ` · enregistré dans ${structurel.nom}`));
+        el('span', { classe: 'inv-bande-texte' }, 'Vous êtes dans ', choixPrimaire(ici.id, structurel.id), ` · enregistré dans ${structurel.nom}`));
     }
     if (enConsultation(c)) {
       // Sans contenant primaire connu : l'agent dit dans lequel il se trouve pour pouvoir vérifier.
-      const choix = structurel ? null : (() => {
-        const primaires = Object.values(structure.contenants).filter((x) => !x.supprime && x.categorie === 'primaire' && !dansUnModele(x.id))
-          .sort((x, y) => x.nom.localeCompare(y.nom, 'fr'));
-        if (!primaires.length) return null;
-        return el('select', { classe: 'inv-bande-action', 'aria-label': 'Je suis dans…', surchange: (e) => { if (e.target.value) { fixerContexte(e.target.value, false); rendre({ garderPosition: true }); } } },
-          el('option', { value: '', texte: 'Je suis dans…' }), ...primaires.map((x) => el('option', { value: x.id, texte: x.nom })));
-      })();
       return el('div', { classe: 'inv-bande-primaire consultation', role: 'status' }, picto('consultation'),
         el('span', { classe: 'inv-bande-texte' }, el('strong', { texte: 'Consultation seule' }), structurel ? ` · ${structurel.nom}` : ''),
-        structurel ? el('button', { type: 'button', classe: 'inv-bande-action', texte: `Je suis dans ${structurel.nom}`, surclick: () => { fixerContexte(structurel.id, false); rendre({ garderPosition: true }); } }) : choix);
+        choixPrimaire('', structurel ? structurel.id : ''));
     }
     const p = contenant(contexte.primaire) || structurel;
+    // Contenant mobile (ou rangé dans un mobile) : il ne dit pas où l'on est, le contenant primaire reste modifiable.
+    const modifiable = c && p && dansUnMobile(c);
     return el('div', { classe: `inv-bande-primaire${p ? '' : ' aucun'}`, role: 'status' }, picto('lieu'),
-      el('span', { classe: 'inv-bande-texte' }, p ? 'Vous vérifiez actuellement ' : '', el('strong', { texte: p ? p.nom : 'Aucun contenant primaire' })));
+      el('span', { classe: 'inv-bande-texte' }, p ? 'Vous vérifiez actuellement ' : '', modifiable ? choixPrimaire(p.id) : el('strong', { texte: p ? p.nom : 'Aucun contenant primaire' })));
   }
   /**
    * Barre collée en haut de l'écran : bande du contenant primaire, puis flèche retour et nom du niveau affiché
