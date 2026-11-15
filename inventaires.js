@@ -4466,10 +4466,9 @@ const Inventaires = (() => {
           const b = Math.min(14, cote - 0.4 - ep * 0.9);
           badge = { x: qr.x + qr.s + 0.4 + ep * 0.6, y: qr.y + qr.s - b, b };
         } else { // sous le QR, calé sur son bord droit
-          const z = zoneSous || zoneTrace;
           const b = Math.min(14, hb * 0.96);
           badge = { x: qr.x + qr.s - b, y: qr.y + qr.s + (hb - b) / 2, b };
-          z.l = badge.x - ep - z.x;
+          [zoneSous, zoneTrace].forEach((z) => { if (z) z.l = badge.x - ep - z.x; });
         }
       }
     }
