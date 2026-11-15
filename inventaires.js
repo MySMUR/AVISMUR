@@ -1760,7 +1760,8 @@ const Inventaires = (() => {
     // Onglets des vues (plusieurs angles d'une pièce, d'une cellule sanitaire…)
     const plusieurs = vues.length > 1;
     const peutAjouter = edition; // tout contenant peut avoir plusieurs vues (angles, tiroir fermé/ouvert…)
-    if (plusieurs || peutAjouter) {
+    // Check-list : pas d'onglets, on change de vue par les flèches posées sur la photo.
+    if (edition && (plusieurs || peutAjouter)) {
       const onglets = el('div', { classe: 'inv-onglets-vues', role: 'tablist', 'aria-label': 'Vues' },
         ...vues.map((v) => {
           const nb = v.points.filter((p) => fils.some((f) => f.id === p.cible)).length;
@@ -4367,7 +4368,8 @@ const Inventaires = (() => {
       : (consultation ? blocConsultation(c) : blocVerification(c));
     const listeAvant = Boolean(verification) && !consultation && !v && vuesDe(c).some((x) => x.photo);
     return [
-      barreContenant(c, { h1: !edition }),
+      // Contenant primaire : son nom est déjà dans le bandeau « Vous vérifiez actuellement … ».
+      barreContenant(c, { h1: !edition && !(c.categorie === 'primaire' && !gestion) }),
       bandeauGestion(),
       titre ? el('div', { classe: 'inv-entete' }, titre, boutonEdition()) : null,
       choixCategorie,
@@ -4405,7 +4407,8 @@ const Inventaires = (() => {
         el('button', { type: 'button', classe: 'lien', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) })) : null,
       ...(questionScelle ? [blocQuestionScelle(c)] : []),
       c.clAmbulancier && !edition && !modele ? blocNiveauxOxygene(c) : null,
-      edition || modele ? null : el('p', { classe: `inv-statut ${b.classe}` },
+      // Check-list : pas de récapitulatif (place laissée à la photo ; l'état se lit sur les gommettes).
+      edition || modele || !gestion ? null : el('p', { classe: `inv-statut ${b.classe}` },
         el('strong', { texte: `${b.complet ? '✓ ' : ''}${b.texte}` }),
         el('span', { classe: 'inv-badges' }, ...badges(b))),
       // Photo de navigation ET éléments à cocher : la liste passe avant la photo tant que
