@@ -66,7 +66,7 @@ const Materiel = (() => {
       else if (k.startsWith('sur')) n.addEventListener(k.slice(3), v);
       else n.setAttribute(k, v === true ? '' : v);
     });
-    n.append(...enfants.flat().filter((e) => e !== null && e !== undefined && e !== false));
+    n.append(...enfants.flat(Infinity).filter((e) => e !== null && e !== undefined && e !== false));
     return n;
   }
   let compteur = 0;
