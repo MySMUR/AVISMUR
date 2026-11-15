@@ -111,43 +111,33 @@ const Actions = (() => {
   }
 
   // ---------- Photos ----------
-  /** Photo réduite à 1280 px et compressée (JPEG) : légère pour l'envoi et la file d'attente. */
-  function lirePhoto(fichier) {
-    return new Promise((ok, echec) => {
-      const img = new Image();
-      const url = URL.createObjectURL(fichier);
-      img.onload = () => {
-        const echelle = Math.min(1, 1280 / Math.max(img.width, img.height));
-        const c = document.createElement('canvas');
-        c.width = Math.round(img.width * echelle);
-        c.height = Math.round(img.height * echelle);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        URL.revokeObjectURL(url);
-        ok(c.toDataURL('image/jpeg', 0.7));
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); echec(new Error('image')); };
-      img.src = url;
-    });
-  }
+  /** Photo recadrée (outil commun), réduite à 1280 px et compressée (JPEG) ; null si annulé. */
+  const lirePhoto = (source) => Recadrage.photo(source, { cote: 1280, qualites: [0.7] });
 
   /** Bouton « Prendre une photo » + aperçu. `surPhoto(dataUrl | '')`. */
   function champPhoto(libelle, surPhoto, initiale = '') {
     const i = id();
     const apercu = el('img', { classe: 'photo-apercu', alt: 'Photo jointe', hidden: !initiale, src: initiale || undefined });
     const retirer = el('button', { type: 'button', classe: 'lien', texte: 'Retirer la photo', hidden: !initiale });
+    const recadrer = el('button', { type: 'button', classe: 'lien', texte: '✂ Recadrer', hidden: !initiale });
     const entree = el('input', { type: 'file', id: i, accept: 'image/*', capture: 'environment', classe: 'invisible' });
     entree.addEventListener('change', async () => {
-      if (!entree.files[0]) return;
+      const fichier = entree.files[0];
+      entree.value = '';
+      if (fichier) appliquer(fichier);
+    });
+    async function appliquer(source) {
       try {
-        const photo = await lirePhoto(entree.files[0]);
-        apercu.src = photo; apercu.hidden = false; retirer.hidden = false;
+        const photo = await lirePhoto(source);
+        if (!photo) return;
+        apercu.src = photo; apercu.hidden = false; retirer.hidden = false; recadrer.hidden = false;
         surPhoto(photo);
       } catch (e) { /* image illisible : on ignore */ }
-      entree.value = '';
-    });
-    retirer.addEventListener('click', () => { apercu.hidden = true; retirer.hidden = true; apercu.removeAttribute('src'); surPhoto(''); });
+    }
+    recadrer.addEventListener('click', () => { if (apercu.src) appliquer(apercu.src); });
+    retirer.addEventListener('click', () => { apercu.hidden = true; retirer.hidden = true; recadrer.hidden = true; apercu.removeAttribute('src'); surPhoto(''); });
     return el('div', { classe: 'champ-photo' },
-      el('label', { for: i, classe: 'bouton-photo', texte: `📷 ${libelle}` }), entree, apercu, retirer);
+      el('label', { for: i, classe: 'bouton-photo', texte: `📷 ${libelle}` }), entree, apercu, recadrer, retirer);
   }
 
   async function afficherPhotoServeur(conteneur, idPhoto) {

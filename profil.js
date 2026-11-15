@@ -124,6 +124,7 @@ const Profil = (() => {
       dire('photo', 'Préparation de la photo…');
       let photo;
       try { photo = await recadrerPhoto(fichier); } catch (e) { dire('photo', 'Image illisible : choisissez une autre photo.', 'erreur'); return; }
+      if (!photo) { dire('photo', ''); return; }
       await enregistrerPhoto(photo);
     });
     return el('section', { classe: 'pro-carte pro-identite' },
@@ -148,31 +149,8 @@ const Profil = (() => {
       : el('div', { classe, 'aria-hidden': 'true', texte: initiales(nom) });
   }
 
-  /** Carré centré de 160 px, JPEG : léger pour l'envoi, la file d'attente et l'annuaire. */
-  function recadrerPhoto(fichier) {
-    return new Promise((ok, echec) => {
-      const img = new Image();
-      const url = URL.createObjectURL(fichier);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const cote = Math.min(img.width, img.height);
-        if (!cote) { echec(new Error('image')); return; }
-        const c = document.createElement('canvas');
-        c.width = c.height = TAILLE_PHOTO;
-        const ctx = c.getContext('2d');
-        ctx.fillStyle = '#fff'; // PNG transparent : fond blanc plutôt que noir
-        ctx.fillRect(0, 0, TAILLE_PHOTO, TAILLE_PHOTO);
-        ctx.drawImage(img, (img.width - cote) / 2, (img.height - cote) / 2, cote, cote, 0, 0, TAILLE_PHOTO, TAILLE_PHOTO);
-        for (const qualite of [0.8, 0.65, 0.5]) {
-          const data = c.toDataURL('image/jpeg', qualite);
-          if (data.length <= PHOTO_MAX) { ok(data); return; }
-        }
-        echec(new Error('trop lourde'));
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); echec(new Error('image')); };
-      img.src = url;
-    });
-  }
+  /** Carré choisi par l'agent (outil commun), 160 px, JPEG : léger pour l'envoi, la file d'attente et l'annuaire ; null si annulé. */
+  const recadrerPhoto = (fichier) => Recadrage.photo(fichier, { cote: TAILLE_PHOTO, max: PHOTO_MAX, qualites: [0.8, 0.65, 0.5], carre: true, titre: 'Cadrer la photo de profil' });
 
   /** Affichée tout de suite ; envoyée au serveur, ou mise en file d'attente hors ligne. */
   async function enregistrerPhoto(photo) {

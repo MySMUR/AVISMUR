@@ -153,26 +153,8 @@ const Materiel = (() => {
     imageDe(f).then((src) => { if (src) { img.src = src; img.hidden = false; } });
     return img;
   }
-  /** Photo réduite à 1024 px et compressée (JPEG) : légère pour l'envoi, la file d'attente et le stockage. */
-  function reduirePhoto(fichier, cote = 1024) {
-    return new Promise((ok, ko) => {
-      const url = URL.createObjectURL(fichier);
-      const img = new Image();
-      img.onload = () => {
-        const ratio = Math.min(1, cote / Math.max(img.width, img.height));
-        const c = document.createElement('canvas');
-        c.width = Math.round(img.width * ratio);
-        c.height = Math.round(img.height * ratio);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        URL.revokeObjectURL(url);
-        let donnees = c.toDataURL('image/jpeg', 0.7);
-        if (donnees.length > PHOTO_MAX) donnees = c.toDataURL('image/jpeg', 0.45);
-        if (donnees.length > PHOTO_MAX) ko(new Error('photo trop lourde')); else ok(donnees);
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); ko(new Error('image illisible')); };
-      img.src = url;
-    });
-  }
+  /** Photo recadrée (outil commun), réduite à 1024 px et compressée (JPEG) ; null si annulée. */
+  const reduirePhoto = (source, cote = 1024) => Recadrage.photo(source, { cote, max: PHOTO_MAX, qualites: [0.7, 0.55, 0.45] });
 
   // ---------- Données : cache + modifications en attente ----------
   function lireCache() {
@@ -665,19 +647,25 @@ const Materiel = (() => {
       apercu.hidden = !src;
       if (src) apercu.src = src;
       boutonRetirer.hidden = !src;
+      boutonRecadrer.hidden = !src;
     };
     const fichierPhoto = el('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
     const boutonRetirer = el('button', { type: 'button', classe: 'cfg-bouton danger', texte: 'Retirer la photo', hidden: true, surclick: () => { photo = { id: '', donnees: '' }; afficherApercu(); } });
+    const boutonRecadrer = el('button', { type: 'button', classe: 'cfg-bouton', texte: '✂ Recadrer', hidden: true, surclick: async () => {
+      if (!apercu.src) return;
+      try { const d = await reduirePhoto(apercu.src); if (!d) return; photo = { id: '', donnees: d }; message.textContent = ''; } catch (err) { message.textContent = 'Photo illisible ou trop lourde.'; }
+      afficherApercu();
+    } });
     fichierPhoto.addEventListener('change', async () => {
       const fichier = fichierPhoto.files[0];
       fichierPhoto.value = '';
       if (!fichier) return;
-      try { photo = { id: '', donnees: await reduirePhoto(fichier) }; message.textContent = ''; } catch (err) { message.textContent = 'Photo illisible ou trop lourde.'; }
+      try { const d = await reduirePhoto(fichier); if (!d) return; photo = { id: '', donnees: d }; message.textContent = ''; } catch (err) { message.textContent = 'Photo illisible ou trop lourde.'; }
       afficherApercu();
     });
     const blocPhoto = el('div', { classe: 'mat-photo-bloc' }, el('p', { classe: 'mat-libelle', texte: 'Photo du matériel' }), apercu,
       el('div', { classe: 'mat-boutons' },
-        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Prendre ou choisir une photo', surclick: () => fichierPhoto.click() }), boutonRetirer, fichierPhoto));
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Prendre ou choisir une photo', surclick: () => fichierPhoto.click() }), boutonRecadrer, boutonRetirer, fichierPhoto));
     // Nom du traceur choisi dans la liste de GeoTraceSMUR (traceurs.js) : liaison exacte avec l'onglet du traceur.
     let nomTraceur = base.nomTraceur || '';
     const choixTraceur = typeof Traceurs !== 'undefined' && outils.appeler
@@ -1062,18 +1050,24 @@ const Materiel = (() => {
     let photo = { id: base.photo || '', donnees: base.photoDonnees || '' };
     const apercu = el('img', { classe: 'mat-photo', alt: 'Photo du matériel type', hidden: true });
     const boutonRetirer = el('button', { type: 'button', classe: 'cfg-bouton danger', texte: 'Retirer la photo', hidden: true, surclick: () => { photo = { id: '', donnees: '' }; afficherApercu(); } });
+    const boutonRecadrer = el('button', { type: 'button', classe: 'cfg-bouton', texte: '✂ Recadrer', hidden: true, surclick: async () => {
+      if (!apercu.src) return;
+      try { const d = await reduirePhoto(apercu.src); if (!d) return; photo = { id: '', donnees: d }; message.textContent = ''; } catch (err) { message.textContent = 'Photo illisible ou trop lourde.'; }
+      afficherApercu();
+    } });
     const afficherApercu = async () => {
       const src = photo.donnees || (photo.id ? await imageDe({ photo: photo.id }) : '');
       apercu.hidden = !src;
       if (src) apercu.src = src;
       boutonRetirer.hidden = !src || !admin;
+      boutonRecadrer.hidden = !src || !admin;
     };
     const fichierPhoto = el('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
     fichierPhoto.addEventListener('change', async () => {
       const fichier = fichierPhoto.files[0];
       fichierPhoto.value = '';
       if (!fichier) return;
-      try { photo = { id: '', donnees: await reduirePhoto(fichier) }; message.textContent = ''; } catch (err) { message.textContent = 'Photo illisible ou trop lourde.'; }
+      try { const d = await reduirePhoto(fichier); if (!d) return; photo = { id: '', donnees: d }; message.textContent = ''; } catch (err) { message.textContent = 'Photo illisible ou trop lourde.'; }
       afficherApercu();
     });
     if (!admin) [e.type.select, e.modele, e.remarques, e.biomed, e.maintenance, e.logiciel].forEach((x) => { x.disabled = true; });
@@ -1122,7 +1116,7 @@ const Materiel = (() => {
         blocPeriodicite),
       el('div', { classe: 'mat-photo-bloc' }, el('p', { classe: 'mat-libelle', texte: 'Photo (affichée pour les appareils sans photo propre)' }), apercu,
         admin ? el('div', { classe: 'mat-boutons' },
-          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Prendre ou choisir une photo', surclick: () => fichierPhoto.click() }), boutonRetirer, fichierPhoto) : null),
+          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Prendre ou choisir une photo', surclick: () => fichierPhoto.click() }), boutonRecadrer, boutonRetirer, fichierPhoto) : null),
       champ('Remarques communes', e.remarques),
       el('fieldset', { classe: 'mat-cadre' }, el('legend', { texte: 'Appareils rattachés à ce matériel type' }),
         el('p', { classe: 'aide-question', texte: 'Un appareil coché prend le type, le modèle et la périodicité de cette fiche. Décoché, il redevient un matériel unique et garde ses valeurs actuelles.' }),

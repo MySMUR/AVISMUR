@@ -406,24 +406,8 @@ const Infos = (() => {
   /** Pièce du serveur ({ t, id, nom, mime, url }) ou en attente d'envoi ({ type, nom, donnees, url, titre }). */
   const piece = (p) => ({ t: p.t || p.type, id: p.id || '', nom: p.nom || p.titre || '', url: p.url || '', donnees: p.donnees || '', mime: p.mime || '' });
 
-  /** Photo réduite à 1280 px et compressée (JPEG) : légère pour l'envoi et la file d'attente. */
-  function reduirePhoto(fichier) {
-    return new Promise((ok, echec) => {
-      const img = new Image();
-      const url = URL.createObjectURL(fichier);
-      img.onload = () => {
-        const echelle = Math.min(1, 1280 / Math.max(img.width, img.height));
-        const c = document.createElement('canvas');
-        c.width = Math.round(img.width * echelle);
-        c.height = Math.round(img.height * echelle);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        URL.revokeObjectURL(url);
-        ok(c.toDataURL('image/jpeg', 0.7));
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); echec(new Error('image')); };
-      img.src = url;
-    });
-  }
+  /** Photo recadrée (outil commun, une par une), réduite à 1280 px et compressée (JPEG) ; null si annulée. */
+  const reduirePhoto = (fichier) => Recadrage.photo(fichier, { cote: 1280, qualites: [0.7] });
 
   function lireDocument(fichier) {
     const ext = (fichier.name.split('.').pop() || '').toLowerCase();
@@ -497,7 +481,8 @@ const Infos = (() => {
       if (!place(fichiers.length)) return;
       for (const f of fichiers) {
         try {
-          pieces.push({ type, nom: f.name.slice(0, 80), donnees: await lire(f) });
+          const donnees = await lire(f);
+          if (donnees) pieces.push({ type, nom: f.name.slice(0, 80), donnees });
         } catch (e) {
           signaler(e.message === 'image' ? `« ${f.name} » n'est pas une image lisible.` : e.message);
         }

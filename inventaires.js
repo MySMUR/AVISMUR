@@ -717,145 +717,8 @@ const Inventaires = (() => {
     return telechargements.get(id);
   }
 
-  /** Photo réduite à 1280 px et compressée (JPEG) : légère pour l'envoi et le stockage. */
-  function reduirePhoto(fichier, cote = 1280) {
-    return new Promise((ok, ko) => {
-      const url = URL.createObjectURL(fichier);
-      const img = new Image();
-      img.onload = () => {
-        const ratio = Math.min(1, cote / Math.max(img.width, img.height));
-        const c = document.createElement('canvas');
-        c.width = Math.round(img.width * ratio);
-        c.height = Math.round(img.height * ratio);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        URL.revokeObjectURL(url);
-        let donnees = c.toDataURL('image/jpeg', 0.72);
-        if (donnees.length > PHOTO_MAX) donnees = c.toDataURL('image/jpeg', 0.5);
-        if (donnees.length > PHOTO_MAX) ko(new Error('photo trop lourde'));
-        else ok(donnees);
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); ko(new Error('image illisible')); };
-      img.src = url;
-    });
-  }
-
-  /**
-   * Recadrage d'une photo (fichier ou data URL) : rotation par quart de tour, cadre déplaçable
-   * et redimensionnable aux coins. Résout { donnees, transformer } ou null si annulé ;
-   * `transformer(x, y)` reporte un point (0..1 sur l'ancienne photo) sur la nouvelle, ou null s'il en sort.
-   */
-  function recadrerImage(source, cote = 1280) {
-    return new Promise((ok, ko) => {
-      const img = new Image();
-      const url = typeof source === 'string' ? source : URL.createObjectURL(source);
-      const liberer = () => { if (typeof source !== 'string') URL.revokeObjectURL(url); };
-      img.onerror = () => { liberer(); ko(new Error('image illisible')); };
-      img.onload = () => {
-        liberer();
-        if (!img.width || !img.height) { ko(new Error('image illisible')); return; }
-        // Travail sur une copie limitée à 2400 px : fluide sur smartphone, largement assez pour 1280 px en sortie.
-        const echelle = Math.min(1, 2400 / Math.max(img.width, img.height));
-        const lw = Math.round(img.width * echelle);
-        const lh = Math.round(img.height * echelle);
-        let quarts = 0;
-        let r = { x: 0, y: 0, w: 1, h: 1 };
-        const toile = el('canvas', { classe: 'inv-recadrage-toile' });
-        const dessiner = () => {
-          const tourne = quarts % 2 === 1;
-          toile.width = tourne ? lh : lw;
-          toile.height = tourne ? lw : lh;
-          const ctx = toile.getContext('2d');
-          ctx.save();
-          ctx.translate(toile.width / 2, toile.height / 2);
-          ctx.rotate((quarts * Math.PI) / 2);
-          ctx.drawImage(img, -lw / 2, -lh / 2, lw, lh);
-          ctx.restore();
-        };
-        const poignees = ['nw', 'ne', 'sw', 'se'].map((coin) => el('span', { classe: `inv-recadrage-poignee ${coin}`, 'data-coin': coin }));
-        const cadre = el('div', { classe: 'inv-recadrage-cadre' }, ...poignees);
-        const scene = el('div', { classe: 'inv-recadrage-scene' }, toile, cadre);
-        const placer = () => Object.assign(cadre.style, { left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` });
-        const MIN = 0.06;
-        const borne = (v, a, b) => Math.min(b, Math.max(a, v));
-        cadre.addEventListener('pointerdown', (e) => {
-          e.preventDefault();
-          const coin = e.target.dataset.coin || '';
-          const boite = scene.getBoundingClientRect();
-          const depart = { ...r, px: e.clientX, py: e.clientY };
-          cadre.setPointerCapture(e.pointerId);
-          const bouger = (m) => {
-            const dx = (m.clientX - depart.px) / boite.width;
-            const dy = (m.clientY - depart.py) / boite.height;
-            if (!coin) {
-              r.x = borne(depart.x + dx, 0, 1 - depart.w);
-              r.y = borne(depart.y + dy, 0, 1 - depart.h);
-            } else {
-              let { x, y } = depart;
-              let x2 = depart.x + depart.w;
-              let y2 = depart.y + depart.h;
-              if (coin.includes('w')) x = borne(x + dx, 0, x2 - MIN); else x2 = borne(x2 + dx, x + MIN, 1);
-              if (coin.includes('n')) y = borne(y + dy, 0, y2 - MIN); else y2 = borne(y2 + dy, y + MIN, 1);
-              r = { x, y, w: x2 - x, h: y2 - y };
-            }
-            placer();
-          };
-          const lacher = () => { cadre.removeEventListener('pointermove', bouger); cadre.removeEventListener('pointerup', lacher); cadre.removeEventListener('pointercancel', lacher); };
-          cadre.addEventListener('pointermove', bouger);
-          cadre.addEventListener('pointerup', lacher);
-          cadre.addEventListener('pointercancel', lacher);
-        });
-        const fermer = (resultat) => { fond.remove(); document.removeEventListener('keydown', clavier); ok(resultat); };
-        const clavier = (e) => { if (e.key === 'Escape') fermer(null); };
-        const valider = () => {
-          const sx = Math.round(r.x * toile.width);
-          const sy = Math.round(r.y * toile.height);
-          const sw = Math.max(1, Math.round(r.w * toile.width));
-          const sh = Math.max(1, Math.round(r.h * toile.height));
-          const ratio = Math.min(1, cote / Math.max(sw, sh));
-          const sortie = document.createElement('canvas');
-          sortie.width = Math.round(sw * ratio);
-          sortie.height = Math.round(sh * ratio);
-          const ctx = sortie.getContext('2d');
-          ctx.fillStyle = '#fff';
-          ctx.fillRect(0, 0, sortie.width, sortie.height);
-          ctx.drawImage(toile, sx, sy, sw, sh, 0, 0, sortie.width, sortie.height);
-          let donnees = '';
-          for (const qualite of [0.72, 0.6, 0.5]) {
-            donnees = sortie.toDataURL('image/jpeg', qualite);
-            if (donnees.length <= PHOTO_MAX) break;
-          }
-          if (donnees.length > PHOTO_MAX) { fond.remove(); document.removeEventListener('keydown', clavier); ko(new Error('photo trop lourde')); return; }
-          const q = quarts;
-          const cr = { ...r };
-          const transformer = (x, y) => {
-            // Rotation horaire par quarts de tour, puis recadrage.
-            let u = x; let v = y;
-            for (let i = 0; i < q; i += 1) { const t = u; u = 1 - v; v = t; }
-            const nx = (u - cr.x) / cr.w;
-            const ny = (v - cr.y) / cr.h;
-            return nx < 0 || nx > 1 || ny < 0 || ny > 1 ? null : { x: nx, y: ny };
-          };
-          fermer({ donnees, transformer });
-        };
-        const titre = idChamp();
-        const fond = el('div', { classe: 'inv-recadrage', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
-          el('div', { classe: 'inv-recadrage-tete' },
-            el('h2', { id: titre, texte: 'Recadrer la photo' }),
-            el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': 'Tourner d\'un quart de tour', title: 'Tourner', texte: '↻', surclick: () => { quarts = (quarts + 1) % 4; r = { x: 0, y: 0, w: 1, h: 1 }; dessiner(); placer(); } }),
-            el('button', { type: 'button', classe: 'cfg-mini', title: 'Toute la photo', texte: 'Tout', surclick: () => { r = { x: 0, y: 0, w: 1, h: 1 }; placer(); } })),
-          el('div', { classe: 'inv-recadrage-zone' }, scene),
-          el('p', { classe: 'aide-question', texte: 'Faites glisser le cadre ou ses coins.' }),
-          el('div', { classe: 'inv-recadrage-actions' },
-            el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Annuler', surclick: () => fermer(null) }),
-            el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: 'Valider', surclick: valider })));
-        dessiner();
-        placer();
-        document.addEventListener('keydown', clavier);
-        document.body.append(fond);
-      };
-      img.src = url;
-    });
-  }
+  /** Recadrage (outil commun recadrage.js) : résout { donnees, transformer } ou null si annulé. */
+  const recadrerImage = (source, cote = 1280) => Recadrage.recadrer(source, { cote, max: PHOTO_MAX });
 
   // ---------- Synchronisation ----------
   function etatSynchro(texte, classe = '') {
@@ -2910,9 +2773,11 @@ const Inventaires = (() => {
       const fichier = e.target.files[0];
       if (!fichier) return;
       try {
-        const donnees = await reduirePhoto(fichier, 900);
+        e.target.value = '';
+        const res = await recadrerImage(fichier, 900);
+        if (!res) return;
         const id = `local-${nouvelId()}`;
-        await Photos.ecrire(id, donnees);
+        await Photos.ecrire(id, res.donnees);
         f.photo = id;
         montrerPhoto();
       } catch (err) { erreur.textContent = 'Photo illisible ou trop lourde : réessayez.'; erreur.hidden = false; }
@@ -3266,9 +3131,10 @@ const Inventaires = (() => {
         e.target.value = '';
         if (!fichier) return;
         try {
-          const donnees = await reduirePhoto(fichier, 900);
+          const res = await recadrerImage(fichier, 900);
+          if (!res) return;
           const id = `local-${nouvelId()}`;
-          await Photos.ecrire(id, donnees);
+          await Photos.ecrire(id, res.donnees);
           modifier(f0, 'photo', id);
           montrer(id);
         } catch (err) { erreur.textContent = `Photo illisible ou trop lourde pour « ${f0.denomination} » : réessayez.`; erreur.hidden = false; }
