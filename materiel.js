@@ -12,6 +12,10 @@
  * fiche type ; la modifier met à jour tous les appareils rattachés. Un appareil non rattaché est un matériel unique.
  * Les numéros, la révision prévue, le statut, le traceur et les remarques restent propres à chaque appareil.
  *
+ * Maintenance préventive : un appareil peut avoir plusieurs plans (révision annuelle, contrôle électrique,
+ * changement de batterie…), chacun avec sa périodicité et sa prochaine échéance. Pour un matériel type,
+ * les plans (libellé, périodicité) sont communs ; les échéances restent propres à chaque appareil.
+ *
  * Hors ligne : la dernière liste reçue est gardée sur l'appareil ; les modifications passent par la
  * file d'attente commune (app.js) et s'affichent tout de suite, marquées « en attente d'envoi ».
  * Backend : Materiel.gs (onglets Materiel et MaterielInterventions).
@@ -27,19 +31,19 @@ const Materiel = (() => {
   // Champs communs à plusieurs appareils, que l'on peut répercuter (jamais les numéros propres à chacun).
   const REPERCUTABLES = {
     modeleType: 'Matériel type', type: 'Type', modele: 'Modèle', biomed: 'Suivi biomed', maintenance: 'Maintenance préventive',
-    revision: 'Révision prévue', periodicite: 'Périodicité (mois)', logiciel: 'Logiciel', versionLogiciel: 'Version logiciel',
+    plans: 'Maintenances', logiciel: 'Logiciel', versionLogiciel: 'Version logiciel',
     statut: 'Statut', traceur: 'Traceur GeoTraceSMUR', remarques: 'Remarques', photo: 'Photo',
   };
   const BOOLEENS = ['traceur', 'biomed', 'maintenance', 'logiciel', 'archive'];
   // Libellés de la main courante (mêmes que le serveur).
   const LIBELLES = {
     modeleType: 'Matériel type', type: 'Type', modele: 'Modèle', numInterne: 'N° interne', biomed: 'Suivi biomed', numBiomed: 'N° biomed',
-    numSerie: 'N° de série', maintenance: 'Maintenance préventive', revision: 'Révision prévue', periodicite: 'Périodicité (mois)',
+    numSerie: 'N° de série', maintenance: 'Maintenance préventive',
     logiciel: 'Logiciel', versionLogiciel: 'Version logiciel', statut: 'Statut', traceur: 'Traceur', nomTraceur: 'Nom du traceur',
     remarques: 'Remarques', photo: 'Photo', archive: 'Archivé',
   };
   // Champs communs repris de la fiche type quand l'appareil y est rattaché.
-  const COMMUNS = ['type', 'modele', 'periodicite', 'biomed', 'maintenance', 'logiciel'];
+  const COMMUNS = ['type', 'modele', 'biomed', 'maintenance', 'logiciel', 'plans'];
   const ALERTE_JOURS = 30; // révision « à prévoir » dans les 30 jours
 
   let zone;
@@ -212,7 +216,15 @@ const Materiel = (() => {
             id: `${e.id}-${n}`, materiel: id, date: d.date, type: d.type, description: d.description, intervenant: d.intervenant,
             prochaineRevision: d.prochaineRevision, saisiPar: e.agent || '', attente: true, idFile: e.id,
           });
-          if (d.prochaineRevision && parId.has(id)) parId.get(id).revision = d.prochaineRevision;
+          if (d.prochaineRevision && parId.has(id)) {
+            const f = resoudre(parId.get(id), modeles);
+            const plan = d.maintenance ? f.plans.find((p) => p.id === d.maintenance) : (f.plans.length === 1 ? f.plans[0] : null);
+            const plans = f.plans.map((p) => ({ ...p }));
+            if (plan) plans.find((p) => p.id === plan.id).prochaine = d.prochaineRevision;
+            else if (!plans.length) plans.push({ id: 'rev', libelle: 'Révision', periodicite: '', prochaine: d.prochaineRevision });
+            parId.get(id).plans = plans;
+            interventions[interventions.length - 1].maintenance = plan ? plan.libelle : '';
+          }
           attente.add(id);
         });
       } else if (e.action === 'supprimerIntervention') {
@@ -226,8 +238,11 @@ const Materiel = (() => {
   function resoudre(f, modeles) {
     const m = f.modeleType && modeles.get(f.modeleType);
     const r = { ...f, modeleType: f.modeleType || '' };
+    r.plans = plansDe(r);
     if (m) {
+      const dates = new Map(r.plans.map((p) => [p.id, p.prochaine]));
       COMMUNS.forEach((k) => { r[k] = m[k]; });
+      r.plans = plansDe(m).map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, prochaine: dates.get(p.id) || '' }));
       r.photoModele = m.photo || '';
       r.photoModeleDonnees = m.photoDonnees || '';
     }
@@ -239,9 +254,36 @@ const Materiel = (() => {
     f.maintenance = f.maintenance !== false;
     f.logiciel = f.logiciel === true;
     if (!f.biomed) f.numBiomed = '';
-    if (!f.maintenance) { f.revision = ''; f.periodicite = ''; }
+    if (!f.maintenance) f.plans = [];
     if (!f.logiciel) f.versionLogiciel = '';
+    // Échéance la plus proche (tri, recherche) ; l'état d'alerte regarde chaque plan.
+    const dates = (f.plans || []).filter((p) => p.prochaine).sort((a, b) => a.prochaine.localeCompare(b.prochaine));
+    f.revision = dates.length ? dates[0].prochaine : '';
     return f;
+  }
+  /** Plans d'une fiche ; ancienne fiche (révision / périodicité uniques) : un plan « Révision ». */
+  function plansDe(f) {
+    if (Array.isArray(f.plans)) return f.plans.map((p) => ({ ...p }));
+    if (!f.revision && !f.periodicite) return [];
+    return [{ id: 'rev', libelle: 'Révision', periodicite: f.periodicite || '', prochaine: f.revision || '' }];
+  }
+  const idPlan = () => idFiche().slice(0, 8);
+  const resumePlans = (plans) => (plans || []).map((p) => `${p.libelle}${p.periodicite ? ` (${p.periodicite} mois)` : ''}`).join(', ');
+  /** Changements des plans pour la main courante (comme le serveur). */
+  function decrirePlans(avant, apres) {
+    const lignes = [];
+    const parId = new Map((avant || []).map((p) => [p.id, p]));
+    const perio = (p) => (p.periodicite ? `tous les ${p.periodicite} mois` : 'sans périodicité');
+    (apres || []).forEach((p) => {
+      const a = parId.get(p.id);
+      parId.delete(p.id);
+      if (!a) { lignes.push(`Maintenance ajoutée : ${p.libelle} (${perio(p)}${p.prochaine ? `, prochaine le ${dateFr(p.prochaine)}` : ''})`); return; }
+      if (a.libelle !== p.libelle) lignes.push(`Maintenance « ${a.libelle} » renommée « ${p.libelle} »`);
+      if (String(a.periodicite) !== String(p.periodicite)) lignes.push(`Maintenance « ${p.libelle} » : ${perio(a)} → ${perio(p)}`);
+      if (String(a.prochaine || '') !== String(p.prochaine || '')) lignes.push(`Maintenance « ${p.libelle} » : prochaine échéance ${a.prochaine ? dateFr(a.prochaine) : '—'} → ${p.prochaine ? dateFr(p.prochaine) : '—'}`);
+    });
+    parId.forEach((p) => lignes.push(`Maintenance retirée : ${p.libelle}`));
+    return lignes;
   }
   /** Changements entre deux états d'une fiche, pour la main courante (comme le serveur). */
   function decrire(a, n, modelesMap) {
@@ -251,12 +293,12 @@ const Materiel = (() => {
       if (k === 'revision' && v) return dateFr(v);
       return v === '' || v === undefined || v === null ? '—' : String(v);
     };
-    return Object.keys(LIBELLES).map((k) => {
+    return [...decrirePlans(a.plans, n.plans), ...Object.keys(LIBELLES).map((k) => {
       if (k === 'photo') return `${a.photo || ''}|${a.photoDonnees || ''}` !== `${n.photo || ''}|${n.photoDonnees || ''}` ? 'Photo modifiée' : '';
       const va = BOOLEENS.includes(k) ? Boolean(a[k]) : String(a[k] ?? '');
       const vn = BOOLEENS.includes(k) ? Boolean(n[k]) : String(n[k] ?? '');
       return va === vn ? '' : `${LIBELLES[k]} : ${val(k, a[k])} → ${val(k, n[k])}`;
-    }).filter(Boolean).join('\n');
+    })].filter(Boolean).join('\n');
   }
   const modeles = () => etat().modeles;
   const modeleDe = (id) => modeles().find((m) => m.id === id) || null;
@@ -294,14 +336,57 @@ const Materiel = (() => {
   }
 
   // ---------- Révision : état ----------
+  function etatPlan(p) {
+    if (!p.prochaine) return { classe: 'neutre', texte: `${p.libelle} : échéance non renseignée`, rang: 1 };
+    const jours = Math.round((new Date(p.prochaine) - new Date(aujourdhui())) / 86400000);
+    if (jours < 0) return { classe: 'retard', texte: `${p.libelle} dépassée (${dateFr(p.prochaine)})`, retard: true, rang: 3 };
+    if (jours <= ALERTE_JOURS) return { classe: 'bientot', texte: `${p.libelle} le ${dateFr(p.prochaine)} (J-${jours})`, bientot: true, rang: 2 };
+    return { classe: 'ok', texte: `${p.libelle} le ${dateFr(p.prochaine)}`, rang: 0 };
+  }
+  /** État le plus urgent parmi les plans de maintenance de l'appareil. */
   function etatRevision(f) {
     if (f.statut === 'Réformé' || f.archive) return { classe: 'neutre', texte: f.archive ? 'Archivé' : 'Réformé' };
     if (f.maintenance === false) return { classe: 'neutre', texte: 'Sans maintenance préventive' };
-    if (!f.revision) return { classe: 'neutre', texte: 'Révision non renseignée' };
-    const jours = Math.round((new Date(f.revision) - new Date(aujourdhui())) / 86400000);
-    if (jours < 0) return { classe: 'retard', texte: `Révision dépassée (${dateFr(f.revision)})`, retard: true };
-    if (jours <= ALERTE_JOURS) return { classe: 'bientot', texte: `Révision le ${dateFr(f.revision)} (J-${jours})`, bientot: true };
-    return { classe: 'ok', texte: `Révision le ${dateFr(f.revision)}` };
+    const plans = f.plans || [];
+    if (!plans.length) return { classe: 'neutre', texte: 'Aucune maintenance définie' };
+    const etats = plans.map(etatPlan);
+    const pire = etats.reduce((a, b) => (b.rang > a.rang || (b.rang === a.rang && b.rang !== 1 && plans[etats.indexOf(b)].prochaine < plans[etats.indexOf(a)].prochaine) ? b : a));
+    const autres = etats.filter((x) => x.retard || x.bientot).length - (pire.retard || pire.bientot ? 1 : 0);
+    return { ...pire, texte: `${pire.texte}${autres > 0 ? ` (+${autres})` : ''}` };
+  }
+
+  /**
+   * Éditeur de plans de maintenance. `avecDate` : échéance par plan (appareil) ; `verrouille` : libellés et
+   * périodicités imposés par le matériel type (seules les échéances se modifient).
+   */
+  function editeurPlans(depart, { avecDate = true, verrouille = false, actif = true } = {}) {
+    let plans = (depart || []).map((p) => ({ ...p }));
+    let bloque = verrouille;
+    const liste = el('div', { classe: 'mat-plans' });
+    const ajout = el('button', { type: 'button', classe: 'cfg-mini', texte: '+ Ajouter une maintenance', surclick: () => { plans.push({ id: idPlan(), libelle: '', periodicite: 12, prochaine: '' }); rendrePlans(); liste.querySelector('.mat-plan:last-child input')?.focus(); } });
+    function rendrePlans() {
+      ajout.hidden = bloque || !actif;
+      liste.replaceChildren(...(plans.length ? plans.map((p, n) => el('div', { classe: 'mat-plan mat-grille' },
+        champ('Maintenance', el('input', { valeur: p.libelle, placeholder: 'ex. Révision annuelle, Contrôle électrique…', disabled: bloque || !actif, surinput: (ev) => { p.libelle = ev.target.value; } })),
+        champ('Périodicité (mois)', el('input', { type: 'number', min: '1', max: '120', valeur: p.periodicite, disabled: bloque || !actif, surinput: (ev) => { p.periodicite = Number(ev.target.value) || ''; } })),
+        avecDate ? champ('Prochaine échéance', el('input', { type: 'date', valeur: p.prochaine || '', disabled: !actif, surinput: (ev) => { p.prochaine = ev.target.value; } })) : null,
+        bloque || !actif ? null : el('button', { type: 'button', classe: 'cfg-mini danger', texte: 'Retirer', 'aria-label': `Retirer la maintenance ${p.libelle}`, surclick: () => { plans.splice(n, 1); rendrePlans(); } })))
+        : [el('p', { classe: 'mat-vide', texte: bloque ? 'Le matériel type ne définit aucune maintenance.' : 'Aucune maintenance : ajoutez-en une (révision, contrôle, changement de pièce…).' })]));
+    }
+    rendrePlans();
+    return {
+      bloc: el('div', {}, liste, el('div', { classe: 'mat-boutons' }, ajout)),
+      valeur: () => plans.map((p) => ({ ...p, libelle: String(p.libelle || '').trim() })).filter((p) => p.libelle),
+      /** Plans imposés par un matériel type (échéances conservées par identifiant), ou retour à des plans libres. */
+      imposer(plansModele) {
+        if (plansModele) {
+          const dates = new Map(plans.map((p) => [p.id, p.prochaine]));
+          plans = plansModele.map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, prochaine: dates.get(p.id) || '' }));
+          bloque = true;
+        } else bloque = false;
+        rendrePlans();
+      },
+    };
   }
 
   // ---------- Liste ----------
@@ -358,8 +443,8 @@ const Materiel = (() => {
 
     const compteurs = el('div', { classe: 'mat-compteurs' },
       compteurBouton(actives.length, 'appareils en service', 'total', () => { filtre = { texte: '', type: '', statut: 'actifs', alerte: '' }; rendre(); }, !filtre.alerte && !filtre.type && !filtre.texte),
-      compteurBouton(nbRetard, 'révisions dépassées', 'retard', bascule('alerte', 'retard'), filtre.alerte === 'retard'),
-      compteurBouton(nbBientot, `révisions sous ${ALERTE_JOURS} j`, 'bientot', bascule('alerte', 'bientot'), filtre.alerte === 'bientot'),
+      compteurBouton(nbRetard, 'maintenances dépassées', 'retard', bascule('alerte', 'retard'), filtre.alerte === 'retard'),
+      compteurBouton(nbBientot, `maintenances sous ${ALERTE_JOURS} j`, 'bientot', bascule('alerte', 'bientot'), filtre.alerte === 'bientot'),
       compteurBouton(nbPanne, 'en panne / maintenance', 'panne', () => { filtre = { ...filtre, statut: filtre.statut === 'En panne' ? 'actifs' : 'En panne', alerte: '' }; rendre(); }, filtre.statut === 'En panne'));
 
     const idRecherche = nouvelId();
@@ -503,7 +588,7 @@ const Materiel = (() => {
         ligneInfo('Matériel type', f.modeleType ? nomModele(modeleDe(f.modeleType)) : 'Non (matériel unique)'),
         ligneInfo('Type', f.type), ligneInfo('Modèle', f.modele), ligneInfo('N° interne SMUR', f.numInterne),
         ligneInfo('N° biomed', f.biomed ? f.numBiomed : 'Sans n° biomed'), ligneInfo('N° de série', f.numSerie), ligneInfo('Statut', f.statut),
-        f.maintenance ? [ligneInfo('Révision prévue', f.revision ? dateFr(f.revision) : ''), ligneInfo('Périodicité', f.periodicite ? `${f.periodicite} mois` : '')]
+        f.maintenance ? (f.plans.length ? f.plans.flatMap((p) => ligneInfo(p.libelle, `${p.prochaine ? `prochaine le ${dateFr(p.prochaine)}` : 'échéance non renseignée'}${p.periodicite ? ` · tous les ${p.periodicite} mois` : ''}`)) : ligneInfo('Maintenance préventive', 'Aucune maintenance définie'))
           : ligneInfo('Maintenance préventive', 'Non'),
         f.logiciel ? ligneInfo('Version logiciel', f.versionLogiciel) : null,
         ligneInfo('Traceur GeoTraceSMUR', f.traceur ? `Oui${f.nomTraceur ? ` (${f.nomTraceur})` : ''}` : 'Non'),
@@ -520,10 +605,10 @@ const Materiel = (() => {
       el('h3', { texte: 'Main courante de l\'appareil' }),
       el('p', { classe: 'aide-question', texte: 'Création et modifications de la fiche (consignées automatiquement), révisions, interventions, réparations et notes.' }),
       historique.length ? el('ol', { classe: 'mat-historique' }, historique.map((i) => el('li', { classe: i.attente ? 'attente' : '' },
-        el('p', { classe: 'mat-histo-tete' }, el('strong', { texte: i.type }), el('span', { texte: ` · ${dateFr(i.date)}` }),
+        el('p', { classe: 'mat-histo-tete' }, el('strong', { texte: i.type }), i.maintenance ? el('span', { texte: ` · ${i.maintenance}` }) : null, el('span', { texte: ` · ${dateFr(i.date)}` }),
           i.intervenant ? el('span', { texte: ` · ${i.intervenant}` }) : null, i.attente ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null),
         i.description ? el('p', { classe: 'mat-histo-texte', texte: i.description, style: 'white-space: pre-line' }) : null,
-        i.prochaineRevision ? el('p', { classe: 'mat-histo-note', texte: `Prochaine révision fixée au ${dateFr(i.prochaineRevision)}` }) : null,
+        i.prochaineRevision ? el('p', { classe: 'mat-histo-note', texte: `Prochaine échéance${i.maintenance ? ` (${i.maintenance})` : ''} fixée au ${dateFr(i.prochaineRevision)}` }) : null,
         el('p', { classe: 'mat-histo-note', texte: i.saisiPar ? `Saisi par ${i.saisiPar}` : '' }),
         estAdmin() && !JOURNAL.includes(i.type) ? el('button', {
           type: 'button', classe: 'cfg-mini danger', texte: 'Retirer',
@@ -542,7 +627,7 @@ const Materiel = (() => {
   function ouvrirEdition(f, modele = null) {
     const base = f || {
       id: idFiche(), type: (modele && modele.type) || filtre.type || TYPES_DEFAUT[0], modele: (modele && modele.modele) || '',
-      numInterne: '', numBiomed: '', numSerie: '', revision: (modele && modele.revision) || '', periodicite: (modele && modele.periodicite) || 12,
+      numInterne: '', numBiomed: '', numSerie: '', plans: modele ? (modele.plans || []).map((p) => ({ ...p, prochaine: '' })) : [{ id: 'rev', libelle: 'Révision', periodicite: 12, prochaine: '' }],
       statut: 'En service', traceur: false, nomTraceur: '', remarques: '', archive: false,
       photo: (modele && modele.photo) || '', photoDonnees: (modele && modele.photoDonnees) || '',
       modeleType: (modele && modele.modeleType) || '',
@@ -563,8 +648,7 @@ const Materiel = (() => {
       numInterne: el('input', { valeur: base.numInterne, inputmode: 'numeric', placeholder: '1, 2, 3…' }),
       numBiomed: el('input', { valeur: base.numBiomed }),
       numSerie: el('input', { valeur: base.numSerie, placeholder: 'Facultatif' }),
-      revision: el('input', { type: 'date', valeur: base.revision }),
-      periodicite: el('input', { type: 'number', min: '1', max: '120', valeur: base.periodicite }),
+      plans: editeurPlans(base.plans || plansDe(base), { avecDate: true }),
       biomed: el('input', { type: 'checkbox', coche: base.biomed !== false }),
       maintenance: el('input', { type: 'checkbox', coche: base.maintenance !== false }),
       logiciel: el('input', { type: 'checkbox', coche: base.logiciel === true }),
@@ -607,28 +691,26 @@ const Materiel = (() => {
         e.type.select.value = m.type;
         e.type.bloc.hidden = true;
         e.modele.value = m.modele;
-        e.periodicite.value = m.periodicite || '';
         e.biomed.checked = m.biomed !== false;
         e.maintenance.checked = m.maintenance !== false;
         e.logiciel.checked = m.logiciel === true;
       }
-      [e.type.select, e.modele, e.periodicite, e.biomed, e.maintenance, e.logiciel].forEach((x) => { x.disabled = Boolean(m); });
+      [e.type.select, e.modele, e.biomed, e.maintenance, e.logiciel].forEach((x) => { x.disabled = Boolean(m); });
+      e.plans.imposer(m ? plansDe(m) : null);
       majOptions();
       const nb = m ? fiches().filter((x) => x.modeleType === m.id && x.id !== base.id).length : 0;
       aideModele.textContent = m
-        ? `Type, modèle, périodicité et options (biomed, maintenance, logiciel) viennent du matériel type (partagé avec ${nb} autre${nb > 1 ? 's' : ''} appareil${nb > 1 ? 's' : ''}) : modifiez-les depuis « Matériels types ».${m.photo || m.photoDonnees ? ' Sans photo propre, l\'appareil affiche celle du matériel type.' : ''}`
+        ? `Type, modèle, options (biomed, maintenance, logiciel) et liste des maintenances viennent du matériel type ; les échéances restent propres à l'appareil (partagé avec ${nb} autre${nb > 1 ? 's' : ''} appareil${nb > 1 ? 's' : ''}) : modifiez-les depuis « Matériels types ».${m.photo || m.photoDonnees ? ' Sans photo propre, l\'appareil affiche celle du matériel type.' : ''}`
         : 'Matériel unique : toutes ses caractéristiques lui sont propres.';
     };
     choixModele.addEventListener('change', majModele);
     // Champs affichés selon les options : n° biomed, révision / périodicité, version logiciel.
     const blocBiomed = champ('N° biomed', e.numBiomed);
-    const blocRevision = champ('Révision prévue', e.revision);
-    const blocPeriodicite = champ('Périodicité des révisions (mois)', e.periodicite);
+    const blocPlans = el('div', { classe: 'champ mat-champ' }, el('span', { classe: 'mat-libelle', texte: 'Maintenances préventives' }), e.plans.bloc);
     const blocVersion = champ('Version logiciel', e.versionLogiciel);
     function majOptions() {
       blocBiomed.hidden = !e.biomed.checked;
-      blocRevision.hidden = !e.maintenance.checked;
-      blocPeriodicite.hidden = !e.maintenance.checked;
+      blocPlans.hidden = !e.maintenance.checked;
       blocVersion.hidden = !e.logiciel.checked;
     }
     [e.biomed, e.maintenance, e.logiciel].forEach((x) => x.addEventListener('change', majOptions));
@@ -641,7 +723,7 @@ const Materiel = (() => {
     const lire = () => ({
       ...base,
       type: e.type.valeur(), modele: e.modele.value.trim(), numInterne: e.numInterne.value.trim(), numBiomed: e.numBiomed.value.trim(),
-      numSerie: e.numSerie.value.trim(), revision: e.revision.value, periodicite: Number(e.periodicite.value) || '',
+      numSerie: e.numSerie.value.trim(), plans: e.plans.valeur(),
       statut: e.statut.value, traceur: e.traceur.checked, nomTraceur: e.traceur.checked ? nomTraceur.trim() : '', remarques: e.remarques.value.trim(),
       photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
       modeleType: choixModele.value,
@@ -655,7 +737,7 @@ const Materiel = (() => {
       if (!fiche.type) { message.textContent = 'Le type est obligatoire.'; return; }
       const changes = f ? Object.keys(REPERCUTABLES).filter((k) => !(fiche.modeleType && COMMUNS.includes(k))).filter((k) => (k === 'photo'
         ? `${f.photo || ''}|${f.photoDonnees || ''}` !== `${fiche.photo || ''}|${fiche.photoDonnees || ''}`
-        : (BOOLEENS.includes(k) ? Boolean(f[k]) !== Boolean(fiche[k]) : String(f[k] ?? '') !== String(fiche[k] ?? '')))) : [];
+        : (BOOLEENS.includes(k) ? Boolean(f[k]) !== Boolean(fiche[k]) : (k === 'plans' ? JSON.stringify(f.plans || []) !== JSON.stringify(fiche.plans || []) : String(f[k] ?? '') !== String(fiche[k] ?? ''))))) : [];
       d.close();
       const autres = fiches().filter((x) => x.id !== fiche.id && !x.archive && (x.type === (f ? f.type : fiche.type) || (fiche.modele && x.modele === fiche.modele)));
       if (changes.length && autres.length) proposerRepercussion(fiche, f, changes, autres);
@@ -680,7 +762,8 @@ const Materiel = (() => {
       caseOption(e.biomed, 'Muni d\'un n° biomed'),
       caseOption(e.maintenance, 'Fait l\'objet d\'une maintenance préventive'),
       caseOption(e.logiciel, 'Version logiciel à suivre'),
-      el('div', { classe: 'mat-grille' }, blocBiomed, blocRevision, blocPeriodicite, blocVersion)),
+      el('div', { classe: 'mat-grille' }, blocBiomed, blocVersion),
+      blocPlans),
     el('label', { classe: 'mat-case-libelle' }, e.traceur, el('span', { texte: 'Muni d\'un traceur GeoTraceSMUR' })),
     blocTraceur,
     blocPhoto,
@@ -722,7 +805,7 @@ const Materiel = (() => {
 
   /** Après modification d'une fiche : appliquer les mêmes changements à d'autres appareils ? */
   function proposerRepercussion(fiche, ancienne, changes, autres) {
-    const valeur = (k, x) => (k === 'modeleType' ? nomModele(modeleDe(x.modeleType)) : k === 'photo' ? ((x.photo || x.photoDonnees) ? (x.photoDonnees ? 'nouvelle photo' : 'photo') : 'aucune') : BOOLEENS.includes(k) ? (x[k] ? 'Oui' : 'Non') : (k === 'revision' ? dateFr(x[k]) : String(x[k] || '—')));
+    const valeur = (k, x) => (k === 'modeleType' ? nomModele(modeleDe(x.modeleType)) : k === 'photo' ? ((x.photo || x.photoDonnees) ? (x.photoDonnees ? 'nouvelle photo' : 'photo') : 'aucune') : BOOLEENS.includes(k) ? (x[k] ? 'Oui' : 'Non') : (k === 'plans' ? (resumePlans(x.plans) || 'aucune') : String(x[k] || '—')));
     const champsCoches = new Set(changes);
     const cibles = new Set(autres.filter((x) => (ancienne.modele && x.modele === ancienne.modele && x.type === ancienne.type)).map((x) => x.id));
     let d;
@@ -746,7 +829,7 @@ const Materiel = (() => {
             const lot = [fiche, ...autres.filter((x) => cibles.has(x.id)).map((x) => {
               const copie = { ...x };
               champsCoches.forEach((k) => {
-                copie[k] = fiche[k];
+                copie[k] = k === 'plans' ? fiche.plans.map((p) => ({ ...p })) : fiche[k];
                 if (k === 'photo') copie.photoDonnees = fiche.photoDonnees;
                 if (k === 'traceur' && !fiche.traceur) copie.nomTraceur = '';
               });
@@ -772,8 +855,6 @@ const Materiel = (() => {
       modeleType: selectListe([], ''),
       type: champType(commun('type')),
       modele: el('input', { valeur: commun('modele') }),
-      revision: el('input', { type: 'date', valeur: commun('revision') }),
-      periodicite: el('input', { type: 'number', min: '1', max: '120', valeur: commun('periodicite') }),
       statut: selectListe(statuts(), commun('statut') || 'En service'),
       traceur: el('input', { type: 'checkbox', coche: Boolean(commun('traceur')) }),
       biomed: el('input', { type: 'checkbox', coche: commun('biomed') !== false }),
@@ -789,7 +870,7 @@ const Materiel = (() => {
     const contenu = el('div', { classe: 'mat-groupee' },
       el('p', { texte: `${cibles.length} appareil(s) : ${cibles.sort(tri).map(nomAppareil).join(', ')}.` }),
       el('p', { classe: 'aide-question', texte: 'Cochez les champs à modifier : seuls ceux-là seront appliqués à tous les appareils sélectionnés. Les numéros (interne, biomed, série) restent propres à chaque appareil. Pour un appareil rattaché à un matériel type, le type, le modèle et la périodicité viennent du matériel type.' }),
-      Object.keys(REPERCUTABLES).filter((k) => k !== 'photo').map((k) => {
+      Object.keys(REPERCUTABLES).filter((k) => k !== 'photo' && k !== 'plans').map((k) => {
         const ch = entrees[k];
         const entree = k === 'type' ? ch.select : ch;
         entree.id = nouvelId();
@@ -811,7 +892,7 @@ const Materiel = (() => {
               const copie = { ...x };
               actifs.forEach((k) => {
                 const ent = entrees[k];
-                copie[k] = k === 'type' ? ent.valeur() : k === 'modeleType' ? ent.value : BOOLEENS.includes(k) ? ent.checked : (k === 'periodicite' ? (Number(ent.value) || '') : ent.value.trim());
+                copie[k] = k === 'type' ? ent.valeur() : k === 'modeleType' ? ent.value : BOOLEENS.includes(k) ? ent.checked : ent.value.trim();
                 if (k === 'traceur' && !ent.checked) copie.nomTraceur = '';
               });
               return options(copie);
@@ -836,25 +917,43 @@ const Materiel = (() => {
       description: el('textarea', { rows: '3', placeholder: 'Travaux réalisés, pièces changées, panne constatée…' }),
       intervenant: el('input', { placeholder: 'Biomed, fabricant, prestataire…' }),
       prochaine: el('input', { type: 'date' }),
+      plan: el('select', {}),
     };
     const aide = el('p', { classe: 'aide-question' });
-    /** Révision : prochaine date proposée = date + périodicité (si tous les appareils ont la même). */
+    /** Maintenances proposées : plans communs à tous les appareils choisis (même identifiant, ex. même matériel type). */
+    function majPlans() {
+      const choisis = toutes.filter((x) => cibles.has(x.id));
+      const avant = e.plan.value;
+      const communs = choisis.length ? (choisis[0].plans || []).filter((p) => choisis.every((x) => (x.plans || []).some((q) => q.id === p.id))) : [];
+      e.plan.replaceChildren(el('option', { value: '', texte: '— Aucune —' }), ...communs.map((p) => el('option', { value: p.id, texte: `${p.libelle}${p.periodicite ? ` (${p.periodicite} mois)` : ''}` })));
+      if (communs.some((p) => p.id === avant)) e.plan.value = avant;
+      else if (communs.length === 1 && ['Révision', 'Contrôle', 'Intervention'].includes(e.type.value)) e.plan.value = communs[0].id;
+      blocPlan.hidden = !communs.length;
+    }
+    /** Prochaine échéance proposée = date + périodicité de la maintenance choisie. */
     function proposerProchaine() {
       const choisis = toutes.filter((x) => cibles.has(x.id));
-      const perio = choisis.length && choisis.every((x) => x.periodicite && x.periodicite === choisis[0].periodicite) ? choisis[0].periodicite : '';
-      if (e.type.value === 'Révision' && perio && e.date.value) {
-        e.prochaine.value = ajouterMois(e.date.value, perio);
-        aide.textContent = `Proposée d'après la périodicité (${perio} mois). Laissez vide pour ne pas changer la révision prévue.`;
-      } else aide.textContent = 'Si renseignée, remplace la « révision prévue » des appareils concernés.';
+      const plan = e.plan.value && (choisis[0].plans || []).find((p) => p.id === e.plan.value);
+      if (plan && plan.periodicite && e.date.value) {
+        e.prochaine.value = ajouterMois(e.date.value, plan.periodicite);
+        aide.textContent = `Proposée d'après la périodicité de « ${plan.libelle} » (${plan.periodicite} mois). Laissez vide pour ne pas changer l'échéance.`;
+      } else {
+        if (!plan) e.prochaine.value = '';
+        aide.textContent = plan ? `Si renseignée, remplace la prochaine échéance de « ${plan.libelle} ».` : 'Choisissez la maintenance réalisée pour mettre à jour sa prochaine échéance.';
+      }
+      blocProchaine.hidden = !plan && !choisis.every((x) => !(x.plans || []).length && x.maintenance !== false);
     }
-    e.type.addEventListener('change', proposerProchaine);
+    const blocPlan = champ('Maintenance réalisée', e.plan);
+    const blocProchaine = champ('Prochaine échéance', e.prochaine);
+    e.type.addEventListener('change', () => { majPlans(); proposerProchaine(); });
+    e.plan.addEventListener('change', proposerProchaine);
     e.date.addEventListener('change', proposerProchaine);
     const message = el('p', { classe: 'message erreur', role: 'alert' });
     const listeCibles = el('div', { classe: 'mat-cibles' });
     function rendreCibles() {
       const choisis = toutes.filter((x) => cibles.has(x.id)).sort(tri);
       listeCibles.replaceChildren(...choisis.map((x) => el('span', { classe: 'mat-puce' }, nomAppareil(x),
-        cibles.size > 1 ? el('button', { type: 'button', 'aria-label': `Retirer ${nomAppareil(x)}`, texte: '✕', surclick: () => { cibles.delete(x.id); rendreCibles(); proposerProchaine(); } }) : null)));
+        cibles.size > 1 ? el('button', { type: 'button', 'aria-label': `Retirer ${nomAppareil(x)}`, texte: '✕', surclick: () => { cibles.delete(x.id); rendreCibles(); majPlans(); proposerProchaine(); } }) : null)));
     }
     const ajout = el('select', {
       'aria-label': 'Ajouter un appareil',
@@ -866,6 +965,7 @@ const Materiel = (() => {
         else if (v.startsWith('type:')) toutes.filter((x) => x.type === v.slice(5)).forEach((x) => cibles.add(x.id));
         else if (v) cibles.add(v);
         rendreCibles();
+        majPlans();
         proposerProchaine();
       },
     },
@@ -875,6 +975,7 @@ const Materiel = (() => {
     el('optgroup', { label: 'Tout un type' }, [...new Set(toutes.map((x) => x.type))].map((t) => el('option', { value: `type:${t}`, texte: `Tous les ${t}` }))),
     el('optgroup', { label: 'Un appareil' }, toutes.slice().sort(tri).map((x) => el('option', { value: x.id, texte: `${nomAppareil(x)}${x.modele ? ` · ${x.modele}` : ''}` }))));
     rendreCibles();
+    majPlans();
     proposerProchaine();
     let d;
     const contenu = el('form', {
@@ -887,14 +988,14 @@ const Materiel = (() => {
         d.close();
         enfiler('ajouterIntervention', {
           materiels: [...cibles], date: e.date.value, type: e.type.value, description: e.description.value.trim(),
-          intervenant: e.intervenant.value.trim(), prochaineRevision: e.prochaine.value,
+          intervenant: e.intervenant.value.trim(), prochaineRevision: blocProchaine.hidden ? '' : e.prochaine.value, maintenance: blocPlan.hidden ? '' : e.plan.value,
         });
       },
     },
     el('fieldset', { classe: 'mat-cadre' }, el('legend', { texte: 'Appareils concernés' }), listeCibles, ajout),
     el('div', { classe: 'mat-grille' }, champ('Date', e.date), champ('Type', e.type)),
     champ('Description', e.description),
-    el('div', { classe: 'mat-grille' }, champ('Intervenant', e.intervenant), champ('Prochaine révision', e.prochaine)),
+    el('div', { classe: 'mat-grille' }, champ('Intervenant', e.intervenant), blocPlan, blocProchaine),
     aide, message,
     el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Enregistrer l\'intervention' })));
     d = fenetre('Révision, intervention ou réparation', contenu, { large: true });
@@ -918,7 +1019,7 @@ const Materiel = (() => {
             (m.photo || m.photoDonnees) ? vignette({ ...m, type: m.type }, 'mat-vignette') : null,
             el('span', { classe: 'mat-corps' },
               el('span', { classe: 'mat-nom' }, el('strong', { texte: m.type }), el('span', { texte: ` > ${m.modele}` })),
-              el('span', { classe: 'mat-ids', texte: [`${nb} appareil${nb > 1 ? 's' : ''}`, m.maintenance === false ? 'sans maintenance préventive' : (m.periodicite ? `révision tous les ${m.periodicite} mois` : ''), m.biomed === false ? 'sans n° biomed' : '', m.logiciel ? 'logiciel suivi' : ''].filter(Boolean).join(' · ') })),
+              el('span', { classe: 'mat-ids', texte: [`${nb} appareil${nb > 1 ? 's' : ''}`, m.maintenance === false ? 'sans maintenance préventive' : resumePlans(plansDe(m)), m.biomed === false ? 'sans n° biomed' : '', m.logiciel ? 'logiciel suivi' : ''].filter(Boolean).join(' · ') })),
             el('span', { classe: 'mat-etats' },
               m.archive ? el('span', { classe: 'mat-pastille rev-neutre', texte: 'Archivé' }) : null,
               modelesAttente.has(m.id) ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null)));
@@ -935,7 +1036,7 @@ const Materiel = (() => {
     const admin = estAdmin();
     const base = m || {
       id: idFiche(), type: (depuis && depuis.type) || filtre.type || TYPES_DEFAUT[0], modele: (depuis && depuis.modele) || '',
-      periodicite: (depuis && depuis.periodicite) || 12, photo: (depuis && depuis.photo) || '', photoDonnees: (depuis && depuis.photoDonnees) || '',
+      plans: depuis ? (depuis.plans || []).map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite })) : [{ id: 'rev', libelle: 'Révision', periodicite: 12 }], photo: (depuis && depuis.photo) || '', photoDonnees: (depuis && depuis.photoDonnees) || '',
       remarques: '', archive: false,
       biomed: depuis ? depuis.biomed !== false : true, maintenance: depuis ? depuis.maintenance !== false : true, logiciel: Boolean(depuis && depuis.logiciel),
     };
@@ -948,13 +1049,13 @@ const Materiel = (() => {
     const e = {
       type: champType(base.type),
       modele: el('input', { valeur: base.modele, placeholder: 'ex. Corpuls3, Hamilton T1, Alaris GH…' }),
-      periodicite: el('input', { type: 'number', min: '1', max: '120', valeur: base.periodicite }),
+      plans: editeurPlans(plansDe(base), { avecDate: false, actif: admin }),
       remarques: el('textarea', { rows: '3', valeur: base.remarques, placeholder: 'Caractéristiques communes, accessoires, notice…' }),
       biomed: el('input', { type: 'checkbox', coche: base.biomed !== false }),
       maintenance: el('input', { type: 'checkbox', coche: base.maintenance !== false }),
       logiciel: el('input', { type: 'checkbox', coche: base.logiciel === true }),
     };
-    const blocPeriodicite = champ('Périodicité des révisions (mois)', e.periodicite);
+    const blocPeriodicite = el('div', { classe: 'champ mat-champ' }, el('span', { classe: 'mat-libelle', texte: 'Maintenances préventives (les échéances se renseignent sur chaque appareil)' }), e.plans.bloc);
     const majOptions = () => { blocPeriodicite.hidden = !e.maintenance.checked; };
     e.maintenance.addEventListener('change', majOptions);
     majOptions();
@@ -975,7 +1076,7 @@ const Materiel = (() => {
       try { photo = { id: '', donnees: await reduirePhoto(fichier) }; message.textContent = ''; } catch (err) { message.textContent = 'Photo illisible ou trop lourde.'; }
       afficherApercu();
     });
-    if (!admin) [e.type.select, e.modele, e.periodicite, e.remarques, e.biomed, e.maintenance, e.logiciel].forEach((x) => { x.disabled = true; });
+    if (!admin) [e.type.select, e.modele, e.remarques, e.biomed, e.maintenance, e.logiciel].forEach((x) => { x.disabled = true; });
 
     const cases = el('div', { classe: 'mat-cibles-liste' });
     function rendreCases() {
@@ -991,13 +1092,13 @@ const Materiel = (() => {
 
     let d;
     const lire = () => ({
-      ...base, type: e.type.valeur(), modele: e.modele.value.trim(), periodicite: Number(e.periodicite.value) || '',
+      ...base, type: e.type.valeur(), modele: e.modele.value.trim(), plans: e.plans.valeur().map(({ id, libelle, periodicite }) => ({ id, libelle, periodicite })),
       remarques: e.remarques.value.trim(), photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
       biomed: e.biomed.checked, maintenance: e.maintenance.checked, logiciel: e.logiciel.checked,
     });
     function envoyer(fiche) {
       if (!fiche.type || !fiche.modele) { message.textContent = 'Le type et le modèle sont obligatoires.'; return; }
-      if (!fiche.maintenance) fiche.periodicite = '';
+      if (!fiche.maintenance) fiche.plans = [];
       // Un matériel type = un couple « Type > modèle ».
       const double = modeles().find((x) => x.id !== fiche.id && !x.archive && normaliser(x.type) === normaliser(fiche.type) && normaliser(x.modele) === normaliser(fiche.modele));
       if (double) { message.textContent = `Le matériel type ${nomModele(double)} existe déjà.`; return; }
