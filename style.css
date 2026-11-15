@@ -2490,3 +2490,7 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .imp-fenetre .imp-choix small { font-weight: 400; font-size: 0.8rem; }
 .imp-fenetre .imp-format { flex: none; }
 .imp-fenetre .imp-groupe summary label { font-weight: 700; }
+
+/* Inventaire type (modèle) : fond ambré pour le distinguer d'un inventaire réel. */
+body.inv-dans-modele { background: #FFF4D6; }
+body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color: #F0CF73; }

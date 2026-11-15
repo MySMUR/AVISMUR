@@ -4278,6 +4278,8 @@ const Inventaires = (() => {
       else zone.append(...haut, ...corps, ...bas);
     }
     document.body.classList.toggle('inv-avec-valider', Boolean(zone.querySelector('.inv-barre-bas')));
+    // Fond coloré dans un inventaire type, pour ne pas le confondre avec un inventaire réel.
+    document.body.classList.toggle('inv-dans-modele', Boolean(c && dansUnModele(c.id)));
     // Une fois : l'appui long sur la flèche permet de remonter de plusieurs étages.
     if (nouveau && c && !gestion && etagesAuDessus(c).length > 1) {
       let vue = true;
@@ -4960,7 +4962,7 @@ const Inventaires = (() => {
   }
   function masquer() {
     if (zone) zone.hidden = true;
-    document.body.classList.remove('vue-inv-checklist', 'inv-avec-valider');
+    document.body.classList.remove('vue-inv-checklist', 'inv-avec-valider', 'inv-dans-modele');
   }
   /** Après un envoi de la file d'attente (app.js) : met à jour la ligne d'état. */
   function surEnvoi() {
