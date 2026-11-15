@@ -25,7 +25,7 @@ const Materiel = (() => {
   const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention'];
   const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle'];
   const STATUTS_DEFAUT = ['En service', 'En maintenance', 'En panne', 'Prêté', 'Réformé'];
-  const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Contrôle', 'Mise à jour logicielle', 'Note', 'Autre'];
+  const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Note', 'Autre'];
   // Entrées écrites automatiquement dans la main courante : jamais retirées.
   const JOURNAL = ['Création', 'Modification'];
   // Champs communs à plusieurs appareils, que l'on peut répercuter (jamais les numéros propres à chacun).
@@ -402,7 +402,7 @@ const Materiel = (() => {
       if (filtre.alerte === 'bientot' && !etatRevision(f).bientot) return false;
       if (filtre.alerte === 'traceur' && !f.traceur) return false;
       if (t) {
-        const botte = normaliser([f.type, f.modele, f.numInterne, f.numBiomed, f.numSerie, f.nomTraceur, f.remarques, f.versionLogiciel].join(' '));
+        const botte = normaliser([f.type, f.modele, f.numInterne, f.numBiomed, f.numSerie, f.nomTraceur, f.remarques, f.versionLogiciel, f.emplacement].join(' '));
         if (!t.split(/\s+/).every((mot) => botte.includes(mot))) return false;
       }
       return true;
@@ -516,11 +516,44 @@ const Materiel = (() => {
     liste.replaceChildren(...blocs);
   }
 
+  // Appareils dont le détail est déplié dans la liste.
+  const deplies = new Set();
+  const ICONES = {
+    acquitter: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/><path d="M16 19l2 2 4-4"/></svg>',
+    note: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"/><path d="M12 7v4M12 13.5v.5"/></svg>',
+    deplier: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  };
+  function icone(nom, libelle, action, attributs = {}) {
+    const b = el('button', { type: 'button', classe: `mat-icone mat-icone-${nom}`, 'aria-label': libelle, title: libelle, surclick: (e) => { e.stopPropagation(); action(e); }, ...attributs });
+    b.innerHTML = ICONES[nom];
+    return b;
+  }
+  /** « F21 › Sac rouge · vu le 15/11/2026 » */
+  const texteEmplacement = (f) => (f.emplacement ? `${f.emplacement}${f.vuLe ? ` · vu le ${dateFr(f.vuLe.slice(0, 10))}` : ''}` : '');
+  /** Maintenance à acquitter en priorité : la plus urgente (dépassée, puis la plus proche). */
+  function planPrioritaire(f) {
+    const plans = (f.plans || []).slice();
+    if (!plans.length) return null;
+    return plans.sort((a, b) => (etatPlan(b).rang - etatPlan(a).rang) || String(a.prochaine || '9999').localeCompare(String(b.prochaine || '9999')))[0];
+  }
+
   function ligne(f, interventions, attente) {
     const rev = etatRevision(f);
-    const derniere = interventions.filter((i) => i.materiel === f.id).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
-    return el('li', { classe: `mat-ligne${selection.has(f.id) ? ' choisie' : ''}` },
-      estAdmin() ? el('input', {
+    const historique = interventions.filter((i) => i.materiel === f.id).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const derniere = historique[0];
+    const ouvert = deplies.has(f.id);
+    const admin = estAdmin();
+    const actif = !f.archive && f.statut !== 'Réformé';
+    const actions = el('span', { classe: 'mat-actions' },
+      admin && actif && f.maintenance !== false && (f.plans || []).length
+        ? icone('acquitter', `Acquitter une maintenance : ${nomAppareil(f)}`, () => { const p = planPrioritaire(f); ouvrirIntervention([f.id], { type: 'Révision', plan: p && p.id }); }) : null,
+      admin && actif ? icone('note', `Évènement ou note (casse, panne, problème) : ${nomAppareil(f)}`, () => ouvrirSignalement(f)) : null,
+      icone('deplier', ouvert ? 'Replier le détail' : 'Déplier le détail', () => {
+        if (deplies.has(f.id)) deplies.delete(f.id); else deplies.add(f.id);
+        rendreListe();
+      }, { 'aria-expanded': String(ouvert), classe: `mat-icone mat-icone-deplier${ouvert ? ' ouvert' : ''}` }));
+    return el('li', { classe: `mat-ligne${selection.has(f.id) ? ' choisie' : ''}${ouvert ? ' depliee' : ''}` },
+      admin ? el('input', {
         type: 'checkbox', classe: 'mat-case', coche: selection.has(f.id), 'aria-label': `Sélectionner ${nomAppareil(f)}`,
         surchange: (e) => { if (e.target.checked) selection.add(f.id); else selection.delete(f.id); rendre(); },
       }) : null,
@@ -531,11 +564,78 @@ const Materiel = (() => {
           el('span', { classe: 'mat-nom' }, el('strong', { texte: nomAppareil(f) }), f.modele ? el('span', { texte: ` · ${f.modele}` }) : null,
             f.traceur ? el('span', { classe: 'mat-traceur', title: `Traceur GeoTraceSMUR${f.nomTraceur ? ` : ${f.nomTraceur}` : ''}`, texte: '📡' }) : null),
           el('span', { classe: 'mat-ids', texte: [f.numBiomed && `Biomed ${f.numBiomed}`, f.numSerie && `S/N ${f.numSerie}`].filter(Boolean).join(' · ') || 'N° biomed et série non renseignés' }),
-          derniere ? el('span', { classe: 'mat-derniere', texte: `Dernière intervention : ${derniere.type.toLowerCase()} le ${dateFr(derniere.date)}` }) : null),
+          f.emplacement ? el('span', { classe: 'mat-emplacement', texte: `📍 ${texteEmplacement(f)}` }) : null,
+          derniere ? el('span', { classe: 'mat-derniere', texte: `Dernière entrée : ${(derniere.type === 'Évènement' && derniere.evenement ? derniere.evenement : derniere.type).toLowerCase()} le ${dateFr(derniere.date)}` }) : null),
         el('span', { classe: 'mat-etats' },
           f.statut !== 'En service' ? el('span', { classe: `mat-pastille statut-${normaliser(f.statut).replace(/\W+/g, '-')}`, texte: f.statut }) : null,
           el('span', { classe: `mat-pastille rev-${rev.classe}`, texte: rev.texte }),
-          attente.has(f.id) ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null)));
+          attente.has(f.id) ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null)),
+      actions,
+      ouvert ? detailLigne(f, historique) : null);
+  }
+
+  /** Détail déplié sous la ligne : maintenances, évènements, emplacement, numéros, dernières entrées. */
+  function detailLigne(f, historique) {
+    const info = (t, v) => (v ? [el('dt', { texte: t }), el('dd', { texte: v })] : null);
+    const plans = f.maintenance === false ? [] : (f.plans || []);
+    return el('div', { classe: 'mat-detail' },
+      el('dl', { classe: 'mat-infos' },
+        info('Matériel type', f.modeleType ? nomModele(modeleDe(f.modeleType)) : 'Matériel unique'),
+        info('Dernier emplacement', texteEmplacement(f) || 'Jamais pointé dans un inventaire'),
+        info('Statut', f.statut),
+        info('N° biomed', f.biomed ? (f.numBiomed || '—') : 'Sans n° biomed'),
+        info('N° de série', f.numSerie),
+        f.logiciel ? info('Version logiciel', f.versionLogiciel || '—') : null,
+        f.traceur ? info('Traceur', f.nomTraceur || 'Oui') : null,
+        f.maintenance === false ? info('Maintenance préventive', 'Non') : null,
+        plans.flatMap((p) => info(p.libelle, `${etatPlan(p).texte.slice(p.libelle.length).replace(/^ : | /, '')}${p.periodicite ? ` · ${textePeriode(p)}` : ''}`)),
+        (f.evenements || []).flatMap((v) => {
+          const dernier = historique.find((i) => i.type === 'Évènement' && normaliser(i.evenement) === normaliser(v.libelle));
+          return info(v.libelle, dernier ? `dernier le ${dateFr(dernier.date)}` : 'jamais enregistré');
+        }),
+        f.remarques ? info('Remarques', f.remarques) : null),
+      historique.length ? el('div', {},
+        el('p', { classe: 'mat-libelle', texte: 'Dernières entrées de la main courante' }),
+        el('ul', { classe: 'mat-detail-histo' }, historique.slice(0, 3).map((i) => el('li', {},
+          el('strong', { texte: i.type === 'Évènement' && i.evenement ? i.evenement : i.type }),
+          ` · ${dateFr(i.date)}${i.maintenance ? ` · ${i.maintenance}` : ''}${i.description ? ` — ${i.description.split('\n')[0].slice(0, 120)}` : ''}`)))) : null,
+      el('div', { classe: 'mat-boutons' }, el('button', { type: 'button', classe: 'cfg-mini', texte: 'Ouvrir la fiche complète', surclick: () => ouvrirFiche(f.id) })));
+  }
+
+  /** Icône « évènement ou note » : évènements ponctuels du matériel type, ou note casse / panne / problème. */
+  function ouvrirSignalement(f) {
+    const evts = f.evenements || [];
+    let d;
+    const contenu = el('div', { classe: 'mat-signalement' },
+      evts.length ? el('fieldset', { classe: 'mat-cadre' }, el('legend', { texte: 'Évènement ponctuel' }),
+        el('div', { classe: 'mat-boutons' }, evts.map((v) => el('button', { type: 'button', classe: 'cfg-bouton', texte: v.libelle, surclick: () => { d.close(); ouvrirEvenement(f, v, false); } })))) : null,
+      el('fieldset', { classe: 'mat-cadre' }, el('legend', { texte: 'Signaler' }),
+        el('div', { classe: 'mat-boutons' }, ['Casse', 'Panne', 'Problème', 'Note'].map((n) => el('button', { type: 'button', classe: 'cfg-bouton', texte: n, surclick: () => { d.close(); ouvrirNote(f, n); } })))));
+    d = fenetre(nomAppareil(f) + (f.modele ? ` · ${f.modele}` : ''), contenu);
+  }
+
+  /** Note datée dans la main courante ; casse / panne peuvent passer l'appareil « En panne ». */
+  function ouvrirNote(f, nature) {
+    const TYPES = { Casse: 'Casse', Panne: 'Panne signalée', Problème: 'Problème', Note: 'Note' };
+    const date = el('input', { type: 'date', valeur: aujourdhui(), max: aujourdhui() });
+    const texte = el('textarea', { rows: '3', placeholder: nature === 'Note' ? 'Votre note' : 'Que s\'est-il passé ? Ce qui ne fonctionne pas…' });
+    const enPanne = el('input', { type: 'checkbox', coche: (nature === 'Casse' || nature === 'Panne') && f.statut === 'En service' });
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
+    let d;
+    const contenu = el('form', {
+      classe: 'mat-form', novalidate: true,
+      sursubmit: (ev) => {
+        ev.preventDefault();
+        if (!texte.value.trim()) { message.textContent = 'Décrivez en quelques mots.'; return; }
+        d.close();
+        enfiler('ajouterIntervention', { materiels: [f.id], date: date.value || aujourdhui(), type: TYPES[nature], description: texte.value.trim(), intervenant: '', prochaineRevision: '' });
+        if (enPanne.checked && f.statut !== 'En panne') enfiler('enregistrerMateriel', { fiches: [{ ...f, statut: 'En panne' }] });
+      },
+    },
+    champ('Date', date), champ(nature === 'Note' ? 'Note' : 'Description', texte),
+    nature === 'Note' ? null : el('label', { classe: 'mat-case-libelle' }, enPanne, el('span', { texte: 'Passer l\'appareil « En panne »' })),
+    message, el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Enregistrer' })));
+    d = fenetre(`${nature} · ${nomAppareil(f)}`, contenu);
   }
 
   // ---------- Fenêtres ----------
@@ -597,6 +697,7 @@ const Materiel = (() => {
       aPhoto(f) ? vignette(f, 'mat-photo') : null,
       el('dl', { classe: 'mat-infos' },
         ligneInfo('Matériel type', f.modeleType ? nomModele(modeleDe(f.modeleType)) : 'Non (matériel unique)'),
+        ligneInfo('Dernier emplacement', texteEmplacement(f) || 'Jamais pointé dans un inventaire'),
         ligneInfo('Type', f.type), ligneInfo('Modèle', f.modele), ligneInfo('N° interne SMUR', f.numInterne),
         ligneInfo('N° biomed', f.biomed ? f.numBiomed : 'Sans n° biomed'), ligneInfo('N° de série', f.numSerie), ligneInfo('Statut', f.statut),
         f.maintenance ? (f.plans.length ? f.plans.flatMap((p) => ligneInfo(p.libelle, `${p.prochaine ? `prochaine le ${dateFr(p.prochaine)}` : 'échéance non renseignée'}${p.periodicite ? ` · ${textePeriode(p)}` : ''}`)) : ligneInfo('Maintenance préventive', 'Aucune maintenance définie'))
@@ -932,12 +1033,13 @@ const Materiel = (() => {
   }
 
   /** Révision / intervention / réparation pour un ou plusieurs appareils. */
-  function ouvrirIntervention(ids) {
+  /** options : { type, plan } pré-choisis (icône « acquitter une maintenance » de la liste). */
+  function ouvrirIntervention(ids, options = {}) {
     const toutes = fiches().filter((x) => !x.archive);
     const cibles = new Set(ids);
     const e = {
       date: el('input', { type: 'date', valeur: aujourdhui(), max: aujourdhui(), required: true }),
-      type: selectListe(typesIntervention(), 'Révision'),
+      type: selectListe(typesIntervention(), options.type || 'Révision'),
       description: el('textarea', { rows: '3', placeholder: 'Travaux réalisés, pièces changées, panne constatée…' }),
       intervenant: el('input', { placeholder: 'Biomed, fabricant, prestataire…' }),
       prochaine: el('input', { type: 'date' }),
@@ -1000,6 +1102,7 @@ const Materiel = (() => {
     el('optgroup', { label: 'Un appareil' }, toutes.slice().sort(tri).map((x) => el('option', { value: x.id, texte: `${nomAppareil(x)}${x.modele ? ` · ${x.modele}` : ''}` }))));
     rendreCibles();
     majPlans();
+    if (options.plan && [...e.plan.options].some((o) => o.value === options.plan)) e.plan.value = options.plan;
     proposerProchaine();
     let d;
     const contenu = el('form', {
@@ -1062,7 +1165,7 @@ const Materiel = (() => {
   }
 
   /** Date d'un évènement ponctuel (aujourd'hui par défaut, modifiable), avec une remarque facultative. */
-  function ouvrirEvenement(f, v) {
+  function ouvrirEvenement(f, v, rouvrirFiche = true) {
     const date = el('input', { type: 'date', valeur: aujourdhui(), max: aujourdhui(), required: true });
     const remarque = el('textarea', { rows: '2', placeholder: 'Facultatif : n° de lot, intervenant…' });
     const message = el('p', { classe: 'message erreur', role: 'alert' });
@@ -1074,7 +1177,7 @@ const Materiel = (() => {
         if (!date.value) { message.textContent = 'Indiquez la date.'; return; }
         d.close();
         enfiler('ajouterIntervention', { materiels: [f.id], date: date.value, type: 'Évènement', evenement: v.libelle, description: remarque.value.trim(), intervenant: '', prochaineRevision: '' });
-        ouvrirFiche(f.id);
+        if (rouvrirFiche) ouvrirFiche(f.id);
       },
     }, champ('Date', date), champ('Remarque', remarque), message,
     el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Enregistrer' })));

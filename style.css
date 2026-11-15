@@ -2405,6 +2405,8 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .inv-tb-base-actions { margin: 0.4rem 0; }
 
 /* Recadrage des photos de contenants */
+dialog.inv-recadrage { margin: 0; border: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; box-sizing: border-box; }
+dialog.inv-recadrage:not([open]) { display: none; }
 .inv-recadrage { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; gap: .6rem; padding: max(.8rem, env(safe-area-inset-top)) .8rem max(.8rem, env(safe-area-inset-bottom)); background: #13294b; color: #fff; }
 .inv-recadrage-tete { display: flex; align-items: center; gap: .5rem; }
 .inv-recadrage-tete h2 { flex: 1; margin: 0; font-size: 1.05rem; }
@@ -2516,3 +2518,18 @@ body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color:
 .mat-evenement { display: inline-flex; flex-direction: column; align-items: flex-start; text-align: left; }
 .mat-evenement small { font-weight: normal; opacity: 0.8; }
 .mat-evenements-edition input { flex: 1; }
+
+/* Suivi matériel : icônes d'action et détail déplié dans la liste */
+.mat-ligne { flex-wrap: wrap; }
+.mat-ligne > .mat-ouvrir { flex: 1 1 0; min-width: 0; }
+.mat-actions { display: flex; align-items: center; gap: 0.15rem; flex-shrink: 0; }
+.mat-icone { width: 2.3rem; height: 2.3rem; padding: 0.45rem; border: 0; border-radius: 0.5rem; background: transparent; color: var(--bleu); cursor: pointer; }
+.mat-icone svg { width: 100%; height: 100%; display: block; }
+.mat-icone:hover, .mat-icone:focus-visible { background: var(--ciel); }
+.mat-icone-deplier svg { transition: transform 0.15s; }
+.mat-icone-deplier.ouvert svg { transform: rotate(180deg); }
+.mat-emplacement { font-size: 0.85rem; color: var(--gris); }
+.mat-detail { flex-basis: 100%; margin: 0 0 0.8rem 2rem; padding: 0.7rem 0.9rem; border-radius: 10px; background: #F6F9FD; }
+.mat-detail .mat-infos { margin: 0 0 0.5rem; }
+.mat-detail-histo { margin: 0.2rem 0 0.6rem; padding-left: 1.1rem; font-size: 0.9rem; }
+@media (max-width: 560px) { .mat-detail { margin-left: 0; } }

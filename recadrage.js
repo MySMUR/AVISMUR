@@ -110,7 +110,7 @@ const Recadrage = (() => {
           cadre.addEventListener('pointerup', lacher);
           cadre.addEventListener('pointercancel', lacher);
         });
-        const fermer = () => { fond.remove(); document.removeEventListener('keydown', clavier); };
+        const fermer = () => { if (fond.open) fond.close(); fond.remove(); document.removeEventListener('keydown', clavier); };
         const clavier = (e) => { if (e.key === 'Escape') { fermer(); ok(null); } };
         const valider = () => {
           const sx = Math.round(r.x * toile.width);
@@ -146,7 +146,9 @@ const Recadrage = (() => {
         };
         compteur += 1;
         const idTitre = `recadrage-titre-${compteur}`;
-        const fond = el('div', { classe: 'inv-recadrage', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': idTitre },
+        // <dialog> ouvert en modal : passe au-dessus de toute fenêtre déjà ouverte (fiche matériel, information…),
+        // alors qu'un simple <div> resterait caché derrière et la photo ne serait jamais validée.
+        const fond = el('dialog', { classe: 'inv-recadrage', 'aria-labelledby': idTitre },
           el('div', { classe: 'inv-recadrage-tete' },
             el('h2', { id: idTitre, texte: titre }),
             el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': 'Tourner d\'un quart de tour', title: 'Tourner', texte: '↻', surclick: () => { quarts = (quarts + 1) % 4; dessiner(); r = initial(); placer(); } }),
@@ -158,7 +160,9 @@ const Recadrage = (() => {
             el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: 'Valider', surclick: valider })));
         placer();
         document.addEventListener('keydown', clavier);
+        fond.addEventListener('cancel', (e) => { e.preventDefault(); fermer(); ok(null); }); // touche Échap / retour Android
         document.body.append(fond);
+        if (fond.showModal) fond.showModal();
       };
       img.src = url;
     });
