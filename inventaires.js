@@ -292,10 +292,35 @@ const Inventaires = (() => {
       if (texte === undefined) delete p.texte; else p.texte = texte;
     }));
   }
-  /** Pose (ou repose) la gommette de `cible` sur la vue `vc`, en gardant son texte. */
+  /**
+   * Taille d'une gommette sur une vue (facteur, 1 = normale). Propre à chaque photo : une photo vue de loin
+   * (cellule sanitaire) demande des gommettes plus petites qu'un gros plan de tiroir.
+   */
+  const TAILLES_GOMMETTE = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2];
+  const tailleGommette = (p) => { const t = Number(p && p.taille); return t > 0 ? t : 1; };
+  /** Taille suivante (sens +1) ou précédente (-1) dans l'échelle. */
+  function tailleVoisine(t, sens) {
+    const i = TAILLES_GOMMETTE.findIndex((x) => x >= t - 0.001);
+    const j = Math.min(TAILLES_GOMMETTE.length - 1, Math.max(0, (i === -1 ? TAILLES_GOMMETTE.length - 1 : i) + sens));
+    return TAILLES_GOMMETTE[j];
+  }
+  /** Change la taille des gommettes de la vue `vc` (toutes, ou celle de `cible`). */
+  function changerTaille(c, vc, sens, cible) {
+    majVue(c, vc.cle, { points: vc.points.map((p) => {
+      if (cible && p.cible !== cible) return p;
+      const t = tailleVoisine(tailleGommette(p), sens);
+      const { taille, ...reste } = p;
+      return t === 1 ? reste : { ...reste, taille: t };
+    }) });
+  }
+  /** Pose (ou repose) la gommette de `cible` sur la vue `vc`, en gardant son texte et sa taille. */
   function poserGommette(c, vc, cible, pos) {
     const t = texteChoisi(c, cible);
-    majVue(c, vc.cle, { points: vc.points.filter((p) => p.cible !== cible).concat({ cible, x: pos.x, y: pos.y, ...(t === undefined ? {} : { texte: t }) }) });
+    const avant = vc.points.find((p) => p.cible === cible);
+    // Nouvelle gommette : taille des autres gommettes de la photo si elles ont toutes la même.
+    const tailles = [...new Set(vc.points.map(tailleGommette))];
+    const taille = avant ? tailleGommette(avant) : tailles.length === 1 ? tailles[0] : 1;
+    majVue(c, vc.cle, { points: vc.points.filter((p) => p.cible !== cible).concat({ cible, x: pos.x, y: pos.y, ...(t === undefined ? {} : { texte: t }), ...(taille === 1 ? {} : { taille }) }) });
   }
   /** Classes d'affichage d'une gommette selon son texte (vide, texte long). */
   const classesTexte = (t) => (t === '' ? ' vierge' : Array.from(t).length > 1 ? ` long${Array.from(t).length > 2 ? ' tres-long' : ''}` : '');
@@ -1595,7 +1620,10 @@ const Inventaires = (() => {
         // Aperçu de la gommette qui suit la souris : on voit où elle sera posée, même sur une photo sombre.
         const rang = fils.findIndex((f) => f.id === placement);
         const texteApercu = rang === -1 ? '' : texteGommette(c, placement, rang);
-        const apercu = el('span', { classe: `inv-point inv-apercu${classesTexte(texteApercu)}`, 'aria-hidden': 'true', texte: texteApercu, hidden: true });
+        const dejaPose = vc.points.find((p) => p.cible === placement);
+        const taillesVue = [...new Set(vc.points.map(tailleGommette))];
+        const tailleApercu = dejaPose ? tailleGommette(dejaPose) : taillesVue.length === 1 ? taillesVue[0] : 1;
+        const apercu = el('span', { classe: `inv-point inv-apercu${classesTexte(texteApercu)}`, style: `--t:${tailleApercu}`, 'aria-hidden': 'true', texte: texteApercu, hidden: true });
         cadre.append(apercu);
         cadre.addEventListener('pointermove', (e) => {
           if (e.pointerType !== 'mouse') return;
@@ -1624,7 +1652,7 @@ const Inventaires = (() => {
         const t = texteGommette(c, p.cible, rang);
         const affiche = edition ? t : scelle ? '' : (b.complet ? '✓' : t);
         const commun = {
-          classe: `inv-point ${b.classe}${scelle ? ' scelle' : ''}${placement === p.cible ? ' deplace' : ''}${scelle ? '' : classesTexte(affiche)}`, style: `left:${p.x * 100}%;top:${p.y * 100}%`,
+          classe: `inv-point ${b.classe}${scelle ? ' scelle' : ''}${placement === p.cible ? ' deplace' : ''}${scelle ? '' : classesTexte(affiche)}`, style: `left:${p.x * 100}%;top:${p.y * 100}%;--t:${tailleGommette(p)}`,
           'aria-label': `${fils[rang].nom} : ${b.texte}`, title: fils[rang].nom,
         };
         const pastille = edition
@@ -1643,6 +1671,16 @@ const Inventaires = (() => {
           el('button', { type: 'button', classe: 'lien', texte: 'Plus tard', surclick: () => { placement = ''; rendre({ garderPosition: true }); } })));
       }
       bloc.append(cadre);
+      if (edition && vc.points.length) {
+        const tailles = vc.points.map(tailleGommette);
+        const tMin = Math.min(...tailles); const tMax = Math.max(...tailles);
+        const regler = (sens) => { changerTaille(c, vc, sens); marquer(c.id); rendre({ garderPosition: true }); };
+        bloc.append(el('div', { classe: 'cfg-ligne inv-taille-gommettes' },
+          el('span', { texte: 'Taille des gommettes de la photo' }),
+          el('button', { type: 'button', classe: 'cfg-mini', texte: 'A−', title: 'Réduire toutes les gommettes de cette photo', 'aria-label': 'Réduire toutes les gommettes', disabled: tMax <= TAILLES_GOMMETTE[0] || undefined, surclick: () => regler(-1) }),
+          el('span', { classe: 'inv-taille-valeur', texte: tMin === tMax ? `${Math.round(tMin * 100)} %` : 'variable' }),
+          el('button', { type: 'button', classe: 'cfg-mini', texte: 'A+', title: 'Agrandir toutes les gommettes de cette photo', 'aria-label': 'Agrandir toutes les gommettes', disabled: tMin >= TAILLES_GOMMETTE[TAILLES_GOMMETTE.length - 1] || undefined, surclick: () => regler(1) })));
+      }
     }
     if (edition) {
       const prendre = idChamp();
@@ -1734,7 +1772,19 @@ const Inventaires = (() => {
         type: 'button', classe: `cfg-mini${actuel === '' ? ' inv-actif' : ''}`, 'aria-pressed': String(actuel === ''),
         title: actuel === '' ? 'Revenir au numéro automatique' : 'Gommette sans texte', texte: 'Vide',
         surclick: () => appliquer(actuel === '' ? undefined : ''),
-      }));
+      }),
+      ...(() => {
+        const vc = vueCourante(c);
+        const p = vc.points.find((x) => x.cible === f.id);
+        if (!p) return [];
+        const t = tailleGommette(p);
+        const regler = (sens) => { changerTaille(c, vc, sens, f.id); marquer(c.id); rendre({ garderPosition: true }); };
+        return [
+          el('button', { type: 'button', classe: 'cfg-mini', texte: 'A−', title: 'Réduire cette gommette (sur cette photo)', 'aria-label': `Réduire la gommette de ${f.nom}`, disabled: t <= TAILLES_GOMMETTE[0] || undefined, surclick: () => regler(-1) }),
+          el('span', { classe: 'inv-taille-valeur', texte: `${Math.round(t * 100)} %` }),
+          el('button', { type: 'button', classe: 'cfg-mini', texte: 'A+', title: 'Agrandir cette gommette (sur cette photo)', 'aria-label': `Agrandir la gommette de ${f.nom}`, disabled: t >= TAILLES_GOMMETTE[TAILLES_GOMMETTE.length - 1] || undefined, surclick: () => regler(1) }),
+        ];
+      })());
   }
 
   function blocEnfants(c, fils) {
@@ -3455,8 +3505,8 @@ const Inventaires = (() => {
   const sigArticle = (a) => (a.separateur ? { separateur: true, nom: a.nom }
     : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu, typeMateriel: a.typeMateriel, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined }
       : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || ''), quantiteMin: a.quantiteMin === true || undefined, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined });
-  /** Gommette réduite à ce qui se répercute : position et texte éventuel. */
-  const sigPoint = (p) => ({ cible: p.cible, x: p.x, y: p.y, ...(typeof p.texte === 'string' ? { texte: p.texte } : {}) });
+  /** Gommette réduite à ce qui se répercute : position, texte et taille éventuels. */
+  const sigPoint = (p) => ({ cible: p.cible, x: p.x, y: p.y, ...(typeof p.texte === 'string' ? { texte: p.texte } : {}), ...(Number(p.taille) > 0 && Number(p.taille) !== 1 ? { taille: Number(p.taille) } : {}) });
   /** Instantané d'un contenant du modèle : ce que ses exemplaires doivent reproduire. */
   function instantane(m) {
     return {

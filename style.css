@@ -1226,7 +1226,15 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .inv-photo img { display: block; width: 100%; height: auto; }
 .inv-photo-attente { margin: 0; padding: 2.2rem 1rem; text-align: center; color: var(--gris); }
 .inv-photo.sans-image .inv-point, .inv-photo.sans-image img { display: none; }
-.inv-point { position: absolute; transform: translate(-50%, -50%); padding: 0; text-decoration: none; cursor: pointer; width: 2.75rem; height: 2.75rem; }
+.inv-point { position: absolute; transform: translate(-50%, -50%); padding: 0; text-decoration: none; cursor: pointer;
+  /* --t : taille choisie pour la gommette (1 = normale), réglable par photo et par gommette. */
+  width: calc(2.75rem * var(--t, 1)); height: calc(2.75rem * var(--t, 1)); font-size: calc(1.05rem * var(--t, 1));
+  border-width: max(1.5px, calc(3px * var(--t, 1))); }
+.inv-point.long { font-size: calc(0.88rem * var(--t, 1)); }
+.inv-point.tres-long { font-size: calc(0.72rem * var(--t, 1)); }
+.inv-point.scelle .inv-tb-cadenas { width: calc(1.35rem * var(--t, 1)); height: calc(1.35rem * var(--t, 1)); }
+.inv-taille-gommettes { align-items: center; gap: 0.4rem; margin: 0.4rem 0; font-size: 0.9rem; }
+.inv-taille-valeur { min-width: 3.2rem; text-align: center; font-variant-numeric: tabular-nums; font-size: 0.85rem; color: var(--gris); }
 .inv-point:hover, .inv-point:focus-visible { transform: translate(-50%, -50%) scale(1.12); }
 .inv-point.deplace { background: var(--orange); animation: inv-battement 1s ease-in-out infinite alternate; }
 @keyframes inv-battement { to { box-shadow: 0 0 0 10px rgb(224 122 18 / 0.35); } }
