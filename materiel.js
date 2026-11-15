@@ -21,14 +21,25 @@ const Materiel = (() => {
   const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention'];
   const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle'];
   const STATUTS_DEFAUT = ['En service', 'En maintenance', 'En panne', 'Prêté', 'Réformé'];
-  const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Contrôle', 'Autre'];
+  const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Contrôle', 'Mise à jour logicielle', 'Note', 'Autre'];
+  // Entrées écrites automatiquement dans la main courante : jamais retirées.
+  const JOURNAL = ['Création', 'Modification'];
   // Champs communs à plusieurs appareils, que l'on peut répercuter (jamais les numéros propres à chacun).
   const REPERCUTABLES = {
-    modeleType: 'Matériel type', type: 'Type', modele: 'Modèle', revision: 'Révision prévue', periodicite: 'Périodicité (mois)',
+    modeleType: 'Matériel type', type: 'Type', modele: 'Modèle', biomed: 'Suivi biomed', maintenance: 'Maintenance préventive',
+    revision: 'Révision prévue', periodicite: 'Périodicité (mois)', logiciel: 'Logiciel', versionLogiciel: 'Version logiciel',
     statut: 'Statut', traceur: 'Traceur GeoTraceSMUR', remarques: 'Remarques', photo: 'Photo',
   };
+  const BOOLEENS = ['traceur', 'biomed', 'maintenance', 'logiciel', 'archive'];
+  // Libellés de la main courante (mêmes que le serveur).
+  const LIBELLES = {
+    modeleType: 'Matériel type', type: 'Type', modele: 'Modèle', numInterne: 'N° interne', biomed: 'Suivi biomed', numBiomed: 'N° biomed',
+    numSerie: 'N° de série', maintenance: 'Maintenance préventive', revision: 'Révision prévue', periodicite: 'Périodicité (mois)',
+    logiciel: 'Logiciel', versionLogiciel: 'Version logiciel', statut: 'Statut', traceur: 'Traceur', nomTraceur: 'Nom du traceur',
+    remarques: 'Remarques', photo: 'Photo', archive: 'Archivé',
+  };
   // Champs communs repris de la fiche type quand l'appareil y est rattaché.
-  const COMMUNS = ['type', 'modele', 'periodicite'];
+  const COMMUNS = ['type', 'modele', 'periodicite', 'biomed', 'maintenance', 'logiciel'];
   const ALERTE_JOURS = 30; // révision « à prévoir » dans les 30 jours
 
   let zone;
@@ -178,7 +189,18 @@ const Materiel = (() => {
     enAttente().forEach((e) => {
       const d = e.donnees || {};
       if (e.action === 'enregistrerMateriel') {
-        (d.fiches || []).forEach((f) => { parId.set(f.id, { ...parId.get(f.id), ...f }); attente.add(f.id); });
+        (d.fiches || []).forEach((f) => {
+          const avant = parId.get(f.id);
+          const description = avant ? decrire(resoudre(avant, modeles), resoudre({ ...avant, ...f }, modeles), modeles) : 'Fiche créée';
+          if (description) {
+            interventions.push({
+              id: `${e.id}-${f.id}`, materiel: f.id, date: (e.date || new Date().toISOString()).slice(0, 10),
+              type: avant ? 'Modification' : 'Création', description, attente: true, auto: true,
+            });
+          }
+          parId.set(f.id, { ...avant, ...f });
+          attente.add(f.id);
+        });
       } else if (e.action === 'enregistrerModeles') {
         (d.modeles || []).forEach((m) => { modeles.set(m.id, { ...modeles.get(m.id), ...m }); modelesAttente.add(m.id); });
         const premier = (d.modeles || [])[0];
@@ -203,16 +225,42 @@ const Materiel = (() => {
   /** Appareil rattaché à une fiche type : type, modèle, périodicité (et photo par défaut) viennent de la fiche type. */
   function resoudre(f, modeles) {
     const m = f.modeleType && modeles.get(f.modeleType);
-    if (!m) return { ...f, modeleType: f.modeleType || '' };
-    const r = { ...f };
-    COMMUNS.forEach((k) => { r[k] = m[k]; });
-    r.photoModele = m.photo || '';
-    r.photoModeleDonnees = m.photoDonnees || '';
-    return r;
+    const r = { ...f, modeleType: f.modeleType || '' };
+    if (m) {
+      COMMUNS.forEach((k) => { r[k] = m[k]; });
+      r.photoModele = m.photo || '';
+      r.photoModeleDonnees = m.photoDonnees || '';
+    }
+    return options(r);
+  }
+  /** Valeurs par défaut (biomed et maintenance oui, logiciel non) et effacement des champs sans objet. */
+  function options(f) {
+    f.biomed = f.biomed !== false;
+    f.maintenance = f.maintenance !== false;
+    f.logiciel = f.logiciel === true;
+    if (!f.biomed) f.numBiomed = '';
+    if (!f.maintenance) { f.revision = ''; f.periodicite = ''; }
+    if (!f.logiciel) f.versionLogiciel = '';
+    return f;
+  }
+  /** Changements entre deux états d'une fiche, pour la main courante (comme le serveur). */
+  function decrire(a, n, modelesMap) {
+    const val = (k, v) => {
+      if (k === 'modeleType') return v ? nomModele(modelesMap.get(v)) : 'aucun (matériel unique)';
+      if (BOOLEENS.includes(k)) return v ? 'oui' : 'non';
+      if (k === 'revision' && v) return dateFr(v);
+      return v === '' || v === undefined || v === null ? '—' : String(v);
+    };
+    return Object.keys(LIBELLES).map((k) => {
+      if (k === 'photo') return `${a.photo || ''}|${a.photoDonnees || ''}` !== `${n.photo || ''}|${n.photoDonnees || ''}` ? 'Photo modifiée' : '';
+      const va = BOOLEENS.includes(k) ? Boolean(a[k]) : String(a[k] ?? '');
+      const vn = BOOLEENS.includes(k) ? Boolean(n[k]) : String(n[k] ?? '');
+      return va === vn ? '' : `${LIBELLES[k]} : ${val(k, a[k])} → ${val(k, n[k])}`;
+    }).filter(Boolean).join('\n');
   }
   const modeles = () => etat().modeles;
   const modeleDe = (id) => modeles().find((m) => m.id === id) || null;
-  const nomModele = (m) => (m ? `${m.type} · ${m.modele}` : 'Matériel unique');
+  const nomModele = (m) => (m ? `${m.type} > ${m.modele}` : 'Matériel unique');
   const fiches = () => etat().fiches;
 
   let chargementPromesse = null;
@@ -248,6 +296,7 @@ const Materiel = (() => {
   // ---------- Révision : état ----------
   function etatRevision(f) {
     if (f.statut === 'Réformé' || f.archive) return { classe: 'neutre', texte: f.archive ? 'Archivé' : 'Réformé' };
+    if (f.maintenance === false) return { classe: 'neutre', texte: 'Sans maintenance préventive' };
     if (!f.revision) return { classe: 'neutre', texte: 'Révision non renseignée' };
     const jours = Math.round((new Date(f.revision) - new Date(aujourdhui())) / 86400000);
     if (jours < 0) return { classe: 'retard', texte: `Révision dépassée (${dateFr(f.revision)})`, retard: true };
@@ -267,7 +316,7 @@ const Materiel = (() => {
       if (filtre.alerte === 'bientot' && !etatRevision(f).bientot) return false;
       if (filtre.alerte === 'traceur' && !f.traceur) return false;
       if (t) {
-        const botte = normaliser([f.type, f.modele, f.numInterne, f.numBiomed, f.numSerie, f.nomTraceur, f.remarques].join(' '));
+        const botte = normaliser([f.type, f.modele, f.numInterne, f.numBiomed, f.numSerie, f.nomTraceur, f.remarques, f.versionLogiciel].join(' '));
         if (!t.split(/\s+/).every((mot) => botte.includes(mot))) return false;
       }
       return true;
@@ -453,27 +502,30 @@ const Materiel = (() => {
       el('dl', { classe: 'mat-infos' },
         ligneInfo('Matériel type', f.modeleType ? nomModele(modeleDe(f.modeleType)) : 'Non (matériel unique)'),
         ligneInfo('Type', f.type), ligneInfo('Modèle', f.modele), ligneInfo('N° interne SMUR', f.numInterne),
-        ligneInfo('N° biomed', f.numBiomed), ligneInfo('N° de série', f.numSerie), ligneInfo('Statut', f.statut),
-        ligneInfo('Révision prévue', f.revision ? dateFr(f.revision) : ''), ligneInfo('Périodicité', f.periodicite ? `${f.periodicite} mois` : ''),
+        ligneInfo('N° biomed', f.biomed ? f.numBiomed : 'Sans n° biomed'), ligneInfo('N° de série', f.numSerie), ligneInfo('Statut', f.statut),
+        f.maintenance ? [ligneInfo('Révision prévue', f.revision ? dateFr(f.revision) : ''), ligneInfo('Périodicité', f.periodicite ? `${f.periodicite} mois` : '')]
+          : ligneInfo('Maintenance préventive', 'Non'),
+        f.logiciel ? ligneInfo('Version logiciel', f.versionLogiciel) : null,
         ligneInfo('Traceur GeoTraceSMUR', f.traceur ? `Oui${f.nomTraceur ? ` (${f.nomTraceur})` : ''}` : 'Non'),
         f.remarques ? ligneInfo('Remarques', f.remarques) : null),
       el('p', { classe: `mat-pastille rev-${rev.classe} mat-rev-fiche`, texte: rev.texte }),
       estAdmin() ? el('div', { classe: 'mat-boutons' },
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Modifier la fiche', surclick: () => { d.close(); ouvrirEdition(f); } }),
-        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter une intervention', surclick: () => { d.close(); ouvrirIntervention([f.id]); } }),
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter à la main courante', title: 'Révision, intervention, réparation, mise à jour logicielle, note…', surclick: () => { d.close(); ouvrirIntervention([f.id]); } }),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Encoder une puce NFC', surclick: () => { d.close(); ouvrirNfc(f); } }),
         f.modeleType
           ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ouvrir le matériel type', surclick: () => { d.close(); ouvrirModele(modeleDe(f.modeleType)); } })
           : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Créer un matériel type', title: 'Fiche type reprenant le type, le modèle, la périodicité et la photo de cet appareil', surclick: () => { d.close(); ouvrirModele(null, f); } }),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Dupliquer', title: 'Nouvel appareil du même type et du même modèle', surclick: () => { d.close(); ouvrirEdition(null, f); } })) : null,
-      el('h3', { texte: 'Historique des révisions, interventions et réparations' }),
+      el('h3', { texte: 'Main courante de l\'appareil' }),
+      el('p', { classe: 'aide-question', texte: 'Création et modifications de la fiche (consignées automatiquement), révisions, interventions, réparations et notes.' }),
       historique.length ? el('ol', { classe: 'mat-historique' }, historique.map((i) => el('li', { classe: i.attente ? 'attente' : '' },
         el('p', { classe: 'mat-histo-tete' }, el('strong', { texte: i.type }), el('span', { texte: ` · ${dateFr(i.date)}` }),
           i.intervenant ? el('span', { texte: ` · ${i.intervenant}` }) : null, i.attente ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null),
-        i.description ? el('p', { texte: i.description }) : null,
+        i.description ? el('p', { classe: 'mat-histo-texte', texte: i.description, style: 'white-space: pre-line' }) : null,
         i.prochaineRevision ? el('p', { classe: 'mat-histo-note', texte: `Prochaine révision fixée au ${dateFr(i.prochaineRevision)}` }) : null,
         el('p', { classe: 'mat-histo-note', texte: i.saisiPar ? `Saisi par ${i.saisiPar}` : '' }),
-        estAdmin() ? el('button', {
+        estAdmin() && !JOURNAL.includes(i.type) ? el('button', {
           type: 'button', classe: 'cfg-mini danger', texte: 'Retirer',
           surclick: () => {
             if (!window.confirm('Retirer cette entrée de l\'historique ?')) return;
@@ -494,6 +546,8 @@ const Materiel = (() => {
       statut: 'En service', traceur: false, nomTraceur: '', remarques: '', archive: false,
       photo: (modele && modele.photo) || '', photoDonnees: (modele && modele.photoDonnees) || '',
       modeleType: (modele && modele.modeleType) || '',
+      biomed: modele ? modele.biomed !== false : true, maintenance: modele ? modele.maintenance !== false : true,
+      logiciel: Boolean(modele && modele.logiciel), versionLogiciel: (modele && modele.versionLogiciel) || '',
     };
     const message = el('p', { classe: 'message erreur', role: 'alert' });
     const listeModeles = el('datalist', { id: nouvelId() }, [...new Set(fiches().map((x) => x.modele).filter(Boolean))].map((m) => el('option', { value: m })));
@@ -508,9 +562,13 @@ const Materiel = (() => {
       modele: el('input', { valeur: base.modele, list: listeModeles.id, placeholder: 'ex. Corpuls3, Hamilton T1, Alaris GH…' }),
       numInterne: el('input', { valeur: base.numInterne, inputmode: 'numeric', placeholder: '1, 2, 3…' }),
       numBiomed: el('input', { valeur: base.numBiomed }),
-      numSerie: el('input', { valeur: base.numSerie }),
+      numSerie: el('input', { valeur: base.numSerie, placeholder: 'Facultatif' }),
       revision: el('input', { type: 'date', valeur: base.revision }),
       periodicite: el('input', { type: 'number', min: '1', max: '120', valeur: base.periodicite }),
+      biomed: el('input', { type: 'checkbox', coche: base.biomed !== false }),
+      maintenance: el('input', { type: 'checkbox', coche: base.maintenance !== false }),
+      logiciel: el('input', { type: 'checkbox', coche: base.logiciel === true }),
+      versionLogiciel: el('input', { valeur: base.versionLogiciel || '', placeholder: 'ex. 2.4.1' }),
       statut: selectListe(statuts(), base.statut),
       traceur: el('input', { type: 'checkbox', coche: base.traceur }),
       remarques: el('textarea', { rows: '3', valeur: base.remarques }),
@@ -550,14 +608,31 @@ const Materiel = (() => {
         e.type.bloc.hidden = true;
         e.modele.value = m.modele;
         e.periodicite.value = m.periodicite || '';
+        e.biomed.checked = m.biomed !== false;
+        e.maintenance.checked = m.maintenance !== false;
+        e.logiciel.checked = m.logiciel === true;
       }
-      [e.type.select, e.modele, e.periodicite].forEach((x) => { x.disabled = Boolean(m); });
+      [e.type.select, e.modele, e.periodicite, e.biomed, e.maintenance, e.logiciel].forEach((x) => { x.disabled = Boolean(m); });
+      majOptions();
       const nb = m ? fiches().filter((x) => x.modeleType === m.id && x.id !== base.id).length : 0;
       aideModele.textContent = m
-        ? `Type, modèle et périodicité viennent du matériel type (partagé avec ${nb} autre${nb > 1 ? 's' : ''} appareil${nb > 1 ? 's' : ''}) : modifiez-les depuis « Matériels types ».${m.photo || m.photoDonnees ? ' Sans photo propre, l\'appareil affiche celle du matériel type.' : ''}`
+        ? `Type, modèle, périodicité et options (biomed, maintenance, logiciel) viennent du matériel type (partagé avec ${nb} autre${nb > 1 ? 's' : ''} appareil${nb > 1 ? 's' : ''}) : modifiez-les depuis « Matériels types ».${m.photo || m.photoDonnees ? ' Sans photo propre, l\'appareil affiche celle du matériel type.' : ''}`
         : 'Matériel unique : toutes ses caractéristiques lui sont propres.';
     };
     choixModele.addEventListener('change', majModele);
+    // Champs affichés selon les options : n° biomed, révision / périodicité, version logiciel.
+    const blocBiomed = champ('N° biomed', e.numBiomed);
+    const blocRevision = champ('Révision prévue', e.revision);
+    const blocPeriodicite = champ('Périodicité des révisions (mois)', e.periodicite);
+    const blocVersion = champ('Version logiciel', e.versionLogiciel);
+    function majOptions() {
+      blocBiomed.hidden = !e.biomed.checked;
+      blocRevision.hidden = !e.maintenance.checked;
+      blocPeriodicite.hidden = !e.maintenance.checked;
+      blocVersion.hidden = !e.logiciel.checked;
+    }
+    [e.biomed, e.maintenance, e.logiciel].forEach((x) => x.addEventListener('change', majOptions));
+    const caseOption = (entree, texte) => el('label', { classe: 'mat-case-libelle' }, entree, el('span', { texte }));
     const majTraceur = () => { blocTraceur.hidden = !e.traceur.checked; };
     e.traceur.addEventListener('change', majTraceur);
     majTraceur();
@@ -570,15 +645,17 @@ const Materiel = (() => {
       statut: e.statut.value, traceur: e.traceur.checked, nomTraceur: e.traceur.checked ? nomTraceur.trim() : '', remarques: e.remarques.value.trim(),
       photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
       modeleType: choixModele.value,
+      biomed: e.biomed.checked, maintenance: e.maintenance.checked, logiciel: e.logiciel.checked, versionLogiciel: e.versionLogiciel.value.trim(),
     });
 
     function enregistrer(fiche) {
+      options(fiche);
       const conflit = verifierDoublons([fiche]);
       if (conflit) { message.textContent = conflit; return; }
       if (!fiche.type) { message.textContent = 'Le type est obligatoire.'; return; }
       const changes = f ? Object.keys(REPERCUTABLES).filter((k) => !(fiche.modeleType && COMMUNS.includes(k))).filter((k) => (k === 'photo'
         ? `${f.photo || ''}|${f.photoDonnees || ''}` !== `${fiche.photo || ''}|${fiche.photoDonnees || ''}`
-        : (k === 'traceur' ? Boolean(f[k]) !== Boolean(fiche[k]) : String(f[k] ?? '') !== String(fiche[k] ?? '')))) : [];
+        : (BOOLEENS.includes(k) ? Boolean(f[k]) !== Boolean(fiche[k]) : String(f[k] ?? '') !== String(fiche[k] ?? '')))) : [];
       d.close();
       const autres = fiches().filter((x) => x.id !== fiche.id && !x.archive && (x.type === (f ? f.type : fiche.type) || (fiche.modele && x.modele === fiche.modele)));
       if (changes.length && autres.length) proposerRepercussion(fiche, f, changes, autres);
@@ -597,11 +674,13 @@ const Materiel = (() => {
       e.type.bloc,
       champ('Modèle', e.modele),
       champ('N° interne SMUR', e.numInterne),
-      champ('N° biomed', e.numBiomed),
-      champ('N° de série', e.numSerie),
-      champ('Statut', e.statut),
-      champ('Révision prévue', e.revision),
-      champ('Périodicité des révisions (mois)', e.periodicite)),
+      champ('N° de série (facultatif)', e.numSerie),
+      champ('Statut', e.statut)),
+    el('fieldset', { classe: 'mat-cadre' }, el('legend', { texte: 'Suivi de l\'appareil' }),
+      caseOption(e.biomed, 'Muni d\'un n° biomed'),
+      caseOption(e.maintenance, 'Fait l\'objet d\'une maintenance préventive'),
+      caseOption(e.logiciel, 'Version logiciel à suivre'),
+      el('div', { classe: 'mat-grille' }, blocBiomed, blocRevision, blocPeriodicite, blocVersion)),
     el('label', { classe: 'mat-case-libelle' }, e.traceur, el('span', { texte: 'Muni d\'un traceur GeoTraceSMUR' })),
     blocTraceur,
     blocPhoto,
@@ -643,7 +722,7 @@ const Materiel = (() => {
 
   /** Après modification d'une fiche : appliquer les mêmes changements à d'autres appareils ? */
   function proposerRepercussion(fiche, ancienne, changes, autres) {
-    const valeur = (k, x) => (k === 'modeleType' ? nomModele(modeleDe(x.modeleType)) : k === 'photo' ? ((x.photo || x.photoDonnees) ? (x.photoDonnees ? 'nouvelle photo' : 'photo') : 'aucune') : k === 'traceur' ? (x[k] ? 'Oui' : 'Non') : (k === 'revision' ? dateFr(x[k]) : String(x[k] || '—')));
+    const valeur = (k, x) => (k === 'modeleType' ? nomModele(modeleDe(x.modeleType)) : k === 'photo' ? ((x.photo || x.photoDonnees) ? (x.photoDonnees ? 'nouvelle photo' : 'photo') : 'aucune') : BOOLEENS.includes(k) ? (x[k] ? 'Oui' : 'Non') : (k === 'revision' ? dateFr(x[k]) : String(x[k] || '—')));
     const champsCoches = new Set(changes);
     const cibles = new Set(autres.filter((x) => (ancienne.modele && x.modele === ancienne.modele && x.type === ancienne.type)).map((x) => x.id));
     let d;
@@ -671,7 +750,7 @@ const Materiel = (() => {
                 if (k === 'photo') copie.photoDonnees = fiche.photoDonnees;
                 if (k === 'traceur' && !fiche.traceur) copie.nomTraceur = '';
               });
-              return copie;
+              return options(copie);
             })];
             const conflit = verifierDoublons(lot);
             if (conflit) { window.alert(conflit); return; }
@@ -697,6 +776,10 @@ const Materiel = (() => {
       periodicite: el('input', { type: 'number', min: '1', max: '120', valeur: commun('periodicite') }),
       statut: selectListe(statuts(), commun('statut') || 'En service'),
       traceur: el('input', { type: 'checkbox', coche: Boolean(commun('traceur')) }),
+      biomed: el('input', { type: 'checkbox', coche: commun('biomed') !== false }),
+      maintenance: el('input', { type: 'checkbox', coche: commun('maintenance') !== false }),
+      logiciel: el('input', { type: 'checkbox', coche: Boolean(commun('logiciel')) }),
+      versionLogiciel: el('input', { valeur: commun('versionLogiciel') || '' }),
       remarques: el('textarea', { rows: '2', valeur: commun('remarques') }),
     };
     entrees.modeleType = el('select', {}, el('option', { value: '', texte: '— Aucun : matériel unique —' }),
@@ -728,10 +811,10 @@ const Materiel = (() => {
               const copie = { ...x };
               actifs.forEach((k) => {
                 const ent = entrees[k];
-                copie[k] = k === 'type' ? ent.valeur() : k === 'modeleType' ? ent.value : k === 'traceur' ? ent.checked : (k === 'periodicite' ? (Number(ent.value) || '') : ent.value.trim());
+                copie[k] = k === 'type' ? ent.valeur() : k === 'modeleType' ? ent.value : BOOLEENS.includes(k) ? ent.checked : (k === 'periodicite' ? (Number(ent.value) || '') : ent.value.trim());
                 if (k === 'traceur' && !ent.checked) copie.nomTraceur = '';
               });
-              return copie;
+              return options(copie);
             });
             if (lot.some((x) => !x.type)) { window.alert('Le type ne peut pas être vide.'); return; }
             const conflit = verifierDoublons(lot);
@@ -826,7 +909,7 @@ const Materiel = (() => {
     const tries = liste.slice().sort((a, b) => Number(a.archive) - Number(b.archive) || nomModele(a).localeCompare(nomModele(b), 'fr'));
     const uniques = toutes.filter((x) => !x.modeleType && !x.archive).length;
     const contenu = el('div', { classe: 'mat-modeles' },
-      el('p', { classe: 'aide-question', texte: 'Un matériel type regroupe des appareils identiques : type, modèle, périodicité des révisions et photo. Le modifier met à jour tous les appareils rattachés. Les numéros, la révision prévue, le statut et le traceur restent propres à chaque appareil.' }),
+      el('p', { classe: 'aide-question', texte: 'Un matériel type « Type > modèle » regroupe des appareils identiques : n° biomed ou non, maintenance préventive et périodicité, logiciel suivi, photo. Le modifier met à jour tous les appareils rattachés. Les numéros, la révision prévue, le statut et le traceur restent propres à chaque appareil.' }),
       estAdmin() ? el('div', { classe: 'mat-boutons' }, el('button', { type: 'button', classe: 'principal', texte: '+ Nouveau matériel type', surclick: () => { d.close(); ouvrirModele(null); } })) : null,
       tries.length ? el('ul', { classe: 'mat-lignes' }, tries.map((m) => {
         const nb = toutes.filter((x) => x.modeleType === m.id && !x.archive).length;
@@ -834,8 +917,8 @@ const Materiel = (() => {
           el('button', { type: 'button', classe: 'mat-ouvrir', surclick: () => { d.close(); ouvrirModele(m); } },
             (m.photo || m.photoDonnees) ? vignette({ ...m, type: m.type }, 'mat-vignette') : null,
             el('span', { classe: 'mat-corps' },
-              el('span', { classe: 'mat-nom' }, el('strong', { texte: m.type }), el('span', { texte: ` · ${m.modele}` })),
-              el('span', { classe: 'mat-ids', texte: `${nb} appareil${nb > 1 ? 's' : ''}${m.periodicite ? ` · révision tous les ${m.periodicite} mois` : ''}` })),
+              el('span', { classe: 'mat-nom' }, el('strong', { texte: m.type }), el('span', { texte: ` > ${m.modele}` })),
+              el('span', { classe: 'mat-ids', texte: [`${nb} appareil${nb > 1 ? 's' : ''}`, m.maintenance === false ? 'sans maintenance préventive' : (m.periodicite ? `révision tous les ${m.periodicite} mois` : ''), m.biomed === false ? 'sans n° biomed' : '', m.logiciel ? 'logiciel suivi' : ''].filter(Boolean).join(' · ') })),
             el('span', { classe: 'mat-etats' },
               m.archive ? el('span', { classe: 'mat-pastille rev-neutre', texte: 'Archivé' }) : null,
               modelesAttente.has(m.id) ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null)));
@@ -854,6 +937,7 @@ const Materiel = (() => {
       id: idFiche(), type: (depuis && depuis.type) || filtre.type || TYPES_DEFAUT[0], modele: (depuis && depuis.modele) || '',
       periodicite: (depuis && depuis.periodicite) || 12, photo: (depuis && depuis.photo) || '', photoDonnees: (depuis && depuis.photoDonnees) || '',
       remarques: '', archive: false,
+      biomed: depuis ? depuis.biomed !== false : true, maintenance: depuis ? depuis.maintenance !== false : true, logiciel: Boolean(depuis && depuis.logiciel),
     };
     const toutes = fiches().filter((x) => !x.archive || x.modeleType === base.id);
     const dejaLies = new Set(toutes.filter((x) => x.modeleType === base.id).map((x) => x.id));
@@ -866,7 +950,14 @@ const Materiel = (() => {
       modele: el('input', { valeur: base.modele, placeholder: 'ex. Corpuls3, Hamilton T1, Alaris GH…' }),
       periodicite: el('input', { type: 'number', min: '1', max: '120', valeur: base.periodicite }),
       remarques: el('textarea', { rows: '3', valeur: base.remarques, placeholder: 'Caractéristiques communes, accessoires, notice…' }),
+      biomed: el('input', { type: 'checkbox', coche: base.biomed !== false }),
+      maintenance: el('input', { type: 'checkbox', coche: base.maintenance !== false }),
+      logiciel: el('input', { type: 'checkbox', coche: base.logiciel === true }),
     };
+    const blocPeriodicite = champ('Périodicité des révisions (mois)', e.periodicite);
+    const majOptions = () => { blocPeriodicite.hidden = !e.maintenance.checked; };
+    e.maintenance.addEventListener('change', majOptions);
+    majOptions();
     let photo = { id: base.photo || '', donnees: base.photoDonnees || '' };
     const apercu = el('img', { classe: 'mat-photo', alt: 'Photo du matériel type', hidden: true });
     const boutonRetirer = el('button', { type: 'button', classe: 'cfg-bouton danger', texte: 'Retirer la photo', hidden: true, surclick: () => { photo = { id: '', donnees: '' }; afficherApercu(); } });
@@ -884,7 +975,7 @@ const Materiel = (() => {
       try { photo = { id: '', donnees: await reduirePhoto(fichier) }; message.textContent = ''; } catch (err) { message.textContent = 'Photo illisible ou trop lourde.'; }
       afficherApercu();
     });
-    if (!admin) [e.type.select, e.modele, e.periodicite, e.remarques].forEach((x) => { x.disabled = true; });
+    if (!admin) [e.type.select, e.modele, e.periodicite, e.remarques, e.biomed, e.maintenance, e.logiciel].forEach((x) => { x.disabled = true; });
 
     const cases = el('div', { classe: 'mat-cibles-liste' });
     function rendreCases() {
@@ -902,9 +993,14 @@ const Materiel = (() => {
     const lire = () => ({
       ...base, type: e.type.valeur(), modele: e.modele.value.trim(), periodicite: Number(e.periodicite.value) || '',
       remarques: e.remarques.value.trim(), photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
+      biomed: e.biomed.checked, maintenance: e.maintenance.checked, logiciel: e.logiciel.checked,
     });
     function envoyer(fiche) {
       if (!fiche.type || !fiche.modele) { message.textContent = 'Le type et le modèle sont obligatoires.'; return; }
+      if (!fiche.maintenance) fiche.periodicite = '';
+      // Un matériel type = un couple « Type > modèle ».
+      const double = modeles().find((x) => x.id !== fiche.id && !x.archive && normaliser(x.type) === normaliser(fiche.type) && normaliser(x.modele) === normaliser(fiche.modele));
+      if (double) { message.textContent = `Le matériel type ${nomModele(double)} existe déjà.`; return; }
       const rattacher = [...coches].filter((id) => !dejaLies.has(id));
       const detacher = [...dejaLies].filter((id) => !coches.has(id));
       const simulation = fiches().filter((x) => rattacher.includes(x.id) || detacher.includes(x.id))
@@ -917,8 +1013,12 @@ const Materiel = (() => {
     const contenu = el('form', { classe: 'mat-form', novalidate: true, sursubmit: (ev) => { ev.preventDefault(); if (admin) envoyer(lire()); } },
       el('div', { classe: 'mat-grille' },
         champ('Type de matériel', e.type.select), e.type.bloc,
-        champ('Modèle', e.modele),
-        champ('Périodicité des révisions (mois)', e.periodicite)),
+        champ('Modèle', e.modele)),
+      el('fieldset', { classe: 'mat-cadre' }, el('legend', { texte: 'Suivi des appareils de ce type' }),
+        el('label', { classe: 'mat-case-libelle' }, e.biomed, el('span', { texte: 'Munis d\'un n° biomed' })),
+        el('label', { classe: 'mat-case-libelle' }, e.maintenance, el('span', { texte: 'Maintenance préventive' })),
+        el('label', { classe: 'mat-case-libelle' }, e.logiciel, el('span', { texte: 'Version logiciel à suivre (renseignée sur chaque appareil)' })),
+        blocPeriodicite),
       el('div', { classe: 'mat-photo-bloc' }, el('p', { classe: 'mat-libelle', texte: 'Photo (affichée pour les appareils sans photo propre)' }), apercu,
         admin ? el('div', { classe: 'mat-boutons' },
           el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Prendre ou choisir une photo', surclick: () => fichierPhoto.click() }), boutonRetirer, fichierPhoto) : null),
