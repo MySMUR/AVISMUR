@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 20;
+  const VERSION_SERVEUR = 21;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -381,6 +381,7 @@ const Inventaires = (() => {
   // ---------- Contrôles : valeur à relever au lieu d'une case ----------
   const CONTROLES = {
     scan: { nom: 'À scanner / renseigner', aide: 'n° de série, matériel biomédical', defaut: 'Numéro de série' },
+    materiel: { nom: 'Matériel attendu', aide: 'appareil du suivi du matériel : QR, NFC, saisie ou liste', defaut: 'Scope' },
     temperature: { nom: 'Température', aide: '°C, avec plage', defaut: 'Température', unite: '°C' },
     batterie: { nom: 'Niveau de batterie', aide: '% ou 0 à 4', defaut: 'Batterie' },
     oui: { nom: 'Oui / Non', aide: 'branchement secteur, appairage, test', defaut: 'Test effectué' },
@@ -390,10 +391,28 @@ const Inventaires = (() => {
   /** Article facultatif (ex. détecteur de CO présent sur certains sacs) : son absence ne rend pas l'inventaire non conforme. */
   const estFacultatif = (a) => Boolean(a && a.facultatif === true);
   const seuilBatterie = (a) => (a.seuil !== undefined ? a.seuil : (a.echelle === '4' ? 2 : 50));
+  /** Contrôle dont la valeur désigne un appareil (n° scanné, ou matériel attendu). */
+  const estIdentifiant = (a) => a.controle === 'scan' || a.controle === 'materiel';
+  const appareilsConnus = () => (typeof Materiel !== 'undefined' && Materiel.appareils ? Materiel.appareils() : []);
+  /** Appareils proposés pour un matériel attendu : ceux du type demandé (tous si aucun type). */
+  const appareilsPour = (a) => appareilsConnus().filter((x) => !a.typeMateriel || cle(x.type) === cle(a.typeMateriel));
+  /** Appareil de la base correspondant à la valeur relevée (n° interne SMUR, sinon n° de série). */
+  function appareilDe(a, v) {
+    const t = cle(String(v || ''));
+    if (!t) return null;
+    const liste = appareilsPour(a);
+    return liste.find((x) => x.numInterne && cle(x.numInterne) === t) || liste.find((x) => x.numSerie && cle(x.numSerie) === t) || null;
+  }
   /** Évalue une valeur relevée : { ok, rempli }. */
   function evaluer(a, v) {
     const t = String(v === undefined || v === null ? '' : v).trim();
     if (!t) return { ok: false, rempli: false };
+    if (a.controle === 'materiel') {
+      if (a.attendu && t.toLowerCase() !== String(a.attendu).trim().toLowerCase()) return { ok: false, rempli: true };
+      // Type demandé : l'appareil doit exister dans le suivi du matériel avec ce type (base non chargée : pas de blocage).
+      if (a.typeMateriel && appareilsConnus().length && !appareilDe(a, t)) return { ok: false, rempli: true };
+      return { ok: true, rempli: true };
+    }
     if (a.controle === 'scan') return { ok: !a.attendu || t.toLowerCase() === String(a.attendu).trim().toLowerCase(), rempli: true };
     if (a.controle === 'oui') return { ok: t === 'Oui', rempli: true };
     const n = Number(t.replace(',', '.'));
@@ -404,6 +423,7 @@ const Inventaires = (() => {
   /** Valeur affichée (avec unité). */
   function texteValeur(a, v) {
     if (v === '' || v === undefined) return 'non renseigné';
+    if (a.controle === 'materiel') { const x = appareilDe(a, v); return x ? `${x.type} n° ${x.numInterne || v}${x.modele ? ` (${x.modele})` : ''}` : `n° ${v}`; }
     if (a.controle === 'temperature') return `${v} °C`;
     if (a.controle === 'batterie') return a.echelle === '4' ? `${v}/4` : `${v} %`;
     if (a.controle === 'valeur' && a.unite) return `${v} ${a.unite}`;
@@ -412,6 +432,7 @@ const Inventaires = (() => {
   /** Plage attendue, en clair. */
   function texteAttente(a) {
     if (a.controle === 'scan') return a.attendu ? `attendu : ${a.attendu}` : '';
+    if (a.controle === 'materiel') return [a.typeMateriel, a.attendu ? `n° ${a.attendu}` : ''].filter(Boolean).join(' ');
     if (a.controle === 'batterie') return `≥ ${seuilBatterie(a)}${a.echelle === '4' ? '/4' : ' %'}`;
     if (a.controle === 'oui') return '';
     const u = a.controle === 'temperature' ? ' °C' : (a.unite ? ` ${a.unite}` : '');
@@ -1837,6 +1858,18 @@ const Inventaires = (() => {
           saisie.querySelectorAll('button').forEach((bt) => bt.setAttribute('aria-pressed', String(bt.textContent === nv)));
           poser(nv);
         } })));
+    } else if (a.controle === 'materiel') {
+      const entree = el('input', { id: champ, classe: 'inv-valeur inv-valeur-texte', autocomplete: 'off', maxlength: '120', placeholder: 'N° ou scanner', valeur: val(), surinput: (e) => { poser(e.target.value.trim()); majNom(); } });
+      const nomAppareil = el('small', { classe: 'inv-attente inv-appareil-reconnu' });
+      const majNom = () => { const x = appareilDe(a, val()); nomAppareil.textContent = x ? ` ${x.type}${x.modele ? ` ${x.modele}` : ''}` : ''; };
+      const remplir = (t) => { entree.value = t; poser(t); majNom(); };
+      const bouton = (classe, label, title, contenu, action) => el('button', { type: 'button', classe: `cfg-mini inv-bouton-lecture ${classe}`, 'aria-label': `${label} : ${nomArticle(a)}`, title, surclick: action }, contenu);
+      saisie = el('span', { classe: 'inv-valeur-zone' }, entree,
+        bouton('', 'Scanner le QR code', 'QR code / code-barres', logoQr(), () => lireCode(remplir, { qr: true, nfc: false })),
+        bouton('', 'Lire la puce NFC', 'Puce NFC', logoNfc(), () => lireCode(remplir, { qr: false, nfc: true })),
+        bouton('inv-bouton-liste', 'Choisir dans la liste', 'Choisir dans la liste', '☰', () => choisirAppareil(a, remplir)));
+      etiquette.append(nomAppareil);
+      majNom();
     } else if (a.controle === 'scan') {
       const entree = el('input', { id: champ, classe: 'inv-valeur inv-valeur-texte', autocomplete: 'off', maxlength: '120', placeholder: 'Scanner ou saisir', valeur: val(), surinput: (e) => poser(e.target.value.trim()) });
       const remplir = (t) => { entree.value = t; poser(t); };
@@ -1855,6 +1888,27 @@ const Inventaires = (() => {
     if (note) li.append(note);
     etat_();
     return li;
+  }
+  /** Liste des appareils du suivi du matériel (du type attendu) : le choix inscrit son n° interne SMUR. */
+  function choisirAppareil(a, surChoix) {
+    const fond = el('div', { classe: 'fenetre-fond', surclick: (e) => { if (e.target === fond) fermer(); } });
+    const retour = document.activeElement;
+    const fermer = () => { fond.remove(); document.body.classList.remove('fenetre-ouverte'); if (retour && retour.isConnected) retour.focus(); };
+    const titre = idChamp();
+    const liste = appareilsPour(a).sort((x, y) => x.type.localeCompare(y.type, 'fr') || String(x.numInterne).localeCompare(String(y.numInterne), 'fr', { numeric: true }));
+    fond.append(el('div', { classe: 'fenetre inv-etages', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
+      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: a.typeMateriel ? `Quel « ${a.typeMateriel} » ?` : 'Quel appareil ?' }),
+        el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
+      liste.length ? el('ul', { classe: 'inv-etages-liste' }, ...liste.map((x) => el('li', {},
+        el('button', { type: 'button', classe: 'inv-etage', surclick: () => { fermer(); surChoix(x.numInterne || x.numSerie); } },
+          el('span', { classe: 'inv-etage-rang', 'aria-hidden': 'true', texte: x.numInterne || '?' }),
+          el('span', { classe: 'inv-etage-nom', texte: `${x.type}${x.modele ? ` ${x.modele}` : ''}` }),
+          x.numSerie ? el('small', { texte: `S/N ${x.numSerie}` }) : null))))
+        : el('p', { classe: 'aide-question', texte: 'Aucun appareil de ce type dans le suivi du matériel (ou base pas encore chargée sur cet appareil) : saisissez le numéro.' })));
+    fond.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
+    document.body.append(fond);
+    document.body.classList.add('fenetre-ouverte');
+    fond.querySelector('.fenetre-fermer').focus();
   }
   /** Lit une valeur : QR code / code-barres (caméra) et/ou puce NFC (texte, lien ou n° de série de la puce). */
   async function lireCode(surLu, choix = { qr: true, nfc: true }) {
@@ -2499,7 +2553,7 @@ const Inventaires = (() => {
   const articleBiomed = (a) => Boolean(fiche(a)) && ['Matériel', 'Biomédical'].includes(fiche(a).categorie); // « Biomédical » : ancien nom
   /** Contenant d'un appareil biomédical (ex. un scope et ses pochettes) : sa liste attend un article « Matériel ». */
   // Un contrôle « scan » (n° d'appareil scanné : puce MySMUR, étiquette biomed, n° de série) désigne aussi un appareil biomédical.
-  const appareilScanne = (a) => !a.separateur && a.controle === 'scan';
+  const appareilScanne = (a) => !a.separateur && estIdentifiant(a);
   const contenantBiomed = (c) => aCocher(c).some((a) => articleBiomed(a) || appareilScanne(a));
   function logoCadenas() {
     return el('svg:svg', { viewBox: '0 0 24 24', classe: 'inv-tb-cadenas', role: 'img', 'aria-label': 'Scellé : non ouvert aujourd\'hui' },
@@ -2535,6 +2589,12 @@ const Inventaires = (() => {
         if (!estControle(a)) return;
         const val = valeurs[a.id];
         const e = evaluer(a, val);
+        if (a.controle === 'materiel') {
+          if (val) detail.appareils.push({ nom: texteValeur(a, val), ou: ici, ok: e.ok });
+          else if (!estFacultatif(a)) detail.controles.push({ nom: nomArticle(a), ou: ici, texte: 'non identifié', ok: false, rempli: false });
+          if (e.rempli && !e.ok && !estFacultatif(a)) controleKo = true;
+          return;
+        }
         if (a.controle === 'scan') {
           if (val) detail.appareils.push({ nom: `${nomArticle(a).replace(/\s*(n°|no|num(éro)?)\.?\s*$/i, '')} n° ${val}`, ou: ici, ok: e.ok });
           return;
@@ -2872,6 +2932,14 @@ const Inventaires = (() => {
       reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Échelle ', el('select', { 'aria-label': `Échelle (${a.nom})`, surchange: (e) => { if (e.target.value === '4') a.echelle = '4'; else delete a.echelle; delete a.seuil; marquer(c.id); rendre({ garderPosition: true }); } },
         el('option', { value: 'pct', selected: a.echelle !== '4', texte: '%' }), el('option', { value: '4', selected: a.echelle === '4', texte: '0 à 4' }))),
       nombre('seuil', 'Seuil'));
+    }
+    if (a.controle === 'materiel') {
+      const idListe = idChamp();
+      reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Type ', el('input', {
+        classe: 'inv-attendu', maxlength: '60', list: idListe, placeholder: 'tout appareil', valeur: a.typeMateriel || '', 'aria-label': `Type d'appareil attendu (${a.nom})`,
+        surchange: (e) => { const t = e.target.value.trim(); if (t) a.typeMateriel = t; else delete a.typeMateriel; marquer(c.id); rendre({ garderPosition: true }); },
+      }), el('datalist', { id: idListe }, ...(typeof Materiel !== 'undefined' && Materiel.types ? Materiel.types() : []).map((t) => el('option', { value: t })))),
+      el('label', { classe: 'inv-qte-libelle' }, 'N° précis ', el('input', { classe: 'inv-qte', maxlength: '60', placeholder: 'tout', valeur: a.attendu || '', 'aria-label': `N° interne attendu, facultatif (${a.nom})`, surchange: (e) => { const t = e.target.value.trim(); if (t) a.attendu = t; else delete a.attendu; marquer(c.id); } })));
     }
     if (a.controle === 'scan') reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Attendu ', el('input', { classe: 'inv-attendu', maxlength: '60', placeholder: 'facultatif', valeur: a.attendu || '', 'aria-label': `Valeur attendue (${a.nom})`, surchange: (e) => { const t = e.target.value.trim(); if (t) a.attendu = t; else delete a.attendu; marquer(c.id); } })));
     return el('div', { classe: 'inv-edition-article inv-edition-fiche inv-edition-controle', 'data-cle': a.id }, poignee(a.nom),
@@ -3375,7 +3443,7 @@ const Inventaires = (() => {
   const copieProfonde = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   /** Article réduit à ce qui se répercute (le nom des articles de la base vient de la fiche). */
   const sigArticle = (a) => (a.separateur ? { separateur: true, nom: a.nom }
-    : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined }
+    : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu, typeMateriel: a.typeMateriel, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined }
       : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || ''), quantiteMin: a.quantiteMin === true || undefined, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined });
   /** Gommette réduite à ce qui se répercute : position et texte éventuel. */
   const sigPoint = (p) => ({ cible: p.cible, x: p.x, y: p.y, ...(typeof p.texte === 'string' ? { texte: p.texte } : {}) });
@@ -3456,7 +3524,7 @@ const Inventaires = (() => {
           if (a.separateur) d.push(`nom « ${sb.nom} » → « ${sa.nom} »`);
           else if (sa.controle || sb.controle) {
             if (sa.nom !== sb.nom) d.push(`nom « ${sb.nom} » → « ${sa.nom} »`);
-            if (['controle', 'min', 'max', 'unite', 'echelle', 'seuil', 'attendu'].some((c) => !egal(sa[c], sb[c]))) d.push('réglages du contrôle');
+            if (['controle', 'min', 'max', 'unite', 'echelle', 'seuil', 'attendu', 'typeMateriel'].some((c) => !egal(sa[c], sb[c]))) d.push('réglages du contrôle');
           } else {
             if (sa.ref !== sb.ref || sa.nom !== sb.nom) d.push(`était « ${nomBase(B[a.id])} »`);
             if (sa.quantite !== sb.quantite) d.push(`quantité ${sb.quantite || '—'} → ${sa.quantite || '—'}`);

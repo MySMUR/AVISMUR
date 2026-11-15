@@ -1384,6 +1384,17 @@ const Materiel = (() => {
         || liste.find((f) => (f.numBiomed && n.includes(normaliser(`Biomed ${f.numBiomed}`))) || (f.numSerie && n.includes(normaliser(`S/N ${f.numSerie}`))))
         || null;
     },
+    /** Appareils en service (ni archivés ni réformés), pour le choix « dans la liste » d'un matériel attendu en inventaire. */
+    appareils() {
+      return fiches().filter((f) => !f.archive && f.statut !== 'Réformé')
+        .map((f) => ({ id: f.id, type: f.type || '', modele: f.modele || '', numInterne: f.numInterne || '', numSerie: f.numSerie || '' }));
+    },
+    /** Types d'appareils connus (types par défaut + types utilisés dans la base). */
+    types() {
+      const t = new Set(TYPES_DEFAUT);
+      fiches().forEach((f) => { if (f.type) t.add(f.type); });
+      return [...t].sort((a, b) => a.localeCompare(b, 'fr'));
+    },
     /** Met à jour la liste gardée sur l'appareil, sans rien afficher (pour reconnaître les appareils scannés). */
     actualiser() { charger(); },
     /** Lien « #mat=<id> » (puce NFC) : ouvre la fiche de l'appareil. */
