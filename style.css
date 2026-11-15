@@ -2480,3 +2480,13 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .imp-reglage-coupe { display: flex; align-items: center; gap: 0.3rem; min-height: 2.4rem; }
 .imp-apercu { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 0.6rem; }
 .imp-apercu-page { width: 7.5rem; height: auto; box-shadow: 0 1px 4px rgba(19, 41, 75, .18); }
+
+/* Fenêtre d'impression : champs compacts (les champs de l'appli prennent toute la largeur par défaut) */
+.imp-fenetre input[type="checkbox"] { width: 1.4rem; height: 1.4rem; min-height: 0; padding: 0; margin: 0; flex: none; accent-color: var(--bleu); }
+.imp-fenetre .imp-qte { width: 4rem; min-height: 2.4rem; padding: 0.3rem 0.4rem; flex: none; text-align: center; }
+.imp-fenetre .imp-reglages input[type="number"] { width: 5.5rem; min-height: 2.6rem; padding: 0.3rem 0.5rem; }
+.imp-fenetre .imp-reglages select { width: auto; min-height: 2.6rem; padding: 0.3rem 0.6rem; }
+.imp-fenetre .imp-choix label { display: block; font-weight: 600; line-height: 1.25; }
+.imp-fenetre .imp-choix small { font-weight: 400; font-size: 0.8rem; }
+.imp-fenetre .imp-format { flex: none; }
+.imp-fenetre .imp-groupe summary label { font-weight: 700; }

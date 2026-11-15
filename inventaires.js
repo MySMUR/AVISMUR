@@ -4673,12 +4673,15 @@ const Inventaires = (() => {
     const tous = etiquetables();
     // Groupes : chaque contenant primaire avec ce qu'il renferme, puis les contenants hors de tout primaire.
     const primaires = tous.filter((c) => c.categorie === 'primaire').sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
-    const ranges = new Set();
+    // Ouverte depuis un inventaire ou un inventaire type : la sélection vient en premier, à part.
+    const ranges = new Set(preselection.map((c) => c.id));
+    const choisis = tous.filter((c) => ranges.has(c.id));
     const groupes = primaires.map((p) => {
-      const liste = descendants(p.id).filter((x) => tous.includes(x));
+      const liste = descendants(p.id).filter((x) => tous.includes(x) && !ranges.has(x.id));
       liste.forEach((x) => ranges.add(x.id));
       return { nom: p.nom, liste };
-    });
+    }).filter((g) => g.liste.length);
+    if (choisis.length) groupes.unshift({ nom: 'Sélection', liste: choisis, ouvert: true });
     const libres = tous.filter((c) => !ranges.has(c.id)).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
     if (libres.length) groupes.push({ nom: 'Hors contenant primaire (ex. sacs désaffectés)', liste: libres });
 
@@ -4734,7 +4737,7 @@ const Inventaires = (() => {
         majApercu();
       });
       majGroupe();
-      return el('details', { classe: 'imp-groupe', open: g.liste.some((c) => nb.has(c.id)) || groupes.length === 1 ? '' : null },
+      return el('details', { classe: 'imp-groupe', open: g.ouvert || groupes.length === 1 ? '' : null },
         el('summary', {}, tout, el('label', { for: champ, texte: `${g.nom} (${g.liste.length})` })),
         el('ul', {}, ...lignes.map((l) => l.noeud)));
     });
