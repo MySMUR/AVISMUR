@@ -8,21 +8,27 @@
  * à d'autres appareils (même type ou même modèle pré-cochés) ; une sélection multiple permet aussi
  * de modifier plusieurs appareils ou de leur ajouter la même intervention en une fois.
  *
+ * Matériels types : des appareils identiques (même type, modèle, périodicité, photo) sont rattachés à une
+ * fiche type ; la modifier met à jour tous les appareils rattachés. Un appareil non rattaché est un matériel unique.
+ * Les numéros, la révision prévue, le statut, le traceur et les remarques restent propres à chaque appareil.
+ *
  * Hors ligne : la dernière liste reçue est gardée sur l'appareil ; les modifications passent par la
  * file d'attente commune (app.js) et s'affichent tout de suite, marquées « en attente d'envoi ».
  * Backend : Materiel.gs (onglets Materiel et MaterielInterventions).
  */
 const Materiel = (() => {
   const CLE_CACHE = 'avismur_materiel';
-  const ACTIONS = ['enregistrerMateriel', 'ajouterIntervention', 'supprimerIntervention'];
+  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention'];
   const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle'];
   const STATUTS_DEFAUT = ['En service', 'En maintenance', 'En panne', 'Prêté', 'Réformé'];
   const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Contrôle', 'Autre'];
   // Champs communs à plusieurs appareils, que l'on peut répercuter (jamais les numéros propres à chacun).
   const REPERCUTABLES = {
-    type: 'Type', modele: 'Modèle', revision: 'Révision prévue', periodicite: 'Périodicité (mois)',
+    modeleType: 'Matériel type', type: 'Type', modele: 'Modèle', revision: 'Révision prévue', periodicite: 'Périodicité (mois)',
     statut: 'Statut', traceur: 'Traceur GeoTraceSMUR', remarques: 'Remarques', photo: 'Photo',
   };
+  // Champs communs repris de la fiche type quand l'appareil y est rattaché.
+  const COMMUNS = ['type', 'modele', 'periodicite'];
   const ALERTE_JOURS = 30; // révision « à prévoir » dans les 30 jours
 
   let zone;
@@ -70,7 +76,7 @@ const Materiel = (() => {
   const estAdmin = () => Boolean(outils.estAdmin && outils.estAdmin());
   const types = () => {
     const base = (donnees && donnees.types) || TYPES_DEFAUT;
-    const autres = fiches().map((f) => f.type).filter((t) => t && !base.includes(t));
+    const autres = [...fiches(), ...modeles()].map((f) => f.type).filter((t) => t && !base.includes(t));
     return [...base, ...new Set(autres)];
   };
   const statuts = () => (donnees && donnees.statuts) || STATUTS_DEFAUT;
@@ -109,7 +115,7 @@ const Materiel = (() => {
   /** Image d'un appareil : photo en attente d'envoi, sinon copie locale, sinon téléchargée. */
   async function imageDe(f) {
     if (f.photoDonnees) return f.photoDonnees;
-    if (!f.photo) return '';
+    if (!f.photo) return f.photoModele || f.photoModeleDonnees ? imageDe({ photo: f.photoModele, photoDonnees: f.photoModeleDonnees }) : '';
     const locale = await photoLocale(f.photo);
     if (locale) return locale;
     if (!telechargements.has(f.photo)) {
@@ -124,6 +130,8 @@ const Materiel = (() => {
     }
     return telechargements.get(f.photo);
   }
+  /** Photo propre à l'appareil, sinon celle de sa fiche type. */
+  const aPhoto = (f) => Boolean(f.photo || f.photoDonnees || f.photoModele || f.photoModeleDonnees);
   /** <img> rempli dès que la photo est disponible (vide et masqué sinon). */
   function vignette(f, classe) {
     const img = el('img', { classe, alt: `Photo : ${nomAppareil(f)}`, hidden: true, loading: 'lazy' });
@@ -163,12 +171,19 @@ const Materiel = (() => {
   /** État affiché = données du serveur + modifications pas encore envoyées, dans l'ordre de saisie. */
   function etat() {
     const parId = new Map(((donnees && donnees.materiel) || []).map((f) => [f.id, { ...f }]));
+    const modeles = new Map(((donnees && donnees.modeles) || []).map((m) => [m.id, { ...m }]));
     let interventions = ((donnees && donnees.interventions) || []).map((i) => ({ ...i }));
     const attente = new Set();
+    const modelesAttente = new Set();
     enAttente().forEach((e) => {
       const d = e.donnees || {};
       if (e.action === 'enregistrerMateriel') {
         (d.fiches || []).forEach((f) => { parId.set(f.id, { ...parId.get(f.id), ...f }); attente.add(f.id); });
+      } else if (e.action === 'enregistrerModeles') {
+        (d.modeles || []).forEach((m) => { modeles.set(m.id, { ...modeles.get(m.id), ...m }); modelesAttente.add(m.id); });
+        const premier = (d.modeles || [])[0];
+        (d.rattacher || []).forEach((id) => { if (premier && parId.has(id)) { parId.get(id).modeleType = premier.id; attente.add(id); } });
+        (d.detacher || []).forEach((id) => { if (parId.has(id)) { parId.get(id).modeleType = ''; attente.add(id); } });
       } else if (e.action === 'ajouterIntervention') {
         (d.materiels || []).forEach((id, n) => {
           interventions.push({
@@ -182,8 +197,22 @@ const Materiel = (() => {
         interventions = interventions.filter((i) => i.id !== d.intervention);
       }
     });
-    return { fiches: [...parId.values()], interventions, attente };
+    const fichesResolues = [...parId.values()].map((f) => resoudre(f, modeles));
+    return { fiches: fichesResolues, modeles: [...modeles.values()], interventions, attente, modelesAttente };
   }
+  /** Appareil rattaché à une fiche type : type, modèle, périodicité (et photo par défaut) viennent de la fiche type. */
+  function resoudre(f, modeles) {
+    const m = f.modeleType && modeles.get(f.modeleType);
+    if (!m) return { ...f, modeleType: f.modeleType || '' };
+    const r = { ...f };
+    COMMUNS.forEach((k) => { r[k] = m[k]; });
+    r.photoModele = m.photo || '';
+    r.photoModeleDonnees = m.photoDonnees || '';
+    return r;
+  }
+  const modeles = () => etat().modeles;
+  const modeleDe = (id) => modeles().find((m) => m.id === id) || null;
+  const nomModele = (m) => (m ? `${m.type} · ${m.modele}` : 'Matériel unique');
   const fiches = () => etat().fiches;
 
   let chargementPromesse = null;
@@ -275,6 +304,7 @@ const Materiel = (() => {
       el('h1', { texte: 'Suivi du matériel' }),
       el('div', { classe: 'mat-boutons' },
         'NDEFReader' in window ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Lire une puce NFC', surclick: lireNfc }) : null,
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: `Matériels types (${modeles().filter((m) => !m.archive).length})`, surclick: ouvrirModeles }),
         estAdmin() ? el('button', { type: 'button', classe: 'principal mat-nouveau', texte: '+ Nouveau matériel', surclick: () => ouvrirFiche(null, true) }) : null));
 
     const compteurs = el('div', { classe: 'mat-compteurs' },
@@ -351,7 +381,7 @@ const Materiel = (() => {
       }) : null,
       el('button', { type: 'button', classe: 'mat-ouvrir', surclick: () => ouvrirFiche(f.id) },
         el('span', { classe: 'mat-num', texte: f.numInterne || '?' }),
-        (f.photo || f.photoDonnees) ? vignette(f, 'mat-vignette') : null,
+        aPhoto(f) ? vignette(f, 'mat-vignette') : null,
         el('span', { classe: 'mat-corps' },
           el('span', { classe: 'mat-nom' }, el('strong', { texte: nomAppareil(f) }), f.modele ? el('span', { texte: ` · ${f.modele}` }) : null,
             f.traceur ? el('span', { classe: 'mat-traceur', title: `Traceur GeoTraceSMUR${f.nomTraceur ? ` : ${f.nomTraceur}` : ''}`, texte: '📡' }) : null),
@@ -419,8 +449,9 @@ const Materiel = (() => {
     const ligneInfo = (t, v) => [el('dt', { texte: t }), el('dd', { texte: v || '—' })];
     let d;
     const contenu = el('div', { classe: 'mat-fiche' },
-      (f.photo || f.photoDonnees) ? vignette(f, 'mat-photo') : null,
+      aPhoto(f) ? vignette(f, 'mat-photo') : null,
       el('dl', { classe: 'mat-infos' },
+        ligneInfo('Matériel type', f.modeleType ? nomModele(modeleDe(f.modeleType)) : 'Non (matériel unique)'),
         ligneInfo('Type', f.type), ligneInfo('Modèle', f.modele), ligneInfo('N° interne SMUR', f.numInterne),
         ligneInfo('N° biomed', f.numBiomed), ligneInfo('N° de série', f.numSerie), ligneInfo('Statut', f.statut),
         ligneInfo('Révision prévue', f.revision ? dateFr(f.revision) : ''), ligneInfo('Périodicité', f.periodicite ? `${f.periodicite} mois` : ''),
@@ -431,6 +462,9 @@ const Materiel = (() => {
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Modifier la fiche', surclick: () => { d.close(); ouvrirEdition(f); } }),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter une intervention', surclick: () => { d.close(); ouvrirIntervention([f.id]); } }),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Encoder une puce NFC', surclick: () => { d.close(); ouvrirNfc(f); } }),
+        f.modeleType
+          ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ouvrir le matériel type', surclick: () => { d.close(); ouvrirModele(modeleDe(f.modeleType)); } })
+          : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Créer un matériel type', title: 'Fiche type reprenant le type, le modèle, la périodicité et la photo de cet appareil', surclick: () => { d.close(); ouvrirModele(null, f); } }),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Dupliquer', title: 'Nouvel appareil du même type et du même modèle', surclick: () => { d.close(); ouvrirEdition(null, f); } })) : null,
       el('h3', { texte: 'Historique des révisions, interventions et réparations' }),
       historique.length ? el('ol', { classe: 'mat-historique' }, historique.map((i) => el('li', { classe: i.attente ? 'attente' : '' },
@@ -459,9 +493,16 @@ const Materiel = (() => {
       numInterne: '', numBiomed: '', numSerie: '', revision: (modele && modele.revision) || '', periodicite: (modele && modele.periodicite) || 12,
       statut: 'En service', traceur: false, nomTraceur: '', remarques: '', archive: false,
       photo: (modele && modele.photo) || '', photoDonnees: (modele && modele.photoDonnees) || '',
+      modeleType: (modele && modele.modeleType) || '',
     };
     const message = el('p', { classe: 'message erreur', role: 'alert' });
     const listeModeles = el('datalist', { id: nouvelId() }, [...new Set(fiches().map((x) => x.modele).filter(Boolean))].map((m) => el('option', { value: m })));
+    // Matériel type : la fiche type fournit le type, le modèle et la périodicité (champs alors verrouillés).
+    const choixModele = el('select', {},
+      el('option', { value: '', texte: '— Aucun : matériel unique —' }),
+      modeles().filter((m) => !m.archive || m.id === base.modeleType).sort((a, b) => nomModele(a).localeCompare(nomModele(b), 'fr'))
+        .map((m) => el('option', { value: m.id, texte: nomModele(m), selected: m.id === base.modeleType })));
+    const aideModele = el('p', { classe: 'aide-question' });
     const e = {
       type: champType(base.type),
       modele: el('input', { valeur: base.modele, list: listeModeles.id, placeholder: 'ex. Corpuls3, Hamilton T1, Alaris GH…' }),
@@ -501,6 +542,22 @@ const Materiel = (() => {
       ? Traceurs.champ({ appeler: outils.appeler, valeur: nomTraceur, proprietaire: { genre: 'materiel', id: base.id }, surchange: (n) => { nomTraceur = n; } })
       : (() => { const i = el('input', { valeur: nomTraceur, placeholder: 'Nom du traceur dans GeoTraceSMUR' }); i.addEventListener('change', () => { nomTraceur = i.value.trim(); }); return i; })();
     const blocTraceur = el('div', { classe: 'champ mat-champ' }, el('span', { classe: 'mat-libelle', texte: 'Traceur GeoTraceSMUR' }), choixTraceur);
+    const majModele = () => {
+      const m = modeleDe(choixModele.value);
+      if (m) {
+        if (![...e.type.select.options].some((o) => o.value === m.type)) e.type.select.prepend(el('option', { value: m.type, texte: m.type }));
+        e.type.select.value = m.type;
+        e.type.bloc.hidden = true;
+        e.modele.value = m.modele;
+        e.periodicite.value = m.periodicite || '';
+      }
+      [e.type.select, e.modele, e.periodicite].forEach((x) => { x.disabled = Boolean(m); });
+      const nb = m ? fiches().filter((x) => x.modeleType === m.id && x.id !== base.id).length : 0;
+      aideModele.textContent = m
+        ? `Type, modèle et périodicité viennent du matériel type (partagé avec ${nb} autre${nb > 1 ? 's' : ''} appareil${nb > 1 ? 's' : ''}) : modifiez-les depuis « Matériels types ».${m.photo || m.photoDonnees ? ' Sans photo propre, l\'appareil affiche celle du matériel type.' : ''}`
+        : 'Matériel unique : toutes ses caractéristiques lui sont propres.';
+    };
+    choixModele.addEventListener('change', majModele);
     const majTraceur = () => { blocTraceur.hidden = !e.traceur.checked; };
     e.traceur.addEventListener('change', majTraceur);
     majTraceur();
@@ -512,13 +569,14 @@ const Materiel = (() => {
       numSerie: e.numSerie.value.trim(), revision: e.revision.value, periodicite: Number(e.periodicite.value) || '',
       statut: e.statut.value, traceur: e.traceur.checked, nomTraceur: e.traceur.checked ? nomTraceur.trim() : '', remarques: e.remarques.value.trim(),
       photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
+      modeleType: choixModele.value,
     });
 
     function enregistrer(fiche) {
       const conflit = verifierDoublons([fiche]);
       if (conflit) { message.textContent = conflit; return; }
       if (!fiche.type) { message.textContent = 'Le type est obligatoire.'; return; }
-      const changes = f ? Object.keys(REPERCUTABLES).filter((k) => (k === 'photo'
+      const changes = f ? Object.keys(REPERCUTABLES).filter((k) => !(fiche.modeleType && COMMUNS.includes(k))).filter((k) => (k === 'photo'
         ? `${f.photo || ''}|${f.photoDonnees || ''}` !== `${fiche.photo || ''}|${fiche.photoDonnees || ''}`
         : (k === 'traceur' ? Boolean(f[k]) !== Boolean(fiche[k]) : String(f[k] ?? '') !== String(fiche[k] ?? '')))) : [];
       d.close();
@@ -532,6 +590,8 @@ const Materiel = (() => {
       sursubmit: (ev) => { ev.preventDefault(); enregistrer(lire()); },
     },
     listeModeles,
+    champ('Matériel type', choixModele),
+    aideModele,
     el('div', { classe: 'mat-grille' },
       champ('Type de matériel', e.type.select),
       e.type.bloc,
@@ -555,13 +615,17 @@ const Materiel = (() => {
         surclick: () => { if (f.archive || window.confirm(`Archiver ${nomAppareil(f)} ?`)) { d.close(); enfiler('enregistrerMateriel', { fiches: [{ ...f, archive: !f.archive }] }); } },
       }) : null));
     d = fenetre(f ? `Modifier ${nomAppareil(f)}` : 'Nouveau matériel', contenu, { large: true });
+    majModele();
     afficherApercu();
   }
 
   /** Même contrôle que le serveur, pour prévenir tout de suite (y compris hors ligne). */
-  function verifierDoublons(nouvelles) {
+  function verifierDoublons(nouvelles, modelesModifies = []) {
+    const tousModeles = new Map(modeles().map((m) => [m.id, m]));
+    modelesModifies.forEach((m) => tousModeles.set(m.id, m));
     const final = new Map(fiches().map((x) => [x.id, x]));
     nouvelles.forEach((x) => final.set(x.id, x));
+    [...final.keys()].forEach((id) => final.set(id, resoudre(final.get(id), tousModeles)));
     const vus = new Map();
     for (const x of final.values()) {
       if (x.archive) continue;
@@ -579,7 +643,7 @@ const Materiel = (() => {
 
   /** Après modification d'une fiche : appliquer les mêmes changements à d'autres appareils ? */
   function proposerRepercussion(fiche, ancienne, changes, autres) {
-    const valeur = (k, x) => (k === 'photo' ? ((x.photo || x.photoDonnees) ? (x.photoDonnees ? 'nouvelle photo' : 'photo') : 'aucune') : k === 'traceur' ? (x[k] ? 'Oui' : 'Non') : (k === 'revision' ? dateFr(x[k]) : String(x[k] || '—')));
+    const valeur = (k, x) => (k === 'modeleType' ? nomModele(modeleDe(x.modeleType)) : k === 'photo' ? ((x.photo || x.photoDonnees) ? (x.photoDonnees ? 'nouvelle photo' : 'photo') : 'aucune') : k === 'traceur' ? (x[k] ? 'Oui' : 'Non') : (k === 'revision' ? dateFr(x[k]) : String(x[k] || '—')));
     const champsCoches = new Set(changes);
     const cibles = new Set(autres.filter((x) => (ancienne.modele && x.modele === ancienne.modele && x.type === ancienne.type)).map((x) => x.id));
     let d;
@@ -626,6 +690,7 @@ const Materiel = (() => {
     const premier = cibles[0];
     const commun = (k) => (cibles.every((x) => String(x[k] ?? '') === String(premier[k] ?? '')) ? premier[k] : '');
     const entrees = {
+      modeleType: selectListe([], ''),
       type: champType(commun('type')),
       modele: el('input', { valeur: commun('modele') }),
       revision: el('input', { type: 'date', valeur: commun('revision') }),
@@ -634,11 +699,13 @@ const Materiel = (() => {
       traceur: el('input', { type: 'checkbox', coche: Boolean(commun('traceur')) }),
       remarques: el('textarea', { rows: '2', valeur: commun('remarques') }),
     };
+    entrees.modeleType = el('select', {}, el('option', { value: '', texte: '— Aucun : matériel unique —' }),
+      modeles().filter((m) => !m.archive).map((m) => el('option', { value: m.id, texte: nomModele(m), selected: m.id === commun('modeleType') })));
     const actifs = new Set();
     let d;
     const contenu = el('div', { classe: 'mat-groupee' },
       el('p', { texte: `${cibles.length} appareil(s) : ${cibles.sort(tri).map(nomAppareil).join(', ')}.` }),
-      el('p', { classe: 'aide-question', texte: 'Cochez les champs à modifier : seuls ceux-là seront appliqués à tous les appareils sélectionnés. Les numéros (interne, biomed, série) restent propres à chaque appareil.' }),
+      el('p', { classe: 'aide-question', texte: 'Cochez les champs à modifier : seuls ceux-là seront appliqués à tous les appareils sélectionnés. Les numéros (interne, biomed, série) restent propres à chaque appareil. Pour un appareil rattaché à un matériel type, le type, le modèle et la périodicité viennent du matériel type.' }),
       Object.keys(REPERCUTABLES).filter((k) => k !== 'photo').map((k) => {
         const ch = entrees[k];
         const entree = k === 'type' ? ch.select : ch;
@@ -661,7 +728,7 @@ const Materiel = (() => {
               const copie = { ...x };
               actifs.forEach((k) => {
                 const ent = entrees[k];
-                copie[k] = k === 'type' ? ent.valeur() : k === 'traceur' ? ent.checked : (k === 'periodicite' ? (Number(ent.value) || '') : ent.value.trim());
+                copie[k] = k === 'type' ? ent.valeur() : k === 'modeleType' ? ent.value : k === 'traceur' ? ent.checked : (k === 'periodicite' ? (Number(ent.value) || '') : ent.value.trim());
                 if (k === 'traceur' && !ent.checked) copie.nomTraceur = '';
               });
               return copie;
@@ -711,7 +778,8 @@ const Materiel = (() => {
       surchange: (ev) => {
         const v = ev.target.value;
         ev.target.value = '';
-        if (v.startsWith('modele:')) toutes.filter((x) => x.modele === v.slice(7)).forEach((x) => cibles.add(x.id));
+        if (v.startsWith('mtype:')) toutes.filter((x) => x.modeleType === v.slice(6)).forEach((x) => cibles.add(x.id));
+        else if (v.startsWith('modele:')) toutes.filter((x) => x.modele === v.slice(7)).forEach((x) => cibles.add(x.id));
         else if (v.startsWith('type:')) toutes.filter((x) => x.type === v.slice(5)).forEach((x) => cibles.add(x.id));
         else if (v) cibles.add(v);
         rendreCibles();
@@ -719,6 +787,7 @@ const Materiel = (() => {
       },
     },
     el('option', { value: '', texte: '+ Répercuter sur d\'autres appareils…' }),
+    el('optgroup', { label: 'Tout un matériel type' }, modeles().filter((m) => toutes.some((x) => x.modeleType === m.id)).map((m) => el('option', { value: `mtype:${m.id}`, texte: `Tous les ${nomModele(m)}` }))),
     el('optgroup', { label: 'Tout un modèle' }, [...new Set(toutes.map((x) => x.modele).filter(Boolean))].map((m) => el('option', { value: `modele:${m}`, texte: `Tous les ${m}` }))),
     el('optgroup', { label: 'Tout un type' }, [...new Set(toutes.map((x) => x.type))].map((t) => el('option', { value: `type:${t}`, texte: `Tous les ${t}` }))),
     el('optgroup', { label: 'Un appareil' }, toutes.slice().sort(tri).map((x) => el('option', { value: x.id, texte: `${nomAppareil(x)}${x.modele ? ` · ${x.modele}` : ''}` }))));
@@ -748,6 +817,129 @@ const Materiel = (() => {
     d = fenetre('Révision, intervention ou réparation', contenu, { large: true });
   }
 
+
+  // ---------- Matériels types ----------
+  /** Liste des fiches types, avec le nombre d'appareils rattachés. */
+  function ouvrirModeles() {
+    const { fiches: toutes, modeles: liste, modelesAttente } = etat();
+    let d;
+    const tries = liste.slice().sort((a, b) => Number(a.archive) - Number(b.archive) || nomModele(a).localeCompare(nomModele(b), 'fr'));
+    const uniques = toutes.filter((x) => !x.modeleType && !x.archive).length;
+    const contenu = el('div', { classe: 'mat-modeles' },
+      el('p', { classe: 'aide-question', texte: 'Un matériel type regroupe des appareils identiques : type, modèle, périodicité des révisions et photo. Le modifier met à jour tous les appareils rattachés. Les numéros, la révision prévue, le statut et le traceur restent propres à chaque appareil.' }),
+      estAdmin() ? el('div', { classe: 'mat-boutons' }, el('button', { type: 'button', classe: 'principal', texte: '+ Nouveau matériel type', surclick: () => { d.close(); ouvrirModele(null); } })) : null,
+      tries.length ? el('ul', { classe: 'mat-lignes' }, tries.map((m) => {
+        const nb = toutes.filter((x) => x.modeleType === m.id && !x.archive).length;
+        return el('li', { classe: 'mat-ligne' },
+          el('button', { type: 'button', classe: 'mat-ouvrir', surclick: () => { d.close(); ouvrirModele(m); } },
+            (m.photo || m.photoDonnees) ? vignette({ ...m, type: m.type }, 'mat-vignette') : null,
+            el('span', { classe: 'mat-corps' },
+              el('span', { classe: 'mat-nom' }, el('strong', { texte: m.type }), el('span', { texte: ` · ${m.modele}` })),
+              el('span', { classe: 'mat-ids', texte: `${nb} appareil${nb > 1 ? 's' : ''}${m.periodicite ? ` · révision tous les ${m.periodicite} mois` : ''}` })),
+            el('span', { classe: 'mat-etats' },
+              m.archive ? el('span', { classe: 'mat-pastille rev-neutre', texte: 'Archivé' }) : null,
+              modelesAttente.has(m.id) ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null)));
+      })) : el('p', { classe: 'mat-vide', texte: estAdmin() ? 'Aucun matériel type. Créez-en un ici, ou depuis la fiche d\'un appareil (« Créer un matériel type »).' : 'Aucun matériel type pour le moment.' }),
+      el('p', { classe: 'aide-question', texte: `${uniques} appareil${uniques > 1 ? 's' : ''} en service sans matériel type (matériels uniques).` }));
+    d = fenetre('Matériels types', contenu, { large: true });
+  }
+
+  /**
+   * Fiche type : consultation / modification (administrateurs) et appareils rattachés.
+   * `m` null = création ; `depuis` = appareil dont on reprend les caractéristiques.
+   */
+  function ouvrirModele(m, depuis = null) {
+    const admin = estAdmin();
+    const base = m || {
+      id: idFiche(), type: (depuis && depuis.type) || filtre.type || TYPES_DEFAUT[0], modele: (depuis && depuis.modele) || '',
+      periodicite: (depuis && depuis.periodicite) || 12, photo: (depuis && depuis.photo) || '', photoDonnees: (depuis && depuis.photoDonnees) || '',
+      remarques: '', archive: false,
+    };
+    const toutes = fiches().filter((x) => !x.archive || x.modeleType === base.id);
+    const dejaLies = new Set(toutes.filter((x) => x.modeleType === base.id).map((x) => x.id));
+    // Pré-cochés : appareils déjà rattachés ; à la création, les appareils uniques de même type et même modèle.
+    const coches = new Set(m ? dejaLies : toutes.filter((x) => !x.modeleType && x.type === base.type && base.modele && normaliser(x.modele) === normaliser(base.modele)).map((x) => x.id));
+    if (depuis) coches.add(depuis.id);
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
+    const e = {
+      type: champType(base.type),
+      modele: el('input', { valeur: base.modele, placeholder: 'ex. Corpuls3, Hamilton T1, Alaris GH…' }),
+      periodicite: el('input', { type: 'number', min: '1', max: '120', valeur: base.periodicite }),
+      remarques: el('textarea', { rows: '3', valeur: base.remarques, placeholder: 'Caractéristiques communes, accessoires, notice…' }),
+    };
+    let photo = { id: base.photo || '', donnees: base.photoDonnees || '' };
+    const apercu = el('img', { classe: 'mat-photo', alt: 'Photo du matériel type', hidden: true });
+    const boutonRetirer = el('button', { type: 'button', classe: 'cfg-bouton danger', texte: 'Retirer la photo', hidden: true, surclick: () => { photo = { id: '', donnees: '' }; afficherApercu(); } });
+    const afficherApercu = async () => {
+      const src = photo.donnees || (photo.id ? await imageDe({ photo: photo.id }) : '');
+      apercu.hidden = !src;
+      if (src) apercu.src = src;
+      boutonRetirer.hidden = !src || !admin;
+    };
+    const fichierPhoto = el('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
+    fichierPhoto.addEventListener('change', async () => {
+      const fichier = fichierPhoto.files[0];
+      fichierPhoto.value = '';
+      if (!fichier) return;
+      try { photo = { id: '', donnees: await reduirePhoto(fichier) }; message.textContent = ''; } catch (err) { message.textContent = 'Photo illisible ou trop lourde.'; }
+      afficherApercu();
+    });
+    if (!admin) [e.type.select, e.modele, e.periodicite, e.remarques].forEach((x) => { x.disabled = true; });
+
+    const cases = el('div', { classe: 'mat-cibles-liste' });
+    function rendreCases() {
+      const type = e.type.valeur();
+      // Rattachés + appareils uniques du même type (les autres types restent accessibles via « tous les types »).
+      const proposes = toutes.filter((x) => coches.has(x.id) || dejaLies.has(x.id) || (!x.modeleType && (voirTous || x.type === type))).sort(tri);
+      cases.replaceChildren(...(proposes.length ? proposes.map((x) => el('label', { classe: 'mat-case-libelle' },
+        el('input', { type: 'checkbox', coche: coches.has(x.id), disabled: !admin, surchange: (ev) => { if (ev.target.checked) coches.add(x.id); else coches.delete(x.id); } }),
+        el('span', { texte: `${nomAppareil(x)}${x.modele ? ` · ${x.modele}` : ''}${x.modeleType && x.modeleType !== base.id ? ` (rattaché à ${nomModele(modeleDe(x.modeleType))})` : ''}` }))) : [el('p', { classe: 'mat-vide', texte: 'Aucun appareil de ce type.' })]));
+    }
+    let voirTous = false;
+    e.type.select.addEventListener('change', rendreCases);
+
+    let d;
+    const lire = () => ({
+      ...base, type: e.type.valeur(), modele: e.modele.value.trim(), periodicite: Number(e.periodicite.value) || '',
+      remarques: e.remarques.value.trim(), photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
+    });
+    function envoyer(fiche) {
+      if (!fiche.type || !fiche.modele) { message.textContent = 'Le type et le modèle sont obligatoires.'; return; }
+      const rattacher = [...coches].filter((id) => !dejaLies.has(id));
+      const detacher = [...dejaLies].filter((id) => !coches.has(id));
+      const simulation = fiches().filter((x) => rattacher.includes(x.id) || detacher.includes(x.id))
+        .map((x) => ({ ...x, modeleType: rattacher.includes(x.id) ? fiche.id : '' }));
+      const conflit = verifierDoublons(simulation, [fiche]);
+      if (conflit) { message.textContent = conflit; return; }
+      d.close();
+      enfiler('enregistrerModeles', { modeles: [fiche], rattacher, detacher });
+    }
+    const contenu = el('form', { classe: 'mat-form', novalidate: true, sursubmit: (ev) => { ev.preventDefault(); if (admin) envoyer(lire()); } },
+      el('div', { classe: 'mat-grille' },
+        champ('Type de matériel', e.type.select), e.type.bloc,
+        champ('Modèle', e.modele),
+        champ('Périodicité des révisions (mois)', e.periodicite)),
+      el('div', { classe: 'mat-photo-bloc' }, el('p', { classe: 'mat-libelle', texte: 'Photo (affichée pour les appareils sans photo propre)' }), apercu,
+        admin ? el('div', { classe: 'mat-boutons' },
+          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Prendre ou choisir une photo', surclick: () => fichierPhoto.click() }), boutonRetirer, fichierPhoto) : null),
+      champ('Remarques communes', e.remarques),
+      el('fieldset', { classe: 'mat-cadre' }, el('legend', { texte: 'Appareils rattachés à ce matériel type' }),
+        el('p', { classe: 'aide-question', texte: 'Un appareil coché prend le type, le modèle et la périodicité de cette fiche. Décoché, il redevient un matériel unique et garde ses valeurs actuelles.' }),
+        admin ? el('div', { classe: 'mat-boutons' },
+          el('button', { type: 'button', classe: 'cfg-mini', texte: 'Montrer tous les types', surclick: (ev) => { voirTous = !voirTous; ev.target.textContent = voirTous ? 'Seulement ce type' : 'Montrer tous les types'; rendreCases(); } })) : null,
+        cases),
+      message,
+      admin ? el('div', { classe: 'mat-boutons' },
+        el('button', { type: 'submit', classe: 'principal', texte: m ? 'Enregistrer (et mettre à jour les appareils)' : 'Créer le matériel type' }),
+        m ? el('button', {
+          type: 'button', classe: 'cfg-bouton danger', texte: m.archive ? 'Désarchiver' : 'Archiver',
+          title: 'Un matériel type archivé n\'est plus proposé ; les appareils rattachés le gardent',
+          surclick: () => { if (m.archive || window.confirm(`Archiver le matériel type ${nomModele(m)} ?`)) { d.close(); enfiler('enregistrerModeles', { modeles: [{ ...m, archive: !m.archive }] }); } },
+        }) : null) : null);
+    d = fenetre(m ? `Matériel type · ${nomModele(m)}` : 'Nouveau matériel type', contenu, { large: true });
+    rendreCases();
+    afficherApercu();
+  }
 
   // ---------- Puce NFC ----------
   // Champs invariables d'un appareil (jamais la révision, le statut ou les remarques, qui changent).
