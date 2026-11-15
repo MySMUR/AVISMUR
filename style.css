@@ -2508,3 +2508,7 @@ body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color:
 
 .mat-vignette-type { width: 3.2rem; height: 3.2rem; }
 .mat-groupe-nom { font: inherit; font-weight: 700; text-align: left; }
+
+.mat-periode { display: flex; gap: 0.4rem; }
+.mat-periode input { width: 5rem; flex: 0 0 auto; }
+.mat-periode select { flex: 1; }

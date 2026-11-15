@@ -82,6 +82,20 @@ const Materiel = (() => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
   const dateFr = (iso) => (iso ? iso.split('-').reverse().join('/') : '—');
+  /** Échéance suivante d'un plan : + N mois ou + N semaines. */
+  function ajouterPeriode(iso, p) {
+    if (p.unite !== 'semaine') return ajouterMois(iso, p.periodicite);
+    const [a, m, j] = iso.split('-').map(Number);
+    const d = new Date(a, m - 1, j + 7 * Number(p.periodicite));
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  /** « tous les 12 mois », « toutes les semaines », « toutes les 2 semaines ». */
+  function textePeriode(p) {
+    if (!p.periodicite) return '';
+    if (p.unite === 'semaine') return Number(p.periodicite) === 1 ? 'toutes les semaines' : `toutes les ${p.periodicite} semaines`;
+    return `tous les ${p.periodicite} mois`;
+  }
+  const courtePeriode = (p) => (p.periodicite ? (p.unite === 'semaine' ? (Number(p.periodicite) === 1 ? 'hebdomadaire' : `${p.periodicite} sem.`) : `${p.periodicite} mois`) : '');
   function ajouterMois(iso, mois) {
     const [a, m, j] = iso.split('-').map(Number);
     const d = new Date(a, m - 1 + Number(mois), j);
@@ -224,7 +238,7 @@ const Materiel = (() => {
     if (m) {
       const dates = new Map(r.plans.map((p) => [p.id, p.prochaine]));
       COMMUNS.forEach((k) => { r[k] = m[k]; });
-      r.plans = plansDe(m).map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, prochaine: dates.get(p.id) || '' }));
+      r.plans = plansDe(m).map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, unite: p.unite || 'mois', prochaine: dates.get(p.id) || '' }));
       r.photoModele = m.photo || '';
       r.photoModeleDonnees = m.photoDonnees || '';
     }
@@ -250,18 +264,18 @@ const Materiel = (() => {
     return [{ id: 'rev', libelle: 'Révision', periodicite: f.periodicite || '', prochaine: f.revision || '' }];
   }
   const idPlan = () => idFiche().slice(0, 8);
-  const resumePlans = (plans) => (plans || []).map((p) => `${p.libelle}${p.periodicite ? ` (${p.periodicite} mois)` : ''}`).join(', ');
+  const resumePlans = (plans) => (plans || []).map((p) => `${p.libelle}${p.periodicite ? ` (${courtePeriode(p)})` : ''}`).join(', ');
   /** Changements des plans pour la main courante (comme le serveur). */
   function decrirePlans(avant, apres) {
     const lignes = [];
     const parId = new Map((avant || []).map((p) => [p.id, p]));
-    const perio = (p) => (p.periodicite ? `tous les ${p.periodicite} mois` : 'sans périodicité');
+    const perio = (p) => textePeriode(p) || 'sans périodicité';
     (apres || []).forEach((p) => {
       const a = parId.get(p.id);
       parId.delete(p.id);
       if (!a) { lignes.push(`Maintenance ajoutée : ${p.libelle} (${perio(p)}${p.prochaine ? `, prochaine le ${dateFr(p.prochaine)}` : ''})`); return; }
       if (a.libelle !== p.libelle) lignes.push(`Maintenance « ${a.libelle} » renommée « ${p.libelle} »`);
-      if (String(a.periodicite) !== String(p.periodicite)) lignes.push(`Maintenance « ${p.libelle} » : ${perio(a)} → ${perio(p)}`);
+      if (perio(a) !== perio(p)) lignes.push(`Maintenance « ${p.libelle} » : ${perio(a)} → ${perio(p)}`);
       if (String(a.prochaine || '') !== String(p.prochaine || '')) lignes.push(`Maintenance « ${p.libelle} » : prochaine échéance ${a.prochaine ? dateFr(a.prochaine) : '—'} → ${p.prochaine ? dateFr(p.prochaine) : '—'}`);
     });
     parId.forEach((p) => lignes.push(`Maintenance retirée : ${p.libelle}`));
@@ -345,12 +359,16 @@ const Materiel = (() => {
     let plans = (depart || []).map((p) => ({ ...p }));
     let bloque = verrouille;
     const liste = el('div', { classe: 'mat-plans' });
-    const ajout = el('button', { type: 'button', classe: 'cfg-mini', texte: '+ Ajouter une maintenance', surclick: () => { plans.push({ id: idPlan(), libelle: '', periodicite: 12, prochaine: '' }); rendrePlans(); liste.querySelector('.mat-plan:last-child input')?.focus(); } });
+    const ajout = el('button', { type: 'button', classe: 'cfg-mini', texte: '+ Ajouter une maintenance', surclick: () => { plans.push({ id: idPlan(), libelle: '', periodicite: 12, unite: 'mois', prochaine: '' }); rendrePlans(); liste.querySelector('.mat-plan:last-child input')?.focus(); } });
     function rendrePlans() {
       ajout.hidden = bloque || !actif;
       liste.replaceChildren(...(plans.length ? plans.map((p, n) => el('div', { classe: 'mat-plan mat-grille' },
         champ('Maintenance', el('input', { valeur: p.libelle, placeholder: 'ex. Révision annuelle, Contrôle électrique…', disabled: bloque || !actif, surinput: (ev) => { p.libelle = ev.target.value; } })),
-        champ('Périodicité (mois)', el('input', { type: 'number', min: '1', max: '120', valeur: p.periodicite, disabled: bloque || !actif, surinput: (ev) => { p.periodicite = Number(ev.target.value) || ''; } })),
+        champ('Périodicité', el('div', { classe: 'mat-periode' },
+          el('input', { type: 'number', min: '1', max: p.unite === 'semaine' ? '260' : '120', valeur: p.periodicite, 'aria-label': 'Nombre', disabled: bloque || !actif, surinput: (ev) => { p.periodicite = Number(ev.target.value) || ''; } }),
+          el('select', { 'aria-label': 'Unité', disabled: bloque || !actif, surchange: (ev) => { p.unite = ev.target.value; ev.target.previousElementSibling.max = p.unite === 'semaine' ? '260' : '120'; } },
+            el('option', { value: 'mois', texte: 'mois', selected: p.unite !== 'semaine' }),
+            el('option', { value: 'semaine', texte: 'semaine(s)', selected: p.unite === 'semaine' })))),
         avecDate ? champ('Prochaine échéance', el('input', { type: 'date', valeur: p.prochaine || '', disabled: !actif, surinput: (ev) => { p.prochaine = ev.target.value; } })) : null,
         bloque || !actif ? null : el('button', { type: 'button', classe: 'cfg-mini danger', texte: 'Retirer', 'aria-label': `Retirer la maintenance ${p.libelle}`, surclick: () => { plans.splice(n, 1); rendrePlans(); } })))
         : [el('p', { classe: 'mat-vide', texte: bloque ? 'Le matériel type ne définit aucune maintenance.' : 'Aucune maintenance : ajoutez-en une (révision, contrôle, changement de pièce…).' })]));
@@ -363,7 +381,7 @@ const Materiel = (() => {
       imposer(plansModele) {
         if (plansModele) {
           const dates = new Map(plans.map((p) => [p.id, p.prochaine]));
-          plans = plansModele.map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, prochaine: dates.get(p.id) || '' }));
+          plans = plansModele.map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, unite: p.unite || 'mois', prochaine: dates.get(p.id) || '' }));
           bloque = true;
         } else bloque = false;
         rendrePlans();
@@ -580,7 +598,7 @@ const Materiel = (() => {
         ligneInfo('Matériel type', f.modeleType ? nomModele(modeleDe(f.modeleType)) : 'Non (matériel unique)'),
         ligneInfo('Type', f.type), ligneInfo('Modèle', f.modele), ligneInfo('N° interne SMUR', f.numInterne),
         ligneInfo('N° biomed', f.biomed ? f.numBiomed : 'Sans n° biomed'), ligneInfo('N° de série', f.numSerie), ligneInfo('Statut', f.statut),
-        f.maintenance ? (f.plans.length ? f.plans.flatMap((p) => ligneInfo(p.libelle, `${p.prochaine ? `prochaine le ${dateFr(p.prochaine)}` : 'échéance non renseignée'}${p.periodicite ? ` · tous les ${p.periodicite} mois` : ''}`)) : ligneInfo('Maintenance préventive', 'Aucune maintenance définie'))
+        f.maintenance ? (f.plans.length ? f.plans.flatMap((p) => ligneInfo(p.libelle, `${p.prochaine ? `prochaine le ${dateFr(p.prochaine)}` : 'échéance non renseignée'}${p.periodicite ? ` · ${textePeriode(p)}` : ''}`)) : ligneInfo('Maintenance préventive', 'Aucune maintenance définie'))
           : ligneInfo('Maintenance préventive', 'Non'),
         f.logiciel ? ligneInfo('Version logiciel', f.versionLogiciel) : null,
         ligneInfo('Traceur GeoTraceSMUR', f.traceur ? `Oui${f.nomTraceur ? ` (${f.nomTraceur})` : ''}` : 'Non'),
@@ -929,7 +947,7 @@ const Materiel = (() => {
       const choisis = toutes.filter((x) => cibles.has(x.id));
       const avant = e.plan.value;
       const communs = choisis.length ? (choisis[0].plans || []).filter((p) => choisis.every((x) => (x.plans || []).some((q) => q.id === p.id))) : [];
-      e.plan.replaceChildren(el('option', { value: '', texte: '— Aucune —' }), ...communs.map((p) => el('option', { value: p.id, texte: `${p.libelle}${p.periodicite ? ` (${p.periodicite} mois)` : ''}` })));
+      e.plan.replaceChildren(el('option', { value: '', texte: '— Aucune —' }), ...communs.map((p) => el('option', { value: p.id, texte: `${p.libelle}${p.periodicite ? ` (${courtePeriode(p)})` : ''}` })));
       if (communs.some((p) => p.id === avant)) e.plan.value = avant;
       else if (communs.length === 1 && ['Révision', 'Contrôle', 'Intervention'].includes(e.type.value)) e.plan.value = communs[0].id;
       blocPlan.hidden = !communs.length;
@@ -939,8 +957,8 @@ const Materiel = (() => {
       const choisis = toutes.filter((x) => cibles.has(x.id));
       const plan = e.plan.value && (choisis[0].plans || []).find((p) => p.id === e.plan.value);
       if (plan && plan.periodicite && e.date.value) {
-        e.prochaine.value = ajouterMois(e.date.value, plan.periodicite);
-        aide.textContent = `Proposée d'après la périodicité de « ${plan.libelle} » (${plan.periodicite} mois). Laissez vide pour ne pas changer l'échéance.`;
+        e.prochaine.value = ajouterPeriode(e.date.value, plan);
+        aide.textContent = `Proposée d'après la périodicité de « ${plan.libelle} » (${textePeriode(plan)}). Laissez vide pour ne pas changer l'échéance.`;
       } else {
         if (!plan) e.prochaine.value = '';
         aide.textContent = plan ? `Si renseignée, remplace la prochaine échéance de « ${plan.libelle} ».` : 'Choisissez la maintenance réalisée pour mettre à jour sa prochaine échéance.';
@@ -1104,7 +1122,7 @@ const Materiel = (() => {
     const admin = estAdmin();
     const base = m || {
       id: idFiche(), type: (depuis && depuis.type) || filtre.type || TYPES_DEFAUT[0], modele: (depuis && depuis.modele) || '',
-      plans: depuis ? (depuis.plans || []).map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite })) : [{ id: 'rev', libelle: 'Révision', periodicite: 12 }], photo: (depuis && depuis.photo) || '', photoDonnees: (depuis && depuis.photoDonnees) || '',
+      plans: depuis ? (depuis.plans || []).map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, unite: p.unite || 'mois' })) : [{ id: 'rev', libelle: 'Révision', periodicite: 12 }], photo: (depuis && depuis.photo) || '', photoDonnees: (depuis && depuis.photoDonnees) || '',
       remarques: '', archive: false,
       biomed: depuis ? depuis.biomed !== false : true, maintenance: depuis ? depuis.maintenance !== false : true, logiciel: Boolean(depuis && depuis.logiciel),
     };
@@ -1166,7 +1184,7 @@ const Materiel = (() => {
 
     let d;
     const lire = () => ({
-      ...base, type: e.type.valeur(), modele: e.modele.value.trim(), plans: e.plans.valeur().map(({ id, libelle, periodicite }) => ({ id, libelle, periodicite })),
+      ...base, type: e.type.valeur(), modele: e.modele.value.trim(), plans: e.plans.valeur().map(({ id, libelle, periodicite, unite }) => ({ id, libelle, periodicite, unite: unite || 'mois' })),
       remarques: e.remarques.value.trim(), photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
       biomed: e.biomed.checked, maintenance: e.maintenance.checked, logiciel: e.logiciel.checked,
     });
