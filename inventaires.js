@@ -4352,22 +4352,40 @@ const Inventaires = (() => {
     details: 'M12 38 H16 Q25 29 34 38 H38 Q47 29 56 38 H59 Q67 29 76 38 H79 Q87 29 95 38 M156 21 V17 Q160 11 164 17 V21 M191 21 V12 Q197 4 203 12 V21 M209 21 V18 Q213 12 217 18 V21 M223 21 V15 Q226 10 229 15 V21' };
 
   /** Coupe un texte en lignes et choisit la plus grande police (mm) qui tient dans le cadre donné. */
+  /** Largeur réelle d'un texte (police de l'étiquette), rapportée à une taille de police de 1. */
+  let toile = null;
+  const largeursMesurees = new Map();
+  function largeurTexte(t, gras) {
+    const cle = `${gras ? 1 : 0}${t}`;
+    if (largeursMesurees.has(cle)) return largeursMesurees.get(cle);
+    let w = 0;
+    try {
+      toile = toile || document.createElement('canvas').getContext('2d');
+      toile.font = `${gras ? '800' : 'italic 400'} 100px system-ui, sans-serif`;
+      w = toile.measureText(t).width / 100;
+    } catch (e) { w = 0; }
+    // Repli (ou mesure aberrante) : estimation prudente, majuscules plus larges.
+    if (!(w > 0)) w = [...t].reduce((sx, ch) => sx + (/[A-ZÀ-Ý0-9MW]/.test(ch) ? 0.72 : 0.58), 0) * (gras ? 1.05 : 0.95);
+    largeursMesurees.set(cle, w);
+    return w;
+  }
+
   function ajusterTexte(texte, largeur, hauteur, maxPolice, maxLignes, gras = true) {
-    const ratio = gras ? 0.6 : 0.52; // largeur moyenne d'un caractère / taille de police
+    largeur *= 0.94; // petite réserve : le texte ne touche jamais le cadre
     const mots = String(texte || '').split(/\s+/).filter(Boolean);
     if (!mots.length) return { lignes: [], police: 0 };
     // Meilleure police pour chaque nombre de lignes ; on ne coupe en plus de lignes que si le gain est net
     // (évite « Ampoulier / A »).
     const meilleur = {};
     for (let police = maxPolice; police >= 1; police -= 0.1) {
-      const parLigne = Math.max(1, Math.floor(largeur / (police * ratio)));
+      const tient = (t) => largeurTexte(t, gras) * police <= largeur;
       const lignes = [];
       mots.forEach((m) => {
         const der = lignes[lignes.length - 1];
-        if (der !== undefined && (`${der} ${m}`).length <= parLigne) lignes[lignes.length - 1] = `${der} ${m}`;
+        if (der !== undefined && tient(`${der} ${m}`)) lignes[lignes.length - 1] = `${der} ${m}`;
         else lignes.push(m);
       });
-      if (lignes.length <= maxLignes && lignes.every((l) => l.length <= parLigne) && lignes.length * police * 1.15 <= hauteur
+      if (lignes.length <= maxLignes && lignes.every(tient) && lignes.length * police * 1.15 <= hauteur
         && !meilleur[lignes.length]) meilleur[lignes.length] = { lignes, police };
     }
     const choix = Object.keys(meilleur).map(Number).sort((x, y) => x - y);
@@ -4418,7 +4436,7 @@ const Inventaires = (() => {
     if (mode === 'paysage') {
       const S = H - 2 * ecart;
       qr = { x: ecart, y: ecart, s: S };
-      const x0 = ecart + S + ep * 2.5, l = W - x0 - ecart;
+      const x0 = ecart + S + ep * 2.5, l = W - x0 - ecart - ep * 1.5;
       const hTrace = perso.length ? H * (perso.length > 1 ? 0.3 : 0.18) : Math.min(H * 0.22, l / 4.6);
       zoneTrace = { x: x0, y: H - ecart - hTrace, l, h: hTrace };
       const hTexte = zoneTrace.y - ecart - ep;
