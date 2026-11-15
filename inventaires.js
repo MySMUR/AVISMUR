@@ -1006,8 +1006,12 @@ const Inventaires = (() => {
     if (idCourant() === (id || '')) rendre();
     // Remonter vers le niveau d'où l'on vient : on recule dans l'historique au lieu de l'allonger,
     // pour que le bouton Retour du téléphone ne repasse pas par l'inventaire qu'on vient de quitter.
-    else if (pile.length > 1 && pile[pile.length - 2] === (id || '')) history.back();
-    else location.hash = lien(id);
+    else {
+      // Plusieurs étages d'un coup (ex. retour au véhicule après le dernier sous-contenant) : on recule d'autant.
+      const i = pile.lastIndexOf(id || '');
+      if (i >= 0 && i < pile.length - 1) history.go(i - (pile.length - 1));
+      else location.hash = lien(id);
+    }
   }
   /** Adresse complète d'un contenant : celle du QR code et de la puce NFC. */
   function adresse(id) {
@@ -1099,12 +1103,16 @@ const Inventaires = (() => {
     sauverBrouillons();
     confirmer = '';
     avis = `« ${c.nom} » vérifié${manquants.length ? ` : ${pluriel(manquants.length, 'manquant')}` : ''}.`;
-    // S'il reste des sous-inventaires à vérifier, on reste ici ; sinon on remonte au contenant parent
-    // (l'emplacement s'efface derrière son occupant : on remonte au niveau visible du dessus).
-    const reste = enfants(c.id).some((f) => { const bf = bilan(f.id); return bf.total && !bf.complet; });
-    const dessus = etagesAuDessus(c)[0];
+    // S'il reste des sous-inventaires à vérifier, on reste ici. Sinon on remonte au contenant du dessus ;
+    // si celui-ci est à son tour entièrement vérifié, on remonte encore (ex. dernier sous-contenant de B
+    // validé → B est complet → retour à F21), jusqu'au premier étage incomplet ou au contenant primaire.
+    // (L'emplacement s'efface derrière son occupant : on ne passe que par les niveaux visibles.)
+    const aFinir = (x) => { const bx = bilan(x.id); return bx.total && !bx.complet; };
+    const reste = enfants(c.id).some(aFinir);
+    const etages = etagesAuDessus(c);
+    const cible = etages.find(aFinir) || etages[etages.length - 1];
     if (reste) rendre();
-    else aller(dessus ? dessus.id : '');
+    else aller(cible ? cible.id : '');
   }
 
   // ---------- Vues ----------
@@ -4468,12 +4476,13 @@ const Inventaires = (() => {
     if (nouveau && dernierAffiche !== null) positionsDefilement.set(dernierAffiche, window.scrollY);
     dernierAffiche = id;
     if (nouveau) {
-      retourArriere = pile.length > 1 && pile[pile.length - 2] === id;
+      const dejaVu = pile.lastIndexOf(id);
+      retourArriere = dejaVu >= 0 && dejaVu < pile.length - 1;
       identification = '';
       typeChoisi = '';
       placement = '';
       confirmer = '';
-      if (pile.length > 1 && pile[pile.length - 2] === id) pile.pop();
+      if (retourArriere) pile.length = dejaVu + 1;
       else pile.push(id);
       rattacher = '';
       rechercheAjout = '';
