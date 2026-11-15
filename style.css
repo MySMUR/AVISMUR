@@ -2480,3 +2480,7 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .imp-reglage-coupe { display: flex; align-items: center; gap: 0.3rem; min-height: 2.4rem; }
 .imp-apercu { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 0.6rem; }
 .imp-apercu-page { width: 7.5rem; height: auto; box-shadow: 0 1px 4px rgba(19, 41, 75, .18); }
+
+/* Inventaire type (modèle) : fond ambré pour le distinguer d'un inventaire réel. */
+body.inv-dans-modele { background: #FFF4D6; }
+body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color: #F0CF73; }
