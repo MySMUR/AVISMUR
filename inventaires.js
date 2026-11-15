@@ -1008,9 +1008,7 @@ const Inventaires = (() => {
     // pour que le bouton Retour du téléphone ne repasse pas par l'inventaire qu'on vient de quitter.
     else {
       // Plusieurs étages d'un coup (ex. retour au véhicule après le dernier sous-contenant) : on recule d'autant.
-      const i = pile.lastIndexOf(id || '');
-      if (i >= 0 && i < pile.length - 1) history.go(i - (pile.length - 1));
-      else location.hash = lien(id);
+      location.hash = lien(id);
     }
   }
   /** Adresse complète d'un contenant : celle du QR code et de la puce NFC. */
@@ -1107,12 +1105,27 @@ const Inventaires = (() => {
     // si celui-ci est à son tour entièrement vérifié, on remonte encore (ex. dernier sous-contenant de B
     // validé → B est complet → retour à F21), jusqu'au premier étage incomplet ou au contenant primaire.
     // (L'emplacement s'efface derrière son occupant : on ne passe que par les niveaux visibles.)
-    const aFinir = (x) => { const bx = bilan(x.id); return bx.total && !bx.complet; };
-    const reste = enfants(c.id).some(aFinir);
+    remonterApresValidation(c);
+  }
+
+  /**
+   * Après une validation : s'il reste des sous-inventaires à faire, on reste ici. Sinon on remonte
+   * au premier étage du dessus qui n'est pas entièrement vérifié (ex. dernier sous-contenant de B validé,
+   * B complet → retour à F21), ou au contenant primaire si tout est fait.
+   */
+  function remonterApresValidation(c) {
+    const aFinir = (x) => { const bx = bilan(x.id); return bx.total > 0 && !bx.complet; };
+    if (enfants(c.id).some(aFinir)) { rendre(); return; }
     const etages = etagesAuDessus(c);
     const cible = etages.find(aFinir) || etages[etages.length - 1];
-    if (reste) rendre();
-    else aller(cible ? cible.id : '');
+    allerDirect(cible ? cible.id : '');
+  }
+  /** Comme aller(), mais sans passer par l'historique : arrive toujours sur le bon inventaire. */
+  function allerDirect(id) {
+    placement = '';
+    confirmer = '';
+    if (idCourant() === (id || '')) rendre();
+    else location.hash = lien(id);
   }
 
   // ---------- Vues ----------
@@ -4223,7 +4236,7 @@ const Inventaires = (() => {
     }
     sauverEtat();
     avis = `« ${c.nom} » scellé : ${pluriel(n, 'inventaire')} validé${n > 1 ? 's' : ''} sur la base du dernier réalisé.`;
-    aller(c.parent && !gestion ? c.parent : c.id);
+    if (gestion) aller(c.id); else remonterApresValidation(c);
   }
   function blocQuestionScelle(c) {
     const obstacles = obstaclesScelle(c);
