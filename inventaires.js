@@ -381,7 +381,7 @@ const Inventaires = (() => {
   // ---------- Contrôles : valeur à relever au lieu d'une case ----------
   const CONTROLES = {
     scan: { nom: 'À scanner / renseigner', aide: 'n° de série, matériel biomédical', defaut: 'Numéro de série' },
-    materiel: { nom: 'Matériel attendu', aide: 'appareil du suivi du matériel : QR, NFC, saisie ou liste', defaut: 'Scope' },
+    materiel: { nom: 'Matériel attendu', aide: 'appareil filtré par type (PSE, respirateur…) : QR, NFC, saisie ou liste', defaut: 'Appareil' },
     temperature: { nom: 'Température', aide: '°C, avec plage', defaut: 'Température', unite: '°C' },
     batterie: { nom: 'Niveau de batterie', aide: '% ou 0 à 4', defaut: 'Batterie' },
     oui: { nom: 'Oui / Non', aide: 'branchement secteur, appairage, test', defaut: 'Test effectué' },
@@ -2934,11 +2934,21 @@ const Inventaires = (() => {
       nombre('seuil', 'Seuil'));
     }
     if (a.controle === 'materiel') {
-      const idListe = idChamp();
-      reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Type ', el('input', {
-        classe: 'inv-attendu', maxlength: '60', list: idListe, placeholder: 'tout appareil', valeur: a.typeMateriel || '', 'aria-label': `Type d'appareil attendu (${a.nom})`,
-        surchange: (e) => { const t = e.target.value.trim(); if (t) a.typeMateriel = t; else delete a.typeMateriel; marquer(c.id); rendre({ garderPosition: true }); },
-      }), el('datalist', { id: idListe }, ...(typeof Materiel !== 'undefined' && Materiel.types ? Materiel.types() : []).map((t) => el('option', { value: t })))),
+      // Filtre du matériel attendu : un type du suivi du matériel (PSE, Respirateur, Scope…), ou tout appareil.
+      const types = (typeof Materiel !== 'undefined' && Materiel.types ? Materiel.types() : []);
+      if (a.typeMateriel && !types.some((t) => cle(t) === cle(a.typeMateriel))) types.push(a.typeMateriel);
+      reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Type attendu ', el('select', {
+        'aria-label': `Type d'appareil attendu (${a.nom})`,
+        surchange: (e) => {
+          const t = e.target.value;
+          const ancien = a.typeMateriel || '';
+          if (t) a.typeMateriel = t; else delete a.typeMateriel;
+          // Libellé resté par défaut (ou égal à l'ancien type) : il prend le nom du type choisi.
+          if (t && (a.nom === CONTROLES.materiel.defaut || a.nom === ancien)) a.nom = t;
+          marquer(c.id); rendre({ garderPosition: true });
+        },
+      }, el('option', { value: '', selected: !a.typeMateriel, texte: 'Tout appareil' }),
+      ...types.map((t) => el('option', { value: t, selected: cle(t) === cle(a.typeMateriel), texte: t })))),
       el('label', { classe: 'inv-qte-libelle' }, 'N° précis ', el('input', { classe: 'inv-qte', maxlength: '60', placeholder: 'tout', valeur: a.attendu || '', 'aria-label': `N° interne attendu, facultatif (${a.nom})`, surchange: (e) => { const t = e.target.value.trim(); if (t) a.attendu = t; else delete a.attendu; marquer(c.id); } })));
     }
     if (a.controle === 'scan') reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Attendu ', el('input', { classe: 'inv-attendu', maxlength: '60', placeholder: 'facultatif', valeur: a.attendu || '', 'aria-label': `Valeur attendue (${a.nom})`, surchange: (e) => { const t = e.target.value.trim(); if (t) a.attendu = t; else delete a.attendu; marquer(c.id); } })));
