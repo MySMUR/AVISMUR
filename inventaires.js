@@ -4660,6 +4660,13 @@ const Inventaires = (() => {
     return pages;
   }
 
+  /** Chemin d'une étiquette : à partir du contenant mobile le plus haut (il change de place), sinon complet. */
+  function cheminEtiquette(c) {
+    const ch = chemin(c.id).filter((x, i, t) => !x.emplacement || i === t.length - 1);
+    const i = ch.findIndex((x) => x.categorie === 'mobile');
+    return ch.slice(i >= 0 ? i : 0).map((x) => x.nom).join(' › ');
+  }
+
   /** Exemplaires d'un inventaire type et tout ce qu'ils renferment, qui ont une étiquette. */
   function etiquettesExemplaires(exemplaires) {
     const ok = new Set(etiquetables().map((c) => c.id));
@@ -4677,13 +4684,17 @@ const Inventaires = (() => {
     const ranges = new Set(preselection.map((c) => c.id));
     const choisis = tous.filter((c) => ranges.has(c.id));
     const groupes = primaires.map((p) => {
-      const liste = descendants(p.id).filter((x) => tous.includes(x) && !ranges.has(x.id));
+      const liste = descendants(p.id).filter((x) => tous.includes(x) && !ranges.has(x.id) && !dansUnMobile(x));
       liste.forEach((x) => ranges.add(x.id));
       return { nom: p.nom, liste };
     }).filter((g) => g.liste.length);
     if (choisis.length) groupes.unshift({ nom: 'Sélection', liste: choisis, ouvert: true });
     const libres = tous.filter((c) => !ranges.has(c.id)).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
-    if (libres.length) groupes.push({ nom: 'Hors contenant primaire (ex. sacs désaffectés)', liste: libres });
+    // Les contenants mobiles changent de place : un groupe à part, sans le contenant où ils se trouvent.
+    const mobiles = libres.filter((c) => dansUnMobile(c)).sort((a, b) => cheminEtiquette(a).localeCompare(cheminEtiquette(b), 'fr', { numeric: true }));
+    const autres = libres.filter((c) => !dansUnMobile(c));
+    if (mobiles.length) groupes.push({ nom: 'Contenants mobiles', liste: mobiles });
+    if (autres.length) groupes.push({ nom: 'Hors contenant primaire', liste: autres });
 
     const fond = el('div', { classe: 'fenetre-fond', surclick: (e) => { if (e.target === fond) fermer(); } });
     const retour = document.activeElement;
@@ -4718,7 +4729,7 @@ const Inventaires = (() => {
       } });
       const qte = el('input', { type: 'number', min: '1', max: '50', inputmode: 'numeric', classe: 'inv-court imp-qte', valeur: nb.get(c.id) || 1, disabled: !nb.has(c.id), 'aria-label': `Exemplaires : ${c.nom}`,
         surchange: (e) => { const n = Math.max(1, Math.min(50, Math.round(Number(e.target.value)) || 1)); e.target.value = n; if (nb.has(c.id)) nb.set(c.id, n); majApercu(); } });
-      const ch = cheminNoms(c.id);
+      const ch = cheminEtiquette(c);
       return { coche, qte, noeud: el('li', { classe: 'imp-choix' }, coche,
         el('label', { for: champ }, el('span', { texte: c.nom }), ch !== c.nom ? el('small', { texte: ` ${ch}` }) : null),
         el('span', { classe: 'imp-format', texte: `${r.largeur}×${r.hauteur}` }), el('span', { 'aria-hidden': 'true', texte: '×' }), qte) };
