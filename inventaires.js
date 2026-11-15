@@ -1599,7 +1599,7 @@ const Inventaires = (() => {
                 rendre({ garderPosition: true });
               },
             })),
-          tous.length ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer toutes les étiquettes QR', surclick: () => imprimerEtiquettes(tous) }) : null));
+          tous.length ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer des étiquettes QR…', surclick: () => imprimerEtiquettes() }) : null));
     }
     return noeuds;
   }
@@ -3449,7 +3449,7 @@ const Inventaires = (() => {
         el('div', { classe: 'inv-acces-actions' },
           el('p', { classe: 'inv-url', texte: url }),
           reglages,
-          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer l\'étiquette QR', surclick: () => imprimerEtiquettes([c]) }),
+          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer l\'étiquette QR…', surclick: () => imprimerEtiquettes([c]) }),
           nfc, etatNfc)),
       el('h2', { texte: 'Autres actions' }),
       el('div', { classe: 'cfg-actions' },
@@ -4600,12 +4600,162 @@ const Inventaires = (() => {
     window.print();
   }
 
-  /** Étiquettes carrées, chacune à la taille réglée pour son contenant. */
-  function imprimerEtiquettes(liste) {
-    lancerImpression(liste.map((c) => {
+  // ---------- Impression des étiquettes QR : choix, exemplaires, planches A4 ----------
+  const CLE_IMPRESSION = 'mysmur.inventaires.impression';
+  const A4 = { portrait: [210, 297], paysage: [297, 210] };
+
+  /** Contenants qui ont une étiquette : réels (hors inventaires types), sauf les emplacements vides de sens. */
+  function etiquetables() {
+    return Object.values(structure.contenants).filter((c) => !c.supprime && !c.emplacement && !dansUnModele(c.id));
+  }
+
+  /**
+   * Range les étiquettes sur des pages (rangées successives, les plus hautes d'abord).
+   * Retourne [{ etiquettes: [{ c, r, x, y }] }] en mm depuis le coin de la zone imprimable.
+   */
+  function rangerEtiquettes(liste, opt) {
+    const [pw, ph] = A4[opt.orientation] || A4.portrait;
+    const L = pw - 2 * opt.marge, H = ph - 2 * opt.marge, g = opt.espace;
+    const items = liste.map((c) => ({ c, r: reglageEtiquette(c) }))
+      .map((x) => ({ ...x, w: Math.min(x.r.largeur, L), h: Math.min(x.r.hauteur, H) }))
+      .sort((a, b) => b.h - a.h || b.w - a.w);
+    const pages = [];
+    items.forEach((it) => {
+      for (const p of pages) {
+        for (const rg of p.rangees) {
+          if (it.h <= rg.h && rg.x + it.w <= L + 0.01) { p.etiquettes.push({ ...it, x: rg.x, y: rg.y }); rg.x += it.w + g; return; }
+        }
+        if (p.bas + it.h <= H + 0.01) {
+          p.rangees.push({ y: p.bas, h: it.h, x: it.w + g });
+          p.etiquettes.push({ ...it, x: 0, y: p.bas });
+          p.bas += it.h + g;
+          return;
+        }
+      }
+      pages.push({ rangees: [{ y: 0, h: it.h, x: it.w + g }], bas: it.h + g, etiquettes: [{ ...it, x: 0, y: 0 }] });
+    });
+    return pages;
+  }
+
+  /** Fenêtre d'impression : cocher les étiquettes (par contenant primaire), nombre d'exemplaires, mise en page A4. */
+  function imprimerEtiquettes(preselection = []) {
+    const opt = { orientation: 'portrait', marge: 8, espace: 3, coupe: true, ...lireJson(CLE_IMPRESSION, {}) };
+    const nb = new Map(preselection.map((c) => [c.id, 1]));
+    const tous = etiquetables();
+    // Groupes : chaque contenant primaire avec ce qu'il renferme, puis les contenants hors de tout primaire.
+    const primaires = tous.filter((c) => c.categorie === 'primaire').sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    const ranges = new Set();
+    const groupes = primaires.map((p) => {
+      const liste = descendants(p.id).filter((x) => tous.includes(x));
+      liste.forEach((x) => ranges.add(x.id));
+      return { nom: p.nom, liste };
+    });
+    const libres = tous.filter((c) => !ranges.has(c.id)).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    if (libres.length) groupes.push({ nom: 'Hors contenant primaire (ex. sacs désaffectés)', liste: libres });
+
+    const fond = el('div', { classe: 'fenetre-fond', surclick: (e) => { if (e.target === fond) fermer(); } });
+    const retour = document.activeElement;
+    const fermer = () => { fond.remove(); document.body.classList.remove('fenetre-ouverte'); if (retour && retour.isConnected) retour.focus(); };
+    const titre = idChamp();
+    const resume = el('p', { classe: 'fenetre-resume', role: 'status' });
+    const apercu = el('div', { classe: 'imp-apercu' });
+    const bouton = el('button', { type: 'button', classe: 'cfg-bouton principal', texte: 'Imprimer', surclick: () => lancer() });
+    const selection = () => tous.flatMap((c) => Array(nb.get(c.id) || 0).fill(c));
+    const options = () => ({ ...opt, marge: Math.max(0, Math.min(30, Number(opt.marge) || 0)), espace: Math.max(0, Math.min(20, Number(opt.espace) || 0)) });
+
+    const majApercu = () => {
+      const liste = selection();
+      const o = options();
+      const pages = rangerEtiquettes(liste, o);
+      resume.textContent = liste.length ? `${pluriel(liste.length, 'étiquette')} · ${pluriel(pages.length, 'page')} A4` : 'Aucune étiquette choisie.';
+      bouton.disabled = !liste.length;
+      const [pw, ph] = A4[o.orientation];
+      apercu.replaceChildren(...pages.slice(0, 6).map((p, i) => el('svg:svg', { viewBox: `0 0 ${pw} ${ph}`, classe: 'imp-apercu-page', role: 'img', 'aria-label': `Page ${i + 1}` },
+        el('svg:rect', { x: 0, y: 0, width: pw, height: ph, fill: '#fff', stroke: '#9aa7b8', 'stroke-width': 0.6 }),
+        el('svg:rect', { x: o.marge, y: o.marge, width: pw - 2 * o.marge, height: ph - 2 * o.marge, fill: 'none', stroke: '#c9d3e0', 'stroke-width': 0.4, 'stroke-dasharray': '2 2' }),
+        ...p.etiquettes.map((e) => el('svg:rect', { x: o.marge + e.x, y: o.marge + e.y, width: e.w, height: e.h, rx: 1, fill: '#dbe7f8', stroke: '#1d4f9f', 'stroke-width': 0.5 }, el('svg:title', { texte: `${e.c.nom} (${e.r.largeur}×${e.r.hauteur} mm)` }))))),
+      pages.length > 6 ? el('p', { classe: 'aide-question', texte: `… et ${pages.length - 6} autres pages.` }) : null);
+    };
+
+    const ligne = (c, majGroupe) => {
+      const champ = idChamp();
       const r = reglageEtiquette(c);
-      return el('div', { classe: 'imp-etiquette', style: `width:${r.largeur}mm;height:${r.hauteur}mm` }, etiquetteSvg(c, r));
-    }), 'imp-etiquettes');
+      const coche = el('input', { type: 'checkbox', id: champ, checked: nb.has(c.id), surchange: (e) => {
+        if (e.target.checked) nb.set(c.id, Math.max(1, Number(qte.value) || 1)); else nb.delete(c.id);
+        qte.disabled = !e.target.checked; majGroupe(); majApercu();
+      } });
+      const qte = el('input', { type: 'number', min: '1', max: '50', inputmode: 'numeric', classe: 'inv-court imp-qte', valeur: nb.get(c.id) || 1, disabled: !nb.has(c.id), 'aria-label': `Exemplaires : ${c.nom}`,
+        surchange: (e) => { const n = Math.max(1, Math.min(50, Math.round(Number(e.target.value)) || 1)); e.target.value = n; if (nb.has(c.id)) nb.set(c.id, n); majApercu(); } });
+      const ch = cheminNoms(c.id);
+      return { coche, qte, noeud: el('li', { classe: 'imp-choix' }, coche,
+        el('label', { for: champ }, el('span', { texte: c.nom }), ch !== c.nom ? el('small', { texte: ` ${ch}` }) : null),
+        el('span', { classe: 'imp-format', texte: `${r.largeur}×${r.hauteur}` }), el('span', { 'aria-hidden': 'true', texte: '×' }), qte) };
+    };
+    const blocs = groupes.map((g) => {
+      const champ = idChamp();
+      const tout = el('input', { type: 'checkbox', id: champ });
+      const lignes = [];
+      const majGroupe = () => {
+        const n = lignes.filter((l) => l.coche.checked).length;
+        tout.checked = n === lignes.length; tout.indeterminate = n > 0 && n < lignes.length;
+      };
+      g.liste.forEach((c) => lignes.push(ligne(c, majGroupe)));
+      tout.addEventListener('change', () => {
+        lignes.forEach((l, i) => { l.coche.checked = tout.checked; l.qte.disabled = !tout.checked; if (tout.checked) nb.set(g.liste[i].id, Math.max(1, Number(l.qte.value) || 1)); else nb.delete(g.liste[i].id); });
+        majApercu();
+      });
+      majGroupe();
+      return el('details', { classe: 'imp-groupe', open: g.liste.some((c) => nb.has(c.id)) || groupes.length === 1 ? '' : null },
+        el('summary', {}, tout, el('label', { for: champ, texte: `${g.nom} (${g.liste.length})` })),
+        el('ul', {}, ...lignes.map((l) => l.noeud)));
+    });
+
+    const reglage = (libelle, cle, attrs) => {
+      const champ = idChamp();
+      return el('div', { classe: 'champ imp-reglage' }, el('label', { for: champ, texte: libelle }),
+        el('input', { id: champ, type: 'number', inputmode: 'decimal', classe: 'inv-court', valeur: opt[cle], ...attrs,
+          surchange: (e) => { opt[cle] = Number(e.target.value) || 0; ecrireJson(CLE_IMPRESSION, opt); majApercu(); } }));
+    };
+    const champCoupe = idChamp();
+    const orientation = el('select', { 'aria-label': 'Orientation de la page', surchange: (e) => { opt.orientation = e.target.value; ecrireJson(CLE_IMPRESSION, opt); majApercu(); } },
+      el('option', { value: 'portrait', texte: 'A4 portrait' }), el('option', { value: 'paysage', texte: 'A4 paysage' }));
+    orientation.value = opt.orientation;
+
+    const lancer = () => {
+      const o = options();
+      const pages = rangerEtiquettes(selection(), o);
+      if (!pages.length) return;
+      const [pw, ph] = A4[o.orientation];
+      const regle = el('style', { id: 'imp-page-a4', texte: `@page { size: A4 ${o.orientation === 'paysage' ? 'landscape' : 'portrait'}; margin: 0; }` });
+      document.head.append(regle);
+      window.addEventListener('afterprint', () => regle.remove(), { once: true });
+      fermer();
+      lancerImpression(pages.map((p) => el('div', { classe: 'imp-page', style: `width:${pw}mm;height:${ph}mm` },
+        ...p.etiquettes.map((e) => el('div', {
+          classe: `imp-etiquette${o.coupe ? ' imp-coupe' : ''}`,
+          style: `left:${o.marge + e.x}mm;top:${o.marge + e.y}mm;width:${e.w}mm;height:${e.h}mm;--demi-espace:${Math.min(o.espace / 2, 1.5)}mm`,
+        }, etiquetteSvg(e.c, e.r))))), 'imp-etiquettes');
+    };
+
+    fond.append(el('div', { classe: 'fenetre imp-fenetre', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
+      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: 'Imprimer des étiquettes QR' }),
+        el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
+      el('div', { classe: 'fenetre-corps' },
+        tous.length ? el('div', { classe: 'imp-groupes' }, ...blocs) : el('p', { classe: 'consigne', texte: 'Aucun inventaire pour l\'instant.' }),
+        el('h3', { texte: 'Mise en page' }),
+        el('div', { classe: 'imp-reglages' }, orientation,
+          reglage('Marges (mm)', 'marge', { min: '0', max: '30', step: '0.5' }),
+          reglage('Espacement (mm)', 'espace', { min: '0', max: '20', step: '0.5' }),
+          el('label', { for: champCoupe, classe: 'imp-reglage-coupe' },
+            el('input', { type: 'checkbox', id: champCoupe, checked: opt.coupe, surchange: (e) => { opt.coupe = e.target.checked; ecrireJson(CLE_IMPRESSION, opt); } }), ' Traits de coupe')),
+        resume, apercu,
+        el('p', { classe: 'aide-question', texte: 'Les étiquettes sont imprimées à leur taille réelle et rangées au mieux sur la page. Dans la fenêtre d\'impression : échelle 100 % (ou « Taille réelle ») et marges « Aucune ».' }),
+        bouton)));
+    fond.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
+    document.body.append(fond);
+    document.body.classList.add('fenetre-ouverte');
+    majApercu();
+    fond.querySelector('.fenetre-fermer').focus();
   }
 
   /** Liste papier d'un contenant et de tout ce qu'il contient. */

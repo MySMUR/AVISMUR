@@ -1349,8 +1349,11 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
   body.impression-inventaire { display: block; background: #fff; }
   body.impression-inventaire > *:not(#inv-impression) { display: none !important; }
   body.impression-inventaire #inv-impression { display: block; color: #000; font-size: 11pt; }
-  .imp-etiquettes { display: flex !important; flex-wrap: wrap; align-items: flex-start; gap: 4mm; }
-  .imp-etiquette { flex: none; break-inside: avoid; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  body.impression-inventaire #inv-impression.imp-etiquettes { padding: 0; margin: 0; }
+  .imp-page { position: relative; overflow: hidden; break-after: page; page-break-after: always; }
+  .imp-page:last-child { break-after: auto; page-break-after: auto; }
+  .imp-etiquette { position: absolute; break-inside: avoid; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .imp-coupe { outline: 0.2mm dashed #8a94a3; outline-offset: var(--demi-espace, 1mm); }
   .imp-etiquette .inv-etiquette-qr { width: 100%; height: 100%; max-height: none; box-shadow: none; border-radius: 0; }
   .imp-entete { display: flex; align-items: center; gap: 6mm; margin-bottom: 5mm; padding-bottom: 3mm; border-bottom: 2px solid #000; }
   .imp-entete .inv-qr { width: 26mm; height: 26mm; border: 0; }
@@ -2460,3 +2463,20 @@ body.fenetre-ouverte .mur-publier { display: none; }
 .inv-amb-attendus { margin: 0 0 0.6rem 1.2rem; padding: 0; color: var(--gris); }
 .inv-amb-groupe { border: 1px solid var(--trait); border-radius: var(--rayon); margin: 0.4rem 0; padding: 0.3rem 0.7rem 0.5rem; display: grid; gap: 0.15rem; }
 .inv-amb-groupe legend { font-weight: 600; padding: 0 0.3rem; }
+
+/* Fenêtre d'impression des étiquettes QR */
+.imp-fenetre { max-width: 46rem; }
+.imp-groupes { display: grid; gap: 0.5rem; }
+.imp-groupe { border: 1px solid var(--ciel); border-radius: 12px; padding: 0.4rem 0.7rem; }
+.imp-groupe summary { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer; min-height: 2.4rem; }
+.imp-groupe ul { list-style: none; margin: 0.3rem 0 0.4rem; padding: 0; }
+.imp-choix { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; border-top: 1px solid #eef2f7; }
+.imp-choix label { flex: 1; min-width: 0; }
+.imp-choix small { display: block; color: var(--gris); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp-format { color: var(--gris); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.imp-qte { width: 3.6rem; }
+.imp-reglages { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.6rem 1rem; margin-bottom: 0.6rem; }
+.imp-reglage { margin: 0; }
+.imp-reglage-coupe { display: flex; align-items: center; gap: 0.3rem; min-height: 2.4rem; }
+.imp-apercu { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 0.6rem; }
+.imp-apercu-page { width: 7.5rem; height: auto; box-shadow: 0 1px 4px rgba(19, 41, 75, .18); }
