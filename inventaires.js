@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 21;
+  const VERSION_SERVEUR = 22;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -80,7 +80,8 @@ const Inventaires = (() => {
     try { if (contexte.primaire) localStorage.setItem(CLE_CONTEXTE, JSON.stringify({ primaire: contexte.primaire, t: Date.now() })); } catch (e) { /* stockage indisponible */ }
   }
   let dernierAffiche = null;
-  let pile = []; // inventaires ouverts à la suite : remonter d'un niveau revient en arrière dans l'historique du téléphone
+  let pile = [];
+  const positionsDefilement = new Map(); // inventaire → défilement de la page quand on l'a quitté // inventaires ouverts à la suite : remonter d'un niveau revient en arrière dans l'historique du téléphone
   const synchro = { enCours: false, encore: false, texte: '', classe: '', serveurInconnu: false, photos: '' };
 
   // ---------- Outils ----------
@@ -180,8 +181,9 @@ const Inventaires = (() => {
       points: Array.isArray(c.points) ? c.points : [], articles: Array.isArray(c.articles) ? c.articles : [],
       // Vues supplémentaires (tout contenant : pièce, cellule sanitaire, sac vu sous plusieurs angles…).
       // La photo principale (`photo`, `points`, nom `nomVue`) est la vue 1.
-      vues: Array.isArray(c.vues) ? c.vues.map((v) => ({ id: v.id, nom: v.nom || '', photo: v.photo || '', points: Array.isArray(v.points) ? v.points : [] })) : [],
+      vues: Array.isArray(c.vues) ? c.vues.map((v) => ({ id: v.id, nom: v.nom || '', photo: v.photo || '', points: Array.isArray(v.points) ? v.points : [], fleches: flechesPropres(v.fleches) })) : [],
       nomVue: c.nomVue || '',
+      fleches: flechesPropres(c.fleches), // flèches de la vue principale vers les autres vues
       scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
       categorie: CATEGORIES_CONTENANT[c.categorie] ? c.categorie : '', // primaire, immobile ou mobile
       // Étiquette QR : largeur × hauteur imprimées (mm) et logo central (puce NFC au dos, croix SMUR ou aucun).
@@ -229,10 +231,24 @@ const Inventaires = (() => {
   };
 
   // ---------- Vues (photos) d'un contenant ----------
+  /**
+   * Flèches posées sur une vue : rond transparent qui mène à une autre vue du même contenant
+   * (tiroir fermé → ouvert, côté gauche → côté droit…). `vers` : clé de la vue ('' = vue principale),
+   * `angle` : direction de la flèche en degrés (0 = vers la droite, par pas de 45).
+   */
+  function flechesPropres(liste) {
+    return (Array.isArray(liste) ? liste : []).map((f) => {
+      const x = Number(f && f.x); const y = Number(f && f.y);
+      if (!f || typeof f.vers !== 'string' || !(x >= 0 && x <= 1) || !(y >= 0 && y <= 1)) return null;
+      const a = ((Math.round((Number(f.angle) || 0) / 45) * 45) % 360 + 360) % 360;
+      return { vers: f.vers, x, y, ...(a ? { angle: a } : {}) };
+    }).filter(Boolean);
+  }
+  const sigFleche = (f) => ({ vers: f.vers, x: f.x, y: f.y, ...(f.angle ? { angle: f.angle } : {}) });
   /** Toutes les vues : la principale (clé '') puis les supplémentaires. */
   function vuesDe(c) {
-    return [{ cle: '', nom: c.nomVue || 'Vue 1', photo: c.photo, points: c.points },
-      ...c.vues.map((v, i) => ({ cle: v.id, nom: v.nom || `Vue ${i + 2}`, photo: v.photo, points: v.points }))];
+    return [{ cle: '', nom: c.nomVue || 'Vue 1', photo: c.photo, points: c.points, fleches: c.fleches || [] },
+      ...c.vues.map((v, i) => ({ cle: v.id, nom: v.nom || `Vue ${i + 2}`, photo: v.photo, points: v.points, fleches: v.fleches || [] }))];
   }
   /** Écrit dans une vue (principale : champs du contenant). */
   function majVue(c, cle, champs) {
@@ -240,6 +256,7 @@ const Inventaires = (() => {
       if ('photo' in champs) c.photo = champs.photo;
       if ('points' in champs) c.points = champs.points;
       if ('nom' in champs) c.nomVue = champs.nom;
+      if ('fleches' in champs) c.fleches = champs.fleches;
     } else {
       const v = c.vues.find((x) => x.id === cle);
       if (v) Object.assign(v, champs);
@@ -255,10 +272,14 @@ const Inventaires = (() => {
     if (i === -1) return;
     c.vues.forEach((x, j) => { if (!x.nom) x.nom = `Vue ${j + 2}`; }); // chaque vue garde le nom affiché
     const v = c.vues[i];
-    const ancienne = { id: v.id, nom: c.nomVue || 'Vue 1', photo: c.photo, points: c.points };
-    c.photo = v.photo; c.points = v.points; c.nomVue = v.nom || `Vue ${i + 2}`;
+    const ancienne = { id: v.id, nom: c.nomVue || 'Vue 1', photo: c.photo, points: c.points, fleches: c.fleches || [] };
+    c.photo = v.photo; c.points = v.points; c.fleches = v.fleches || []; c.nomVue = v.nom || `Vue ${i + 2}`;
     c.vues.splice(i, 1);
     c.vues.unshift(ancienne);
+    // Les flèches suivent : la vue promue prend la clé '', l'ancienne principale prend la sienne.
+    const echange = (f) => ({ ...f, vers: f.vers === v.id ? '' : (f.vers === '' ? v.id : f.vers) });
+    c.fleches = c.fleches.map(echange);
+    c.vues.forEach((x) => { x.fleches = (x.fleches || []).map(echange); });
   }
   const vueActive = new Map(); // contenant → clé de la vue affichée
   function vueCourante(c) {
@@ -1578,6 +1599,126 @@ const Inventaires = (() => {
   }
 
   // ----- Un contenant -----
+  let flecheChoisie = ''; // « cléVue#rang » de la flèche sélectionnée en gestion
+  const photosIndisponibles = new Set(); // photos non chargées (hors ligne) : la liste de secours s'affiche
+  const DELAI_DEZOOM = 3000; // sans geste pendant 3 s, la photo reprend sa taille
+
+  /**
+   * Zoom de la photo seule (pincer à deux doigts, Ctrl + molette ou double-clic à la souris), déplacement
+   * à un doigt une fois zoomé. Les gommettes gardent leur taille. Retour à la taille normale après 3 s sans geste.
+   */
+  function rendreZoomable(cadre, scene) {
+    let z = 1; let tx = 0; let ty = 0;
+    const doigts = new Map();
+    let depart = null; // état au début du geste en cours
+    let bouge = false;
+    let minuterie = 0;
+    const appliquer = (anime) => {
+      scene.style.transition = anime ? 'transform .3s ease' : 'none';
+      scene.style.transform = z === 1 ? '' : `translate(${tx}px, ${ty}px) scale(${z})`;
+      scene.style.setProperty('--dezoom', String(1 / z));
+      cadre.classList.toggle('zoome', z > 1);
+    };
+    const borner = () => {
+      z = Math.min(5, Math.max(1, z));
+      const l = cadre.clientWidth; const h = cadre.clientHeight;
+      tx = Math.min(0, Math.max(l - l * z, tx));
+      ty = Math.min(0, Math.max(h - h * z, ty));
+    };
+    const reinitialiser = () => { clearTimeout(minuterie); z = 1; tx = 0; ty = 0; appliquer(true); };
+    const relancer = () => {
+      clearTimeout(minuterie);
+      if (z > 1) minuterie = setTimeout(() => { if (doigts.size) relancer(); else reinitialiser(); }, DELAI_DEZOOM);
+    };
+    const local = (x, y) => { const r = cadre.getBoundingClientRect(); return { x: x - r.left, y: y - r.top }; };
+    /** Zoom vers le facteur `nz` autour du point (cx, cy) du cadre. */
+    const zoomerVers = (nz, cx, cy) => {
+      const k = Math.min(5, Math.max(1, nz)) / z;
+      tx = cx - (cx - tx) * k; ty = cy - (cy - ty) * k; z *= k;
+      borner(); appliquer(false); relancer();
+    };
+    const commencer = () => {
+      const pts = [...doigts.values()];
+      if (pts.length >= 2) {
+        const [a, b] = pts;
+        depart = { z, tx, ty, d: Math.hypot(a.x - b.x, a.y - b.y) || 1, m: local((a.x + b.x) / 2, (a.y + b.y) / 2) };
+      } else if (pts.length === 1) depart = { z, tx, ty, p: { ...pts[0] } };
+      else depart = null;
+    };
+    const libre = (e) => edition && e.target.closest && e.target.closest('button.inv-point');
+    cadre.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' || libre(e)) return;
+      if (!doigts.size) bouge = false;
+      doigts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      commencer();
+      clearTimeout(minuterie);
+    });
+    cadre.addEventListener('pointermove', (e) => {
+      if (!doigts.has(e.pointerId) || !depart) return;
+      doigts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const pts = [...doigts.values()];
+      if (pts.length >= 2 && depart.d) {
+        const [a, b] = pts;
+        const nz = Math.min(5, Math.max(1, depart.z * (Math.hypot(a.x - b.x, a.y - b.y) / depart.d)));
+        const m = local((a.x + b.x) / 2, (a.y + b.y) / 2);
+        // Le point de la photo sous le milieu des doigts au départ reste sous leur milieu.
+        z = nz;
+        tx = m.x - (depart.m.x - depart.tx) * (nz / depart.z);
+        ty = m.y - (depart.m.y - depart.ty) * (nz / depart.z);
+        bouge = true;
+        borner(); appliquer(false);
+      } else if (pts.length === 1 && depart.p && z > 1) {
+        const dx = pts[0].x - depart.p.x; const dy = pts[0].y - depart.p.y;
+        if (Math.abs(dx) + Math.abs(dy) > 6) bouge = true;
+        tx = depart.tx + dx; ty = depart.ty + dy;
+        borner(); appliquer(false);
+      }
+    });
+    const lever = (e) => {
+      if (!doigts.delete(e.pointerId)) return;
+      commencer();
+      if (z < 1.05) reinitialiser(); else relancer();
+    };
+    cadre.addEventListener('pointerup', lever);
+    cadre.addEventListener('pointercancel', lever);
+    // Après un pincement ou un déplacement, le doigt levé n'ouvre pas la gommette qu'il touche.
+    cadre.addEventListener('click', (e) => { if (bouge) { e.preventDefault(); e.stopPropagation(); bouge = false; } }, true);
+    cadre.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey) return; // molette seule : la page défile normalement
+      e.preventDefault();
+      const p = local(e.clientX, e.clientY);
+      zoomerVers(z * Math.exp(-e.deltaY / 200), p.x, p.y);
+    }, { passive: false });
+    cadre.addEventListener('dblclick', (e) => {
+      const p = local(e.clientX, e.clientY);
+      if (z > 1) reinitialiser(); else zoomerVers(2.5, p.x, p.y);
+    });
+  }
+
+  /** Gestion : ajouter une flèche sur la vue, choisir sa destination, l'orienter, la déplacer, la retirer. */
+  function reglagesFleches(c, vc, vues) {
+    const n = flecheChoisie.startsWith(`${vc.cle}#`) ? Number(flecheChoisie.split('#')[1]) : -1;
+    const f = vc.fleches[n];
+    const ecrire = (liste) => { majVue(c, vc.cle, { fleches: liste }); marquer(c.id); rendre({ garderPosition: true }); };
+    const ajouter = el('button', { type: 'button', classe: 'cfg-mini', texte: '＋ Flèche vers une vue', title: 'Placer sur la photo une flèche qui mène à une autre vue',
+      surclick: () => { placement = 'fleche:nouvelle'; flecheChoisie = ''; rendre({ garderPosition: true }); } });
+    if (!f) {
+      return el('div', { classe: 'cfg-ligne inv-reglages-fleches' }, ajouter,
+        vc.fleches.length ? el('small', { classe: 'aide-question', texte: 'Touchez une flèche pour la régler.' }) : null);
+    }
+    const idDest = idChamp();
+    const tourner = (sens) => { const l = vc.fleches.slice(); l[n] = { ...f, angle: (((f.angle || 0) + sens * 45) % 360 + 360) % 360 }; ecrire(l); };
+    return el('div', { classe: 'cfg-ligne inv-reglages-fleches' },
+      el('label', { for: idDest, texte: 'Mène à' }),
+      el('select', { id: idDest, surchange: (e) => { const l = vc.fleches.slice(); l[n] = { ...f, vers: e.target.value }; ecrire(l); } },
+        ...vues.filter((v) => v.cle !== vc.cle).map((v) => el('option', { value: v.cle, selected: v.cle === f.vers, texte: v.nom }))),
+      el('button', { type: 'button', classe: 'cfg-mini', texte: '↺', title: 'Tourner la flèche', 'aria-label': 'Tourner la flèche vers la gauche', surclick: () => tourner(-1) }),
+      el('button', { type: 'button', classe: 'cfg-mini', texte: '↻', title: 'Tourner la flèche', 'aria-label': 'Tourner la flèche vers la droite', surclick: () => tourner(1) }),
+      el('button', { type: 'button', classe: 'cfg-mini', texte: 'Déplacer', surclick: () => { placement = `fleche:${n}`; rendre({ garderPosition: true }); } }),
+      el('button', { type: 'button', classe: 'cfg-mini', texte: 'Retirer', surclick: () => { flecheChoisie = ''; ecrire(vc.fleches.filter((x, i) => i !== n)); } }),
+      ajouter);
+  }
+
   function blocPhoto(c, fils) {
     const vues = vuesDe(c);
     const vc = vueCourante(c);
@@ -1598,7 +1739,7 @@ const Inventaires = (() => {
           defaut ? '★ ' : null, v.nom, nb ? el('small', { texte: ` · ${nb}` }) : null);
         }),
         peutAjouter ? el('button', { type: 'button', classe: 'inv-onglet-vue inv-onglet-ajout', 'aria-label': 'Ajouter une vue', title: 'Ajouter une vue (autre angle)', texte: '＋ Vue', surclick: () => {
-          const v = { id: nouvelId(), nom: `Vue ${c.vues.length + 2}`, photo: '', points: [] };
+          const v = { id: nouvelId(), nom: `Vue ${c.vues.length + 2}`, photo: '', points: [], fleches: [] };
           c.vues.push(v);
           vueActive.set(c.id, v.id);
           marquer(c.id);
@@ -1609,9 +1750,16 @@ const Inventaires = (() => {
     if (vc.photo) {
       const img = el('img', { alt: `Photo : ${c.nom}${plusieurs ? ` — ${vc.nom}` : ''}` });
       const attente = el('p', { classe: 'inv-photo-attente', texte: 'Chargement de la photo…' });
-      const cadre = el('div', { classe: `inv-photo${placement ? ' placement' : ''}` }, img, attente);
+      // La scène (photo, gommettes, flèches) se zoome seule, sans zoomer la page.
+      const scene = el('div', { classe: 'inv-photo-scene' }, img);
+      const cadre = el('div', { classe: `inv-photo${placement ? ' placement' : ''}` }, scene, attente);
       const montrer = (donnees) => {
-        if (donnees) { img.src = donnees; attente.remove(); } else { attente.textContent = 'Photo pas encore disponible hors ligne : passez par la liste ci-dessous.'; cadre.classList.add('sans-image'); }
+        if (donnees) { img.src = donnees; attente.remove(); } else {
+          attente.textContent = 'Photo pas encore disponible hors ligne : passez par la liste ci-dessous.';
+          cadre.classList.add('sans-image');
+          photosIndisponibles.add(vc.photo);
+          if (zone) zone.querySelectorAll('.inv-liste-secours').forEach((x) => { x.hidden = false; });
+        }
       };
       if (Photos.enMemoire(vc.photo)) montrer(Photos.enMemoire(vc.photo));
       else obtenirPhoto(vc.photo).then(montrer);
@@ -1619,17 +1767,17 @@ const Inventaires = (() => {
       if (placement) {
         // Aperçu de la gommette qui suit la souris : on voit où elle sera posée, même sur une photo sombre.
         const rang = fils.findIndex((f) => f.id === placement);
-        const texteApercu = rang === -1 ? '' : texteGommette(c, placement, rang);
+        const texteApercu = rang === -1 ? (placement.startsWith('fleche:') ? '➜' : '') : texteGommette(c, placement, rang);
         const dejaPose = vc.points.find((p) => p.cible === placement);
         const taillesVue = [...new Set(vc.points.map(tailleGommette))];
         const tailleApercu = dejaPose ? tailleGommette(dejaPose) : taillesVue.length === 1 ? taillesVue[0] : 1;
         const apercu = el('span', { classe: `inv-point inv-apercu${classesTexte(texteApercu)}`, style: `--t:${tailleApercu}`, 'aria-hidden': 'true', texte: texteApercu, hidden: true });
-        cadre.append(apercu);
+        scene.append(apercu);
         cadre.addEventListener('pointermove', (e) => {
           if (e.pointerType !== 'mouse') return;
           const r = img.getBoundingClientRect();
           apercu.hidden = false;
-          apercu.style.left = `${((e.clientX - r.left) / r.width) * 100}%`;
+          apercu.style.left = `${((e.clientX - r.left) / r.width) * 100}%`; // rect zoomé : reste juste
           apercu.style.top = `${((e.clientY - r.top) / r.height) * 100}%`;
         });
         cadre.addEventListener('pointerleave', () => { apercu.hidden = true; });
@@ -1638,7 +1786,18 @@ const Inventaires = (() => {
         if (!placement) return;
         const r = img.getBoundingClientRect();
         const borne = (v) => Math.min(1, Math.max(0, v));
-        poserGommette(c, vc, placement, { x: borne((e.clientX - r.left) / r.width), y: borne((e.clientY - r.top) / r.height) });
+        const pos = { x: borne((e.clientX - r.left) / r.width), y: borne((e.clientY - r.top) / r.height) };
+        if (placement.startsWith('fleche:')) {
+          // Nouvelle flèche (vers la première autre vue) ou flèche déplacée.
+          const n = placement.slice(7);
+          const liste = vc.fleches.slice();
+          if (n === 'nouvelle') {
+            const autre = vues.find((v) => v.cle !== vc.cle);
+            liste.push({ vers: autre ? autre.cle : '', x: pos.x, y: pos.y });
+            flecheChoisie = `${vc.cle}#${liste.length - 1}`;
+          } else if (liste[Number(n)]) liste[Number(n)] = { ...liste[Number(n)], ...pos };
+          majVue(c, vc.cle, { fleches: liste });
+        } else poserGommette(c, vc, placement, pos);
         placement = '';
         marquer(c.id);
         rendre({ garderPosition: true });
@@ -1663,14 +1822,36 @@ const Inventaires = (() => {
             : el('a', { href: lien(p.cible), ...commun, texte: affiche });
         if (scelle) pastille.append(logoCadenas());
         if (edition) glisserPastille(pastille, img, c, vc, p.cible);
-        cadre.append(pastille);
+        scene.append(pastille);
       });
+      // Flèches vers les autres vues : un rond transparent à toucher pour changer d'angle.
+      vc.fleches.forEach((f, n) => {
+        const dest = vues.find((v) => v.cle === f.vers);
+        if (!dest && !edition) return;
+        const choisie = edition && flecheChoisie === `${vc.cle}#${n}`;
+        scene.append(el('button', {
+          type: 'button', classe: `inv-fleche${choisie ? ' choisie' : ''}${placement === `fleche:${n}` ? ' deplace' : ''}${dest ? '' : ' orpheline'}`,
+          style: `left:${f.x * 100}%;top:${f.y * 100}%;--a:${f.angle || 0}deg`,
+          'aria-label': dest ? `Aller à la vue « ${dest.nom} »` : 'Flèche sans vue de destination', title: dest ? dest.nom : 'Vue supprimée',
+          surclick: () => {
+            if (edition) { flecheChoisie = choisie ? '' : `${vc.cle}#${n}`; rendre({ garderPosition: true }); return; }
+            vueActive.set(c.id, f.vers);
+            rendre({ garderPosition: true });
+          },
+        }, el('span', { classe: 'inv-fleche-trait', 'aria-hidden': 'true', texte: '➜' })));
+      });
+      if (placement && placement.startsWith('fleche:')) {
+        bloc.append(el('p', { classe: 'inv-consigne-placement', role: 'status' }, 'Touchez la photo à l\'endroit de la flèche. ',
+          el('button', { type: 'button', classe: 'lien', texte: 'Annuler', surclick: () => { placement = ''; rendre({ garderPosition: true }); } })));
+      }
       if (placement && contenant(placement)) {
         bloc.append(el('p', { classe: 'inv-consigne-placement', role: 'status' },
           `Touchez la photo${plusieurs ? ` « ${vc.nom} »` : ''} à l'endroit de « ${contenant(placement).nom} ». `,
           el('button', { type: 'button', classe: 'lien', texte: 'Plus tard', surclick: () => { placement = ''; rendre({ garderPosition: true }); } })));
       }
       bloc.append(cadre);
+      rendreZoomable(cadre, scene);
+      if (edition && vues.length > 1) bloc.append(reglagesFleches(c, vc, vues));
       if (edition && vc.points.length) {
         const tailles = vc.points.map(tailleGommette);
         const tMin = Math.min(...tailles); const tMax = Math.max(...tailles);
@@ -1703,6 +1884,7 @@ const Inventaires = (() => {
               if (!n) { perdus += 1; return null; }
               return { ...p, x: n.x, y: n.y };
             }).filter(Boolean);
+            champs.fleches = vc.fleches.map((f) => { const n = res.transformer(f.x, f.y); return n ? { ...f, x: n.x, y: n.y } : null; }).filter(Boolean);
           }
           majVue(c, vc.cle, champs);
           marquer(c.id);
@@ -1732,7 +1914,7 @@ const Inventaires = (() => {
         el('label', { for: choisir, classe: 'bouton-photo', texte: 'Choisir une image' }),
         el('input', { type: 'file', id: choisir, accept: 'image/*', classe: 'invisible', surchange: recevoir }),
         vc.photo ? el('button', { type: 'button', classe: 'bouton-photo', texte: '✂ Recadrer', surclick: recadrerActuelle }) : null,
-        vc.photo && !vc.cle ? el('button', { type: 'button', classe: 'lien danger', texte: 'Retirer la photo', surclick: () => { majVue(c, '', { photo: '', points: [] }); marquer(c.id); rendre({ garderPosition: true }); } }) : null,
+        vc.photo && !vc.cle ? el('button', { type: 'button', classe: 'lien danger', texte: 'Retirer la photo', surclick: () => { majVue(c, '', { photo: '', points: [], fleches: [] }); marquer(c.id); rendre({ garderPosition: true }); } }) : null,
         vc.cle ? el('button', { type: 'button', classe: 'bouton-photo', texte: '★ Afficher en premier', title: 'Cette vue s\'ouvrira par défaut', surclick: () => {
           definirVueParDefaut(c, vc.cle);
           vueActive.set(c.id, '');
@@ -1744,6 +1926,7 @@ const Inventaires = (() => {
           if (confirmer !== `vue-${vc.cle}`) { confirmer = `vue-${vc.cle}`; rendre({ garderPosition: true }); return; }
           confirmer = '';
           c.vues = c.vues.filter((v) => v.id !== vc.cle);
+          vuesDe(c).forEach((v) => majVue(c, v.cle, { fleches: v.fleches.filter((f) => f.vers !== vc.cle) }));
           vueActive.delete(c.id);
           marquer(c.id);
           rendre({ garderPosition: true });
@@ -1789,8 +1972,22 @@ const Inventaires = (() => {
 
   function blocEnfants(c, fils) {
     if (!fils.length && !edition) return null;
+    // Check-list : on ouvre un sous-inventaire en touchant sa gommette sur la photo (ou par QR / NFC).
+    // Ne restent en liste que ceux qui n'ont de gommette sur aucune photo ; la liste complète
+    // ne réapparaît que si une photo ne peut pas s'afficher (hors ligne).
+    let secours = false;
+    let montres = fils;
+    if (!edition) {
+      const avecPhoto = vuesDe(c).filter((v) => v.photo);
+      const places = new Set(avecPhoto.flatMap((v) => v.points.map((p) => p.cible)));
+      if (avecPhoto.length) {
+        montres = fils.filter((f) => !places.has(f.id));
+        secours = montres.length < fils.length;
+      }
+    }
     const liste = el('ul', { classe: 'inv-liste' });
     fils.forEach((f, i) => {
+      if (!montres.includes(f)) return;
       const li = el('li', { 'data-cle': f.id }, carte(f, i + 1, texteGommette(c, f.id, i)));
       if (edition) {
         const vc = vueCourante(c);
@@ -1824,7 +2021,14 @@ const Inventaires = (() => {
       }
       liste.append(li);
     });
-    if (!edition) return el('section', { classe: 'inv-section' }, el('h2', { texte: 'Sous-inventaires' }), liste);
+    if (!edition) {
+      const surPhoto = fils.filter((f) => !montres.includes(f));
+      const indispo = vuesDe(c).some((v) => v.photo && photosIndisponibles.has(v.photo));
+      const listeSecours = secours ? el('section', { classe: 'inv-section inv-liste-secours', hidden: !indispo },
+        el('h2', { texte: 'Sous-inventaires' }),
+        el('ul', { classe: 'inv-liste' }, ...surPhoto.map((f) => el('li', { 'data-cle': f.id }, carte(f, fils.indexOf(f) + 1, texteGommette(c, f.id, fils.indexOf(f))))))) : null;
+      return [montres.length ? el('section', { classe: 'inv-section' }, el('h2', { texte: secours ? 'Hors photo' : 'Sous-inventaires' }), liste) : null, listeSecours];
+    }
     liste.classList.add('inv-liste-triable');
     triable(liste, (cles) => {
       cles.forEach((id, rang) => { const x = contenant(id); if (x && x.ordre !== rang) { x.ordre = rang; marquer(x.id); } });
@@ -3512,9 +3716,9 @@ const Inventaires = (() => {
     return {
       nom: m.nom, ordre: m.ordre, photo: m.photo, scellable: m.scellable, categorie: m.categorie, etiquette: m.etiquette,
       clAmbulancier: m.clAmbulancier, clElements: m.clElements,
-      points: m.points.map(sigPoint),
+      points: [...m.points.map(sigPoint), ...(m.fleches || []).map(sigFleche)],
       nomVue: m.nomVue,
-      vues: m.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map(sigPoint) })),
+      vues: m.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: [...v.points.map(sigPoint), ...(v.fleches || []).map(sigFleche)] })),
       articles: m.articles.map((a) => ({ id: a.id, ...sigArticle(a), ...(a.ref ? { refNom: a.nom } : {}) })),
       enfants: enfants(m.id).map((x) => x.id),
     };
@@ -3525,9 +3729,9 @@ const Inventaires = (() => {
     return {
       nom: e.nom, ordre: e.ordre, photo: e.photo, scellable: e.scellable, categorie: e.categorie, etiquette: e.etiquette,
       clAmbulancier: e.clAmbulancier, clElements: e.clElements,
-      points: e.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })),
+      points: [...e.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })), ...(e.fleches || []).map(sigFleche)],
       nomVue: e.nomVue,
-      vues: e.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: v.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })) })),
+      vues: e.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: [...v.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })), ...(v.fleches || []).map(sigFleche)] })),
       articles: e.articles.map((a) => ({ id: a.id, ...sigArticle(a) })),
       enfants: enfants(e.id).filter((x) => !(contenant(x.source) || {}).modele).map((x) => x.source).filter(Boolean),
     };
@@ -3728,6 +3932,7 @@ const Inventaires = (() => {
     const pointsConflit = !forcer && !egal(vueExemplaire(e).points, base.points) && !egal(vueExemplaire(e).points, nm.points);
     if (forcer || egal(vueExemplaire(e).points, base.points) || (pointsConflit && decider(e, 'points', 'Gommettes de la photo (position ou texte) modifiées ici'))) {
       e.points = m.points.map((p) => { const id = versExemplaire(p.cible); return id ? { ...p, cible: id } : null; }).filter(Boolean);
+      e.fleches = copieProfonde(m.fleches || []);
     } else if (pointsConflit) bilanR.conserves += 1;
     // Vues supplémentaires : comme les points, l'ensemble suit le modèle tant que le sac ne les a pas modifiées.
     const vuesConflit = !forcer && !egal(vueExemplaire(e).vues, base.vues || []) && !egal(vueExemplaire(e).vues, nm.vues);
@@ -4110,6 +4315,7 @@ const Inventaires = (() => {
     const modele = dansUnModele(c.id);
     const verification = c.emplacement || questionScelle || edition || modele || (c.clAmbulancier && !aCocher(c).length) ? null
       : (consultation ? blocConsultation(c) : blocVerification(c));
+    const listeAvant = Boolean(verification) && !consultation && !v && vuesDe(c).some((x) => x.photo);
     return [
       barreContenant(c, { h1: !edition }),
       bandeauGestion(),
@@ -4152,10 +4358,13 @@ const Inventaires = (() => {
       edition || modele ? null : el('p', { classe: `inv-statut ${b.classe}` },
         el('strong', { texte: `${b.complet ? '✓ ' : ''}${b.texte}` }),
         el('span', { classe: 'inv-badges' }, ...badges(b))),
+      // Photo de navigation ET éléments à cocher : la liste passe avant la photo tant que
+      // l'inventaire n'est pas validé (pour ne pas l'oublier), puis redescend sous la photo.
+      ...(listeAvant ? [].concat(verification) : []),
       questionScelle ? null : blocPhoto(c, fils),
-      questionScelle ? null : blocEnfants(c, fils),
+      ...(questionScelle ? [] : [].concat(blocEnfants(c, fils))),
       c.emplacement || questionScelle ? null : (edition ? blocArticles(c) : (modele ? blocContenuModele(c) : null)),
-      ...(verification ? [].concat(verification) : []),
+      ...(verification && !listeAvant ? [].concat(verification) : []),
       !edition && !aCocher(c).length && !fils.length ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : menu > Administration > Gestion des inventaires pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
       !edition && (!aCocher(c).length || consultation) ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
       edition ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
@@ -4245,8 +4454,11 @@ const Inventaires = (() => {
       else if (c && !contexte.consultation && !dansUnMobile(c)) { const p = primaireDe(c.id); if (p) fixerContexte(p.id, false); }
     }
     const nouveau = dernierAffiche !== id;
+    let retourArriere = false;
+    if (nouveau && dernierAffiche !== null) positionsDefilement.set(dernierAffiche, window.scrollY);
     dernierAffiche = id;
     if (nouveau) {
+      retourArriere = pile.length > 1 && pile[pile.length - 2] === id;
       identification = '';
       typeChoisi = '';
       placement = '';
@@ -4298,8 +4510,19 @@ const Inventaires = (() => {
       try { vue = localStorage.getItem(CLE_ASTUCE) === '1'; if (!vue) localStorage.setItem(CLE_ASTUCE, '1'); } catch (e) { /* stockage indisponible */ }
       if (!vue) alerteBreve('Astuce : maintenez la flèche ← pour remonter de plusieurs étages d\'un coup.');
     }
+    // Sous-inventaire ouvert depuis la photo : il arrive en plein écran ; au retour, le parent
+    // réapparaît à l'endroit où on l'avait laissé (même vue, même défilement).
+    if (nouveau && c && !gestion) {
+      zone.classList.remove('inv-entree', 'inv-sortie');
+      void zone.offsetWidth; // relance l'animation
+      zone.classList.add(retourArriere ? 'inv-sortie' : 'inv-entree');
+    }
     if (focus && zone.querySelector(focus)) zone.querySelector(focus).focus();
-    else if (nouveau && !garderPosition) {
+    else if (nouveau && retourArriere && positionsDefilement.has(id)) {
+      window.scrollTo(0, positionsDefilement.get(id));
+      const titre = zone.querySelector('h1, #inv-nom');
+      if (titre) titre.focus({ preventScroll: true });
+    } else if (nouveau && !garderPosition) {
       const titre = zone.querySelector('h1, #inv-nom');
       zone.scrollIntoView({ block: 'start' });
       if (titre) titre.focus({ preventScroll: true });

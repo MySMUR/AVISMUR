@@ -1235,7 +1235,7 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .inv-point.scelle .inv-tb-cadenas { width: calc(1.35rem * var(--t, 1)); height: calc(1.35rem * var(--t, 1)); }
 .inv-taille-gommettes { align-items: center; gap: 0.4rem; margin: 0.4rem 0; font-size: 0.9rem; }
 .inv-taille-valeur { min-width: 3.2rem; text-align: center; font-variant-numeric: tabular-nums; font-size: 0.85rem; color: var(--gris); }
-.inv-point:hover, .inv-point:focus-visible { transform: translate(-50%, -50%) scale(1.12); }
+.inv-point:hover, .inv-point:focus-visible { transform: translate(-50%, -50%) scale(calc(1.12 * var(--dezoom, 1))); }
 .inv-point.deplace { background: var(--orange); animation: inv-battement 1s ease-in-out infinite alternate; }
 @keyframes inv-battement { to { box-shadow: 0 0 0 10px rgb(224 122 18 / 0.35); } }
 .inv-photo.placement img {
@@ -2541,3 +2541,37 @@ body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color:
 .mat-detail .mat-infos { margin: 0 0 0.5rem; }
 .mat-detail-histo { margin: 0.2rem 0 0.6rem; padding-left: 1.1rem; font-size: 0.9rem; }
 @media (max-width: 560px) { .mat-detail { margin-left: 0; } }
+
+
+/* Photo de navigation : zoom de la photo seule (pincer), gommettes à taille constante */
+.inv-photo { touch-action: pan-y; }
+.inv-photo.zoome { touch-action: none; }
+.inv-photo-scene { position: relative; transform-origin: 0 0; will-change: transform; }
+.inv-photo-scene .inv-point { transform: translate(-50%, -50%) scale(var(--dezoom, 1)); }
+.inv-photo-scene .inv-point.saisie { transform: translate(-50%, -50%) scale(calc(1.35 * var(--dezoom, 1))); }
+.inv-photo.sans-image .inv-fleche { display: none; }
+
+/* Flèches vers une autre vue : rond transparent, flèche orientée */
+.inv-fleche {
+  position: absolute; transform: translate(-50%, -50%) scale(var(--dezoom, 1)); z-index: 2;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer;
+  width: 3.4rem; height: 3.4rem; border-radius: 50%;
+  background: rgb(255 255 255 / 0.28); border: 2.5px solid rgb(255 255 255 / 0.9);
+  box-shadow: 0 1px 6px rgb(0 0 0 / 0.35); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.inv-fleche-trait { display: block; font-size: 1.9rem; line-height: 1; color: #fff; text-shadow: 0 1px 3px rgb(0 0 0 / 0.7); transform: rotate(var(--a, 0deg)); }
+.inv-fleche:hover, .inv-fleche:focus-visible { background: rgb(255 255 255 / 0.45); }
+.inv-fleche.choisie { border-color: var(--orange); box-shadow: 0 0 0 4px rgb(224 122 18 / 0.45); }
+.inv-fleche.deplace { animation: inv-battement 1s ease-in-out infinite alternate; }
+.inv-fleche.orpheline { border-style: dashed; opacity: 0.6; }
+.inv-reglages-fleches { align-items: center; gap: 0.4rem; flex-wrap: wrap; margin: 0.4rem 0; font-size: 0.9rem; }
+
+/* Sous-inventaire ouvert depuis la photo : arrive en plein écran, le parent revient au retour */
+@keyframes inv-entree { from { opacity: 0; transform: translateX(14%); } to { opacity: 1; transform: none; } }
+@keyframes inv-sortie { from { opacity: 0; transform: translateX(-10%); } to { opacity: 1; transform: none; } }
+.inv-entree > .inv-mise-en-page { animation: inv-entree .22s ease-out; }
+.inv-sortie > .inv-mise-en-page { animation: inv-sortie .22s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .inv-entree > .inv-mise-en-page, .inv-sortie > .inv-mise-en-page { animation: none; }
+  .inv-fleche.deplace { animation: none; }
+}
