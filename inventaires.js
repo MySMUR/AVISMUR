@@ -3860,7 +3860,10 @@ const Inventaires = (() => {
       c.id !== m.id ? el('p', { classe: 'aide-question' }, 'Ce sous-inventaire fait partie de l\'inventaire type ', el('a', { href: lien(m.id), texte: m.nom }), '.') : null,
       el('p', { classe: 'aide-question', texte: 'Les modifications du type ne partent pas toutes seules : appuyez sur « Répercuter ». Tout est répercuté (photos, gommettes, sous-inventaires, articles) ; si un sac a une personnalisation contraire, on vous demande s\'il faut l\'écraser.' }),
       exemplaires.length ? liste : el('p', { texte: 'Aucun exemplaire pour l\'instant.' }),
-      exemplaires.length ? el('div', { classe: 'cfg-actions' }, boutonRepercuter) : null,
+      exemplaires.length ? el('div', { classe: 'cfg-actions' }, boutonRepercuter,
+        // Étiquettes QR de tous les exemplaires et de ce qu'ils contiennent (pré-cochées, modifiables dans la fenêtre).
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: `Imprimer les étiquettes QR des exemplaires (${etiquettesExemplaires(exemplaires).length})…`,
+          surclick: () => imprimerEtiquettes(etiquettesExemplaires(exemplaires)) })) : null,
       resultat,
       c.id === m.id ? el('div', { classe: 'cfg-ligne inv-creer-exemplaires' }, el('label', { for: champNb, texte: 'Créer des exemplaires :' }), nb, creer) : null);
   }
@@ -4655,6 +4658,12 @@ const Inventaires = (() => {
       pages.push({ rangees: [{ y: 0, h: it.h, x: it.w + g }], bas: it.h + g, etiquettes: [{ ...it, x: 0, y: 0 }] });
     });
     return pages;
+  }
+
+  /** Exemplaires d'un inventaire type et tout ce qu'ils renferment, qui ont une étiquette. */
+  function etiquettesExemplaires(exemplaires) {
+    const ok = new Set(etiquetables().map((c) => c.id));
+    return exemplaires.flatMap((e) => descendants(e.id)).filter((c) => ok.has(c.id));
   }
 
   /** Fenêtre d'impression : cocher les étiquettes (par contenant primaire), nombre d'exemplaires, mise en page A4. */
