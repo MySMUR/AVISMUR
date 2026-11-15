@@ -477,8 +477,9 @@ const Inventaires = (() => {
   }
   /** Plage attendue, en clair. */
   function texteAttente(a) {
-    if (a.controle === 'scan') return a.attendu ? `attendu : ${a.attendu}` : '';
-    if (a.controle === 'materiel') return [a.typeMateriel, a.attendu ? `n° ${a.attendu}` : ''].filter(Boolean).join(' ');
+    // Check-list : le n° attendu n'est jamais dévoilé, l'agent lit ou scanne l'appareil présent.
+    if (a.controle === 'scan') return a.attendu && gestion ? `attendu : ${a.attendu}` : '';
+    if (a.controle === 'materiel') return [a.typeMateriel, a.attendu && gestion ? `n° ${a.attendu}` : ''].filter(Boolean).join(' ');
     if (a.controle === 'batterie') return `≥ ${seuilBatterie(a)}${a.echelle === '4' ? '/4' : ' %'}`;
     if (a.controle === 'oui') return '';
     const u = a.controle === 'temperature' ? ' °C' : (a.unite ? ` ${a.unite}` : '');
@@ -1028,7 +1029,7 @@ const Inventaires = (() => {
       const der = etat.verifs[c.id];
       aCocher(c).filter(estControle).forEach((a) => {
         const dv = der && der.valeurs ? der.valeurs[a.id] : undefined;
-        if (dv !== undefined && (v || a.controle === 'scan')) valeurs[a.id] = dv;
+        if (dv !== undefined && v) valeurs[a.id] = dv; // jamais la valeur de la veille : l'agent relit ou scanne
       });
       brouillons.liste[c.id] = { coches, quantites: {}, dates: {}, invalides: {}, valeurs, remarque: v ? v.remarque : '' };
     }
@@ -2725,9 +2726,9 @@ const Inventaires = (() => {
       resultats.innerHTML = '';
       const mots = cle(texte).split(' ').filter(Boolean);
       const trouves = mobiles.filter((c) => mots.every((m) => cle(c.nom).includes(m)))
-        .sort((a, b) => (memeType(b) - memeType(a)) || (Boolean(b.desaffecte) - Boolean(a.desaffecte)) || a.nom.localeCompare(b.nom, 'fr'));
-      if (!mots.length) return; // aucune suggestion avant saisie : rien ne doit trahir le contenant prévu
-      trouves.slice(0, 12).forEach((c) => {
+        .sort((a, b) => (memeType(b) - memeType(a)) || a.nom.localeCompare(b.nom, 'fr'));
+      // Avant saisie : tous les contenants du même type, par ordre alphabétique (sans mettre en avant le prévu).
+      (mots.length ? trouves : trouves.filter(memeType)).slice(0, 30).forEach((c) => {
         const ou = contenant(c.parent);
         resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => choisir(c.id) },
           el('strong', { texte: c.nom }), el('small', { classe: c.desaffecte ? 'inv-desaffecte' : '', texte: c.desaffecte ? 'désaffecté : à retrouver' : '' }))));
