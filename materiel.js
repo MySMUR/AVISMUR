@@ -694,6 +694,12 @@ const Materiel = (() => {
     choixModele.addEventListener('change', majModele);
     // Champs affichés selon les options : n° biomed, révision / périodicité, version logiciel.
     const blocBiomed = champ('N° biomed', e.numBiomed);
+    // Étiquette biomed : QR code ou code-barres lu par la caméra.
+    e.numBiomed.after(el('div', { classe: 'mat-boutons' }, boutonScan('Scanner le QR code biomed', (v) => {
+      e.numBiomed.value = v;
+      e.numBiomed.dispatchEvent(new Event('input'));
+      message.textContent = verifierDoublons([{ ...lire(), numBiomed: v }]) || '';
+    })));
     const blocPlans = el('div', { classe: 'champ mat-champ' }, el('span', { classe: 'mat-libelle', texte: 'Maintenances préventives' }), e.plans.bloc);
     const blocVersion = champ('Version logiciel', e.versionLogiciel);
     function majOptions() {
@@ -989,6 +995,68 @@ const Materiel = (() => {
     d = fenetre('Révision, intervention ou réparation', contenu, { large: true });
   }
 
+
+  // ---------- Lecture d'un QR code / code-barres (caméra) ----------
+  const scanDisponible = () => 'BarcodeDetector' in window && Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  /** Valeur utile d'un code lu : « Biomed 12345 » (puce ou étiquette MySMUR) → 12345, sinon le texte lu. */
+  function valeurCode(brut) {
+    const t = String(brut || '').trim();
+    const m = t.match(/biomed\s*:?\s*([A-Za-z0-9._\/-]+)/i);
+    return (m ? m[1] : t).slice(0, 40);
+  }
+  function boutonScan(texte, surLu) {
+    const dispo = scanDisponible();
+    return el('button', {
+      type: 'button', classe: 'cfg-bouton', texte: `📷 ${texte}`, disabled: !dispo,
+      title: dispo ? 'QR code ou code-barres de l\'étiquette' : 'Lecture impossible sur cet appareil (Chrome sur Android requis) : saisissez le numéro',
+      surclick: () => scannerCode(surLu),
+    });
+  }
+  /**
+   * Ouvre la caméra arrière et renvoie le premier QR code / code-barres lu.
+   * Écran affiché dans un <dialog> modal : il passe au-dessus de la fiche en cours d'édition.
+   */
+  async function scannerCode(surLu) {
+    const video = el('video', { playsinline: '', muted: '', autoplay: '' });
+    video.muted = true;
+    const lecture = el('p', { classe: 'lecture', role: 'status', texte: 'Ouverture de la caméra…' });
+    let flux = null;
+    let fini = false;
+    const ecran = el('dialog', { classe: 'camera mat-camera', 'aria-label': 'Scanner un code', style: 'margin:0;padding:0;border:0;width:100vw;height:100dvh;max-width:none;max-height:none' },
+      el('div', { classe: 'camera-vue' }, video, el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }),
+        el('p', { classe: 'consigne-camera consigne-qr', texte: 'Visez le QR code ou le code-barres de l\'étiquette' })),
+      lecture, el('div', { classe: 'camera-actions' }, el('button', { type: 'button', classe: 'camera-bouton secondaire', texte: 'Annuler', surclick: () => fermer() })));
+    function fermer() {
+      if (fini) return;
+      fini = true;
+      if (flux) flux.getTracks().forEach((t) => t.stop());
+      if (ecran.open) ecran.close();
+      ecran.remove();
+    }
+    ecran.addEventListener('cancel', fermer);
+    document.body.append(ecran);
+    ecran.showModal();
+    try {
+      flux = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      if (fini) { flux.getTracks().forEach((t) => t.stop()); return; }
+      video.srcObject = flux;
+      await video.play();
+      lecture.textContent = '';
+      const formats = BarcodeDetector.getSupportedFormats ? await BarcodeDetector.getSupportedFormats() : undefined;
+      const det = formats && formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
+      const boucle = async () => {
+        if (fini) return;
+        try {
+          const r = await det.detect(video);
+          if (r.length && r[0].rawValue) { const v = valeurCode(r[0].rawValue); fermer(); if (v) surLu(v); return; }
+        } catch (e) { /* image suivante */ }
+        setTimeout(boucle, 250);
+      };
+      boucle();
+    } catch (e) {
+      lecture.textContent = 'Caméra inaccessible : autorisez la caméra, ou annulez et saisissez le numéro.';
+    }
+  }
 
   // ---------- Matériels types ----------
   /** Liste des fiches types, avec le nombre d'appareils rattachés. */
