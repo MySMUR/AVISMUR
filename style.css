@@ -2494,3 +2494,14 @@ body.fenetre-ouverte .mur-publier { display: none; }
 /* Inventaire type (modèle) : fond ambré pour le distinguer d'un inventaire réel. */
 body.inv-dans-modele { background: #FFF4D6; }
 body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color: #F0CF73; }
+
+/* Suivi matériel : icône QR code dans un champ de saisie */
+.mat-champ-scan { position: relative; }
+.mat-champ-scan input { width: 100%; padding-right: 2.6rem; box-sizing: border-box; }
+.mat-scan-icone {
+  position: absolute; top: 50%; right: 0.3rem; transform: translateY(-50%);
+  width: 2rem; height: 2rem; padding: 0.25rem; border: 0; border-radius: 0.4rem;
+  background: transparent; color: inherit; cursor: pointer;
+}
+.mat-scan-icone svg { width: 100%; height: 100%; display: block; }
+.mat-scan-icone:hover, .mat-scan-icone:focus-visible { background: rgba(0, 0, 0, 0.08); }

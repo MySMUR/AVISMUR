@@ -694,12 +694,12 @@ const Materiel = (() => {
     choixModele.addEventListener('change', majModele);
     // Champs affichés selon les options : n° biomed, révision / périodicité, version logiciel.
     const blocBiomed = champ('N° biomed', e.numBiomed);
-    // Étiquette biomed : QR code ou code-barres lu par la caméra.
-    e.numBiomed.after(el('div', { classe: 'mat-boutons' }, boutonScan('Scanner le QR code biomed', (v) => {
+    // Étiquette biomed : icône QR code dans le champ (QR code ou code-barres lu par la caméra).
+    champAvecScan(e.numBiomed, 'Scanner le QR code biomed', (v) => {
       e.numBiomed.value = v;
       e.numBiomed.dispatchEvent(new Event('input'));
       message.textContent = verifierDoublons([{ ...lire(), numBiomed: v }]) || '';
-    })));
+    });
     const blocPlans = el('div', { classe: 'champ mat-champ' }, el('span', { classe: 'mat-libelle', texte: 'Maintenances préventives' }), e.plans.bloc);
     const blocVersion = champ('Version logiciel', e.versionLogiciel);
     function majOptions() {
@@ -1004,13 +1004,15 @@ const Materiel = (() => {
     const m = t.match(/biomed\s*:?\s*([A-Za-z0-9._\/-]+)/i);
     return (m ? m[1] : t).slice(0, 40);
   }
-  function boutonScan(texte, surLu) {
-    const dispo = scanDisponible();
-    return el('button', {
-      type: 'button', classe: 'cfg-bouton', texte: `📷 ${texte}`, disabled: !dispo,
-      title: dispo ? 'QR code ou code-barres de l\'étiquette' : 'Lecture impossible sur cet appareil (Chrome sur Android requis) : saisissez le numéro',
-      surclick: () => scannerCode(surLu),
-    });
+  const ICONE_QR = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="8" height="8" rx="1.5"/><rect x="14" y="2" width="8" height="8" rx="1.5"/><rect x="2" y="14" width="8" height="8" rx="1.5"/></g><g fill="currentColor"><rect x="5" y="5" width="2" height="2"/><rect x="17" y="5" width="2" height="2"/><rect x="5" y="17" width="2" height="2"/><rect x="14" y="14" width="3" height="3"/><rect x="19" y="14" width="3" height="3"/><rect x="14" y="19" width="3" height="3"/><rect x="19" y="19" width="3" height="3"/></g></svg>';
+  /** Place une icône QR code à droite, dans le champ ; elle ouvre la caméra (masquée si la lecture est impossible). */
+  function champAvecScan(entree, libelle, surLu) {
+    if (!scanDisponible()) return;
+    const bouton = el('button', { type: 'button', classe: 'mat-scan-icone', 'aria-label': libelle, title: libelle, surclick: () => scannerCode(surLu) });
+    bouton.innerHTML = ICONE_QR;
+    const enveloppe = el('div', { classe: 'mat-champ-scan' });
+    entree.replaceWith(enveloppe);
+    enveloppe.append(entree, bouton);
   }
   /**
    * Ouvre la caméra arrière et renvoie le premier QR code / code-barres lu.
