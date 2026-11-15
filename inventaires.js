@@ -1853,6 +1853,7 @@ const Inventaires = (() => {
             ? el('button', { type: 'button', ...commun, 'aria-haspopup': 'dialog', texte: affiche, surclick: () => voirOxygene(fils[rang]) })
             : el('a', { href: lien(p.cible), ...commun, texte: affiche });
         if (scelle) pastille.append(logoCadenas());
+        if (!edition) { const pe = badgePeremption(b); if (pe) pastille.append(pe); }
         if (edition) glisserPastille(pastille, img, c, vc, p.cible);
         scene.append(pastille);
       });
@@ -2840,6 +2841,24 @@ const Inventaires = (() => {
   // Un contrôle « scan » (n° d'appareil scanné : puce MySMUR, étiquette biomed, n° de série) désigne aussi un appareil biomédical.
   const appareilScanne = (a) => !a.separateur && estIdentifiant(a);
   const contenantBiomed = (c) => aCocher(c).some((a) => articleBiomed(a) || appareilScanne(a));
+  /**
+   * Petit badge au bord d'une gommette selon les péremptions du sous-inventaire (le plus grave seulement) :
+   * triangle rouge = date dépassée, « ! » orange = date proche, « ? » gris = date à renseigner.
+   */
+  function badgePeremption(b) {
+    const [classe, texte, titre] = b.perimes ? ['perime', '', `${pluriel(b.perimes, 'article')} périmé${b.perimes > 1 ? 's' : ''}`]
+      : b.proches ? ['proche', '!', `${pluriel(b.proches, 'péremption')} proche${b.proches > 1 ? 's' : ''}`]
+        : b.sansDate ? ['sans-date', '?', `${pluriel(b.sansDate, 'date')} à saisir`] : [];
+    if (!classe) return null;
+    const badge = el('span', { classe: `inv-point-per ${classe}`, title: titre, 'aria-label': titre, texte });
+    if (classe === 'perime') {
+      badge.append(el('svg:svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' },
+        el('svg:path', { d: 'M12 2.5 23 21.5H1Z', fill: '#c62828', stroke: '#fff', 'stroke-width': '1.6', 'stroke-linejoin': 'round' }),
+        el('svg:path', { d: 'M12 9v6', stroke: '#fff', 'stroke-width': '2.6', 'stroke-linecap': 'round' }),
+        el('svg:circle', { cx: '12', cy: '18.4', r: '1.5', fill: '#fff' })));
+    }
+    return badge;
+  }
   function logoCadenas() {
     return el('svg:svg', { viewBox: '0 0 24 24', classe: 'inv-tb-cadenas', role: 'img', 'aria-label': 'Scellé : non ouvert aujourd\'hui' },
       el('svg:title', { texte: 'Scellé : non ouvert, validé sur la base du dernier inventaire' }),

@@ -2575,3 +2575,17 @@ body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color:
   .inv-entree > .inv-mise-en-page, .inv-sortie > .inv-mise-en-page { animation: none; }
   .inv-fleche.deplace { animation: none; }
 }
+
+/* Badge de péremption au bord d'une gommette : ? gris (date à saisir), ! orange (proche), triangle rouge (périmé). */
+.inv-point .inv-point-per {
+  position: absolute; top: calc(-0.35rem * var(--t, 1)); right: calc(-0.35rem * var(--t, 1));
+  width: calc(0.95rem * var(--t, 1)); height: calc(0.95rem * var(--t, 1));
+  border-radius: 50%; border: 1.5px solid #fff; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center;
+  font: 700 calc(0.62rem * var(--t, 1)) / 1 system-ui, sans-serif; color: #fff;
+  pointer-events: none; box-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+}
+.inv-point .inv-point-per.sans-date { background: #8a8f98; }
+.inv-point .inv-point-per.proche { background: #ef8a00; }
+.inv-point .inv-point-per.perime { background: none; border: 0; box-shadow: none; width: calc(1.1rem * var(--t, 1)); height: calc(1.1rem * var(--t, 1)); }
+.inv-point .inv-point-per.perime svg { width: 100%; height: 100%; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .35)); }
