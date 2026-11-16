@@ -377,6 +377,7 @@ const Profil = (() => {
         bouton),
       test,
       aide ? el('p', { classe: 'pro-aide', texte: aide }) : null,
+      etatNotif === 'actif' ? aideAffichage() : null,
       autres.length ? el('div', { classe: 'pro-appareils' },
         el('h3', { texte: 'Vos autres appareils recevant les notifications' }),
         el('ul', {}, autres.map((n) => el('li', {},
@@ -393,6 +394,37 @@ const Profil = (() => {
             },
           }))))) : null,
       zoneMessage('notif'));
+  }
+
+  /**
+   * Bandeau en haut de l'écran et pastille sur l'icône : c'est le téléphone qui décide, pas l'appli.
+   * Une appli web ne peut pas demander elle-même l'affichage en pop-up : on guide l'agent
+   * vers le bon réglage de son appareil.
+   */
+  function aideAffichage() {
+    const ua = navigator.userAgent;
+    const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const android = /Android/.test(ua);
+    if (!ios && !android) return null;
+    const etapes = ios ? [
+      'Ouvrez Réglages > Notifications > MySMUR.',
+      'Vérifiez que « Autoriser les notifications » est activé.',
+      'Dans « Alertes », cochez « Bannières » (style « Persistant » pour qu\'elles restent affichées jusqu\'à ce que vous les touchiez).',
+      'Activez « Pastilles » pour voir le nombre de notifications sur l\'icône.',
+      'Si rien ne s\'affiche malgré tout : vérifiez qu\'aucun mode Concentration (Ne pas déranger, Travail…) n\'est actif.',
+    ] : [
+      'Envoyez-vous une notification test (bouton ci-dessus), puis ouvrez le volet des notifications.',
+      'Appuyez longuement sur la notification MySMUR, puis sur la roue dentée (Paramètres).',
+      'Choisissez « Alerte » (ou « Par défaut » / « Priorité élevée ») plutôt que « Silencieux ».',
+      'Activez « Afficher en pop-up » (ou « Afficher sur l\'écran »). Sur certains téléphones, il faut d\'abord toucher la catégorie de notifications concernée.',
+      'Pastille avec le nombre : sur Samsung, Paramètres > Notifications > Paramètres avancés > Badges d\'icônes d\'application > « Afficher le nombre ». Sur les autres téléphones, Android affiche souvent un simple point.',
+    ];
+    return el('details', { classe: 'pro-details' },
+      el('summary', { texte: 'La notification n\'apparaît pas en haut de l\'écran ?' }),
+      el('p', { classe: 'pro-aide', texte: ios
+        ? 'Sur iPhone, l\'affichage des notifications se règle dans les réglages du téléphone :'
+        : 'Sur Android, le téléphone range par défaut les notifications des applis web dans le volet, sans bandeau. Pour qu\'elles s\'affichent en haut de l\'écran :' }),
+      el('ol', { classe: 'pro-etapes' }, etapes.map((t) => el('li', { texte: t }))));
   }
 
   /** Après activation ou désactivation : la liste du serveur change (abonnement ajouté ou retiré). */

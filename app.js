@@ -1008,6 +1008,22 @@ function stageTermine() {
   }
 })();
 
+// ---------- Pastille de l'icône ----------
+// L'appli ouverte affiche le mur d'accueil : les notifications sont considérées comme lues.
+// On remet le compteur à zéro (iPhone, ordinateur) et on retire les notifications du volet
+// (Android : c'est ce qui fait disparaître la pastille de l'icône).
+function effacerPastille() {
+  if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {});
+  if (!('caches' in window) || !('serviceWorker' in navigator)) return;
+  caches.open('mysmur-pastille').then((c) => c.put('n', new Response('0'))).catch(() => {});
+  navigator.serviceWorker.getRegistration()
+    .then((r) => (r && r.getNotifications ? r.getNotifications() : []))
+    .then((liste) => liste.forEach((n) => n.close()))
+    .catch(() => {});
+}
+effacerPastille();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') effacerPastille(); });
+
 // « Rester connecté » : l'application reste souvent ouverte en arrière-plan sur le téléphone.
 // À son retour au premier plan, si la session courte (6 h côté serveur) arrive à échéance,
 // on la renouvelle tout de suite avec le jeton d'appareil, avant la première action de l'agent.
