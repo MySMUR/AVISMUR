@@ -1452,6 +1452,7 @@ const Materiel = (() => {
       bouton.disabled = true;
       sortie.className = 'message';
       sortie.textContent = 'Approchez la puce du dos du téléphone…';
+      const cacherCible = CibleNfc.montrer();
       try {
         const nfc = new NDEFReader();
         // Une seule écriture : « overwrite » remplace tout l'ancien contenu (formatage NDEF compris si la puce est vierge).
@@ -1466,6 +1467,7 @@ const Materiel = (() => {
         sortie.className = 'message erreur';
       } finally {
         clearTimeout(minuterie);
+        cacherCible();
         bouton.disabled = false;
       }
     });
@@ -1480,7 +1482,7 @@ const Materiel = (() => {
           el('span', { texte: `${INVARIABLES[k]} : ${f[k] || '(non renseigné)'}` })))),
       el('p', { classe: 'aide-question', texte: 'Aperçu du contenu :' }), apercu, taille,
       el('p', { classe: 'aide-question', texte: 'L\'ancien contenu de la puce est effacé. Appuyez sur « Écrire », puis gardez la puce contre le dos du téléphone jusqu\'au message de confirmation (ignorez la notification « Carte NFC détectée » d\'Android).' }),
-      el('div', { classe: 'mat-boutons' }, bouton), sortie);
+      el('div', { classe: 'mat-boutons' }, bouton, disponible ? CibleNfc.lien() : null), sortie);
     fenetre(`Puce NFC · ${nomAppareil(f)}`, contenu, { large: true });
   }
 
@@ -1488,11 +1490,13 @@ const Materiel = (() => {
   async function lireNfc() {
     const sortie = el('p', { classe: 'message', role: 'status', texte: 'Approchez la puce du dos du téléphone…' });
     const arret = new AbortController();
-    const d = fenetre('Lire une puce NFC', el('div', {}, sortie));
-    d.addEventListener('close', () => arret.abort());
+    const d = fenetre('Lire une puce NFC', el('div', { classe: 'mat-nfc-lecture' }, sortie, CibleNfc.lien()));
+    const cacherCible = CibleNfc.montrer();
+    d.addEventListener('close', () => { arret.abort(); cacherCible(); });
     try {
       const lecteur = new NDEFReader();
       lecteur.addEventListener('reading', ({ message, serialNumber }) => {
+        if (CibleNfc.enReglage()) return; // puce passée pour repérer l'antenne
         const textes = [serialNumber || ''];
         message.records.forEach((r) => { try { textes.push(new TextDecoder(r.encoding || 'utf-8').decode(r.data)); } catch (e) { /* ignoré */ } });
         const tout = textes.join('\n');

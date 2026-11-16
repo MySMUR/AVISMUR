@@ -2211,10 +2211,12 @@ const Inventaires = (() => {
     let flux = null;
     let fini = false;
     const arretNfc = new AbortController();
+    const cacherCible = nfc ? CibleNfc.montrer() : () => {};
     const fermer = () => {
       if (fini) return;
       fini = true;
       arretNfc.abort();
+      cacherCible();
       if (flux) flux.getTracks().forEach((t) => t.stop());
       ecran.remove();
       document.body.classList.remove('camera-ouverte');
@@ -2233,12 +2235,14 @@ const Inventaires = (() => {
       el('div', { classe: `camera-vue${qr ? '' : ' inv-nfc-seul'}` }, qr ? video : el('div', { classe: 'inv-attente-nfc', 'aria-hidden': 'true' }, logoNfc()),
         qr ? el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }) : null,
         el('p', { classe: 'consigne-camera consigne-qr', texte: [qr ? 'Visez le QR code ou le code-barres' : '', nfc ? 'approchez la puce NFC' : ''].filter(Boolean).join(' ou ') })),
-      lecture, el('div', { classe: 'camera-actions' }, el('button', { type: 'button', classe: 'camera-bouton secondaire', texte: 'Annuler', surclick: fermer })));
+      lecture, nfc ? el('div', { classe: 'cible-nfc-lien-zone' }, CibleNfc.lien()) : null,
+      el('div', { classe: 'camera-actions' }, el('button', { type: 'button', classe: 'camera-bouton secondaire', texte: 'Annuler', surclick: fermer })));
     document.body.append(ecran);
     document.body.classList.add('camera-ouverte');
     if (nfc) {
       const lecteur = new NDEFReader();
       lecteur.addEventListener('reading', (e) => {
+        if (CibleNfc.enReglage()) return; // puce passée pour repérer l'antenne
         // Puce : premier enregistrement texte ou lien ; sinon, son n° de série (identifiant unique).
         const r = [...e.message.records].find((x) => ['text', 'url', 'absolute-url'].includes(x.recordType));
         let t = '';
@@ -3729,7 +3733,7 @@ const Inventaires = (() => {
           el('p', { classe: 'inv-url', texte: url }),
           reglages,
           el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer l\'étiquette QR…', surclick: () => imprimerEtiquettes([c]) }),
-          nfc, etatNfc)),
+          nfc, etatNfc, CibleNfc.lien())),
       el('h2', { texte: 'Autres actions' }),
       el('div', { classe: 'cfg-actions' },
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Dupliquer (avec son contenu)', surclick: () => dupliquer(c) }),
@@ -4500,6 +4504,7 @@ const Inventaires = (() => {
     if (nfcDispo) {
       const lecteur = new NDEFReader();
       lecteur.addEventListener('reading', (e) => {
+        if (CibleNfc.enReglage()) return; // puce passée pour repérer l'antenne
         const recs = [...e.message.records];
         const dec = (x) => { try { return new TextDecoder(x.encoding || 'utf-8').decode(x.data); } catch (err) { return ''; } };
         const r = recs.find((x) => ['text', 'url', 'absolute-url'].includes(x.recordType));
@@ -4563,14 +4568,16 @@ const Inventaires = (() => {
         champ,
         el('button', { type: 'submit', classe: 'inv-vrac-outil', 'aria-label': 'Ajouter ce numéro', texte: '+' }),
         el('button', { type: 'button', classe: 'inv-vrac-outil inv-vrac-bouton-liste', texte: 'Liste', surclick: choisirDansListe })),
-      lecture, resume, boutonReprise, liste,
+      lecture, nfcDispo ? el('div', { classe: 'cible-nfc-lien-zone' }, CibleNfc.lien()) : null, resume, boutonReprise, liste,
       el('div', { classe: 'camera-actions' }, fermerBouton, terminer));
+    const cacherCible = nfcDispo ? CibleNfc.montrer() : () => {};
     const fermer = () => {
       if (fini) return;
       fini = true;
       clearTimeout(finRafale);
       arreterCamera();
       arretNfc.abort();
+      cacherCible();
       ecran.remove();
       document.body.classList.remove('camera-ouverte');
     };
@@ -5314,6 +5321,7 @@ const Inventaires = (() => {
     const minuterie = setTimeout(() => delai.abort(), 30000);
     sortie.className = 'message';
     sortie.textContent = 'Approchez la puce du dos du téléphone…';
+    const cacherCible = CibleNfc.montrer();
     try {
       await new NDEFReader().write({ records: [{ recordType: 'url', data: url }] }, { signal: delai.signal });
       sortie.textContent = 'Puce écrite : elle ouvre maintenant cet inventaire.';
@@ -5324,6 +5332,7 @@ const Inventaires = (() => {
       sortie.className = 'message erreur';
     } finally {
       clearTimeout(minuterie);
+      cacherCible();
     }
   }
 
@@ -5547,18 +5556,20 @@ const Inventaires = (() => {
     const ecran = el('div', { classe: 'camera', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Scanner un inventaire' },
       el('div', { classe: `camera-vue${qr ? '' : ' inv-nfc-seul'}` }, qr ? video : el('div', { classe: 'inv-attente-nfc', 'aria-hidden': 'true' }, logoNfc()), qr ? el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }) : null,
         el('p', { classe: 'consigne-camera consigne-qr', texte: [qr ? 'Visez le QR code de l\'inventaire' : '', nfc ? 'approchez sa puce NFC' : ''].filter(Boolean).join(' ou ') })),
-      lecture, el('div', { classe: 'camera-actions' }, annuler));
+      lecture, nfc ? el('div', { classe: 'cible-nfc-lien-zone' }, CibleNfc.lien()) : null, el('div', { classe: 'camera-actions' }, annuler));
     document.body.append(ecran);
     document.body.classList.add('camera-ouverte');
     let flux = null;
     let minuterie = null;
     let fini = false;
     const arretNfc = new AbortController();
+    const cacherCible = nfc ? CibleNfc.montrer() : () => {};
     const fermer = () => {
       if (fini) return;
       fini = true;
       clearInterval(minuterie);
       arretNfc.abort();
+      cacherCible();
       if (flux) flux.getTracks().forEach((t) => t.stop());
       ecran.remove();
       document.body.classList.remove('camera-ouverte');
@@ -5594,6 +5605,7 @@ const Inventaires = (() => {
     if (nfc) {
       const lecteur = new NDEFReader();
       lecteur.addEventListener('reading', (e) => {
+        if (CibleNfc.enReglage()) return; // puce passée pour repérer l'antenne
         const lienPuce = [...e.message.records].find((r) => r.recordType === 'url' || r.recordType === 'absolute-url');
         trouve(lienPuce ? new TextDecoder().decode(lienPuce.data) : '');
       });

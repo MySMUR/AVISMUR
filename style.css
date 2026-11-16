@@ -2670,3 +2670,63 @@ body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color:
 .inv-vrac-option small { color: var(--gris); }
 .inv-vrac-reprise[hidden] { display: none; }
 .inv-vrac-choix .inv-vrac-haut strong { flex: 1; }
+
+/* ---------- Cible NFC : repère de l'antenne NFC à l'écran (cible-nfc.js) ---------- */
+.cible-nfc-calque {
+  position: fixed; inset: 0; z-index: 2000; width: auto; height: auto;
+  margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; pointer-events: none;
+}
+.cible-nfc {
+  position: absolute; width: 5.5rem; height: 5.5rem; transform: translate(-50%, -50%);
+  border: 4px solid var(--orange); border-radius: 50%;
+  box-shadow: 0 0 0 3px rgb(0 0 0 / 0.55), inset 0 0 0 3px rgb(0 0 0 / 0.35);
+  pointer-events: none;
+}
+.cible-nfc::before {
+  content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 4px solid var(--orange);
+  animation: cible-nfc-onde 1.6s ease-out infinite;
+}
+.cible-nfc-centre {
+  position: absolute; left: 50%; top: 50%; width: 0.8rem; height: 0.8rem; transform: translate(-50%, -50%);
+  border-radius: 50%; background: var(--orange); box-shadow: 0 0 0 2px rgb(0 0 0 / 0.5);
+}
+.cible-nfc-texte {
+  position: absolute; left: 50%; top: calc(100% + 0.35rem); transform: translateX(-50%);
+  padding: 0.05rem 0.45rem; border-radius: 0.6rem; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em;
+  color: #000; background: var(--orange);
+}
+.cible-nfc.reglage::before { animation: none; opacity: 0; }
+@keyframes cible-nfc-onde { from { transform: scale(1); opacity: 0.9; } to { transform: scale(1.7); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cible-nfc::before { animation: none; opacity: 0; } }
+
+.cible-nfc-reglage {
+  position: fixed; inset: 0; width: auto; height: auto; max-width: none; max-height: none;
+  margin: 0; padding: 0; border: 0; color: #fff; background: rgb(10 20 40 / 0.94);
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.cible-nfc-reglage[open] { display: block; }
+.cible-nfc-reglage::backdrop { background: rgb(0 0 0 / 0.6); }
+.cible-nfc-reglage.detectee { animation: cible-nfc-flash 0.6s ease-out; }
+@keyframes cible-nfc-flash { from { background: rgb(40 140 70 / 0.94); } to { background: rgb(10 20 40 / 0.94); } }
+.cible-nfc-consignes {
+  position: absolute; left: 1rem; right: 1rem; top: max(1rem, env(safe-area-inset-top));
+  text-align: center; pointer-events: none;
+}
+.cible-nfc-consignes h2 { margin: 0 0 0.4rem; font-size: 1.2rem; color: #fff; }
+.cible-nfc-consignes p { margin: 0 0 0.4rem; font-size: 0.95rem; line-height: 1.35; }
+.cible-nfc-etat { min-height: 1.4rem; font-weight: 700; color: #9fe3b0; }
+.cible-nfc-actions { position: absolute; left: 0; right: 0; bottom: 0; }
+
+.cible-nfc-lien {
+  display: inline-flex; align-items: center; gap: 0.45rem; align-self: center;
+  margin: 0.2rem auto 0; padding: 0.35rem 0.8rem; min-height: 2.4rem;
+  font: inherit; font-size: 0.9rem; font-weight: 600; color: var(--bleu);
+  background: transparent; border: 1px dashed currentColor; border-radius: 1.2rem; cursor: pointer;
+}
+.camera .cible-nfc-lien { color: #fff; }
+.cible-nfc-lien-picto {
+  width: 1rem; height: 1rem; border-radius: 50%; border: 3px solid var(--orange);
+  background: radial-gradient(circle, var(--orange) 0 2px, transparent 3px);
+}
+.camera .cible-nfc-lien-zone { display: flex; justify-content: center; padding: 0 1rem; }
+.mat-nfc-lecture { display: flex; flex-direction: column; gap: 0.6rem; }
