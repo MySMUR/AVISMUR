@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 22;
+  const VERSION_SERVEUR = 23;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -185,6 +185,8 @@ const Inventaires = (() => {
       nomVue: c.nomVue || '',
       fleches: flechesPropres(c.fleches), // flèches de la vue principale vers les autres vues
       scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
+      // Inventaire libre : pas de liste attendue, le matériel présent est scanné « en vrac » puis compté par type.
+      ...(c.vrac === true ? { vrac: true } : {}),
       categorie: CATEGORIES_CONTENANT[c.categorie] ? c.categorie : '', // primaire, immobile ou mobile
       // Étiquette QR : largeur × hauteur imprimées (mm) et logo central (puce NFC au dos, croix SMUR ou aucun).
       ...(c.etiquette ? { etiquette: (() => {
@@ -681,7 +683,7 @@ const Inventaires = (() => {
           if (manque) b.ambManquants = (b.ambManquants || 0) + manque;
         }
       }
-      if (aCocher(c).length) {
+      if (aCocher(c).length || estVrac(c)) {
         b.total += 1;
         const v = verifDuJour(c.id);
         if (v) {
@@ -2930,7 +2932,7 @@ const Inventaires = (() => {
     if (batterie) pictos.push(pictoBatterie(batterie.niveau, `Batterie : ${batterie.texte}`, batterie.ok ? 'vert' : 'rouge'));
     if (branchement) pictos.push(picto(branchement.ok ? 'branchement' : 'debranche', branchement.ok ? 'Branché sur secteur' : 'Non branché', branchement.ok ? 'vert' : 'rouge'));
     if (b.vides) pictos.push(picto('identifier', `${pluriel(b.vides, 'emplacement')} à identifier`, 'orange'));
-    return { b, classe, pictos, detail, biomed: contenantBiomed(c) };
+    return { b, classe, pictos, detail, biomed: contenantBiomed(c) || estVrac(c) };
   }
   /** Pop-up d'une tuile : le détail, et l'accès à l'inventaire. */
   /** Qui a validé l'inventaire et à quelle heure : en tout petit, grisé, seulement dans les détails. */
@@ -2938,7 +2940,7 @@ const Inventaires = (() => {
     texte: `Validé${v.scelle ? ' (scellé)' : ''} à ${heure(v.date)}${v.agent ? ` par ${v.agent}` : ''}` }) : null);
   function detailTableau(c, place = '') {
     const r = resumeTableau(c);
-    const v = aCocher(c).length ? verifDuJour(c.id) : null;
+    const v = aCocher(c).length || estVrac(c) ? verifDuJour(c.id) : null;
     const fond = el('div', { classe: 'fenetre-fond', surclick: (e) => { if (e.target === fond) fermer(); } });
     const retour = document.activeElement;
     const fermer = () => { fond.remove(); document.body.classList.remove('fenetre-ouverte'); if (retour && retour.isConnected) retour.focus(); };
@@ -2958,6 +2960,9 @@ const Inventaires = (() => {
       rubrique('Péremptions', r.detail.peremptions.map((x) => el('li', { classe: x.pe.niveau === 'perime' ? 'rouge' : 'orange' }, `${x.nom} : ${afficherDate(x.date)} (${x.pe.texte})`, ou(x)))),
       rubrique('Appareils', r.detail.appareils.map((x) => el('li', { classe: x.ok ? '' : 'rouge' }, el('strong', { texte: x.nom }), ou(x)))),
       rubrique('Contrôles', r.detail.controles.map((x) => el('li', { classe: x.rempli && !x.ok ? 'rouge' : '' }, `${x.nom} : ${x.texte}`, ou(x)))),
+      estVrac(c) && etat.verifs[c.id] ? el('section', { classe: 'inv-tb-rubrique' },
+        el('h3', { texte: `Matériel présent (relevé ${verifDuJour(c.id) ? 'du jour' : `du ${new Date(etat.verifs[c.id].date).toLocaleDateString('fr-FR')}`})` }),
+        comptesVrac(itemsDeVerif(etat.verifs[c.id]))) : null,
       el('button', { type: 'button', classe: 'principal', texte: 'Ouvrir l\'inventaire', surclick: () => { fermer(); aller(c.id); } })));
     fond.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
     document.body.append(fond);
@@ -4214,6 +4219,400 @@ const Inventaires = (() => {
       choix);
   }
 
+  // ---------- Inventaire libre : matériel scanné « en vrac » (réserve, étagère biomédicale) ----------
+  /*
+   * Contenant sans liste attendue (ex. étagère biomédicale de la réserve, où le matériel des véhicules désarmés
+   * se retrouve) : l'agent scanne à la volée tout ce qui est posé là, sans se soucier de ce que c'est —
+   * caméra (QR code, code-barres biomed), douchette Bluetooth (clavier : le n° saisi s'enregistre seul et le
+   * champ est prêt pour le suivant), puce NFC ou liste. Les comptes par type se font ensuite, tout seuls.
+   * La validation passe par « verifierInventaire » : une ligne par appareil, avec sa valeur (n° biomed, n° de
+   * série…) ; le serveur met ainsi à jour leur dernier emplacement (suivi du matériel) et GeoTrace.
+   */
+  const VRAC_MAX = 200; // INV_MAX_ARTICLES côté serveur
+  const NON_IDENTIFIE = 'Non identifié';
+  const estVrac = (c) => Boolean(c && c.vrac === true && !c.emplacement && !dansUnModele(c.id));
+  const cleCode = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  /** Appareil du suivi du matériel correspondant à un code (lien de puce, n° biomed, n° de série ou identifiant). */
+  function appareilParCode(code) {
+    const t = String(code || '').trim();
+    if (!t || typeof Materiel === 'undefined') return null;
+    return (Materiel.identifier && Materiel.identifier(t)) || appareilsConnus().find((x) => x.id === t) || null;
+  }
+  /** Valeur gardée pour un appareil reconnu : la plus lisible de celles qui l'identifient sans ambiguïté. */
+  const valeurAppareil = (x) => String(x.numBiomed || x.numSerie || x.id);
+  const libelleAppareil = (x) => `${x.type || 'Appareil'}${x.numInterne ? ` n° ${x.numInterne}` : ''}${x.modele ? ` (${x.modele})` : ''}`;
+  const avecAppareil = (code) => ({ code, appareil: appareilParCode(code) });
+  const cleItem = (x) => (x.appareil ? `a:${x.appareil.id}` : `c:${cleCode(x.code)}`);
+  /** Regroupe par type d'appareil (les non identifiés en dernier), triés par n° interne. */
+  function compterVrac(items) {
+    const groupes = new Map();
+    items.forEach((x) => {
+      const type = x.appareil ? (x.appareil.type || 'Autre appareil') : NON_IDENTIFIE;
+      if (!groupes.has(type)) groupes.set(type, []);
+      groupes.get(type).push(x);
+    });
+    const num = (x) => String((x.appareil && x.appareil.numInterne) || x.code);
+    groupes.forEach((l) => l.sort((a, b) => num(a).localeCompare(num(b), 'fr', { numeric: true })));
+    return [...groupes.entries()].sort(([a], [b]) => Number(a === NON_IDENTIFIE) - Number(b === NON_IDENTIFIE) || a.localeCompare(b, 'fr'));
+  }
+  /** Appareils du dernier relevé d'un contenant (recalculés : un appareil ajouté depuis à la base est reconnu). */
+  const itemsDeVerif = (v) => Object.values((v && v.valeurs) || {}).filter((x) => String(x || '').trim()).map(avecAppareil);
+  function ligneVrac(x, retirer = null) {
+    const a = x.appareil;
+    return el('li', { classe: `inv-vrac-item${a ? '' : ' inconnu'}`, 'data-item': x.id || null },
+      el('span', { classe: 'inv-vrac-nom' },
+        el('strong', { texte: a ? `${a.type || 'Appareil'}${a.numInterne ? ` n° ${a.numInterne}` : ''}` : NON_IDENTIFIE }),
+        el('small', { texte: a ? [a.modele, a.numBiomed ? `biomed ${a.numBiomed}` : '', !a.numBiomed && a.numSerie ? `S/N ${a.numSerie}` : ''].filter(Boolean).join(' · ') : x.code })),
+      retirer ? el('button', { type: 'button', classe: 'inv-vrac-retirer', 'aria-label': `Retirer ${a ? libelleAppareil(a) : x.code}`, texte: '✕', surclick: retirer }) : null);
+  }
+  /** Comptes par type : une ligne par type, dépliable pour voir les appareils. */
+  function comptesVrac(items, ouvert = false) {
+    return el('ul', { classe: 'inv-vrac-comptes' }, ...compterVrac(items).map(([type, liste]) => el('li', { classe: type === NON_IDENTIFIE ? 'inconnu' : '' },
+      el('details', { open: ouvert || null },
+        el('summary', {}, el('span', { classe: 'inv-vrac-nombre', texte: String(liste.length) }), el('span', { texte: type })),
+        el('ul', { classe: 'inv-vrac-liste' }, ...liste.map((x) => ligneVrac(x)))))));
+  }
+  /** Page du contenant (check-list) : dernier relevé compté par type, et le bouton pour scanner. */
+  function blocVrac(c, lectureSeule = false) {
+    const v = etat.verifs[c.id];
+    const b = lectureSeule ? {} : brouillon(c);
+    const enCours = Array.isArray(b.vrac) ? b.vrac.length : 0;
+    const items = v ? itemsDeVerif(v) : [];
+    const inconnus = items.filter((x) => !x.appareil).length;
+    return [
+      el('section', { classe: 'inv-section inv-vrac' },
+        el('div', { classe: 'inv-liste-entete' }, el('h2', {}, 'Matériel présent ', v ? el('span', { classe: 'inv-compte', texte: String(items.length) }) : null)),
+        v ? el('p', { classe: 'inv-vrac-quand', texte: `Relevé ${verifDuJour(c.id) ? 'aujourd\'hui' : `le ${new Date(v.date).toLocaleDateString('fr-FR')}`} à ${heure(v.date)}${v.agent ? ` par ${v.agent}` : ''}` })
+          : el('p', { classe: 'consigne', texte: 'Aucun relevé pour l\'instant. Scannez tout le matériel posé ici, sans vous soucier de ce que c\'est : les comptes par type se font tout seuls.' }),
+        items.length ? comptesVrac(items) : (v ? el('p', { classe: 'consigne', texte: 'Aucun matériel au dernier relevé.' }) : null),
+        inconnus ? el('p', { classe: 'aide-question', texte: `${pluriel(inconnus, 'code')} non reconnu${inconnus > 1 ? 's' : ''} : appareil absent du suivi du matériel (ou base pas encore chargée sur ce téléphone). Il sera compté dès qu'il y sera ajouté.` }) : null),
+      lectureSeule ? null : el('div', { classe: 'inv-barre-bas' },
+        el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
+        el('div', { classe: 'inv-barre-bas-boutons' }, boutonsScanIcones()[0],
+          el('button', { type: 'button', classe: 'principal inv-valider', surclick: () => sessionVrac(c),
+            texte: enCours ? `Reprendre le scan (${enCours})` : (verifDuJour(c.id) ? 'Refaire le relevé' : 'Scanner le matériel') }),
+          boutonsScanIcones()[1])),
+    ];
+  }
+  function validerVrac(c, liste) {
+    const articles = liste.map((x) => ({ id: x.id, nom: x.appareil ? libelleAppareil(x.appareil) : NON_IDENTIFIE, controle: 'materiel', ok: true, valeur: String(x.code).slice(0, 120) }));
+    const ok = App.mettreEnFile({ action: 'verifierInventaire', contenant: c.id, detail: { chemin: cheminNoms(c.id, ' > '), articles, remarque: '', vrac: true } });
+    if (!ok) return false;
+    const valeurs = {};
+    articles.forEach((a) => { valeurs[a.id] = a.valeur; });
+    etat.verifs[c.id] = { date: new Date().toISOString(), agent: App.agent(), manquants: [], remarque: '', valeurs };
+    delete brouillons.liste[c.id];
+    sauverEtat();
+    sauverBrouillons();
+    avis = `« ${c.nom} » : ${pluriel(articles.length, 'appareil')} relevé${articles.length > 1 ? 's' : ''}.`;
+    return true;
+  }
+
+  let sonVrac = null;
+  /** Bip court (scan accepté) ou grave (déjà scanné, refusé), et vibration. */
+  function signalVrac(bon) {
+    try { if (navigator.vibrate) navigator.vibrate(bon ? 40 : [40, 60, 40]); } catch (e) { /* rien */ }
+    try {
+      if (!sonVrac) sonVrac = new (window.AudioContext || window.webkitAudioContext)();
+      const o = sonVrac.createOscillator();
+      const g = sonVrac.createGain();
+      o.frequency.value = bon ? 1320 : 330;
+      g.gain.setValueAtTime(0.12, sonVrac.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, sonVrac.currentTime + (bon ? 0.09 : 0.2));
+      o.connect(g).connect(sonVrac.destination);
+      o.start();
+      o.stop(sonVrac.currentTime + (bon ? 0.1 : 0.22));
+    } catch (e) { /* pas de son : la vibration et l'affichage suffisent */ }
+  }
+
+  /**
+   * Écran de scan à la volée : le lecteur reste ouvert, chaque code lu s'ajoute en haut de la liste.
+   * Douchette Bluetooth (mode clavier) : le champ garde le focus (sans clavier à l'écran) ; Entrée, Tab ou la fin
+   * d'une rafale de caractères enregistre la saisie et vide le champ pour la suivante.
+   */
+  function sessionVrac(c) {
+    if (enConsultation(c)) { messageVue('Consultation seule : indiquez d\'abord le contenant primaire où vous êtes.', 'erreur'); return; }
+    if (typeof Materiel !== 'undefined' && Materiel.actualiser && navigator.onLine) Materiel.actualiser();
+    const b = brouillon(c);
+    if (!Array.isArray(b.vrac)) b.vrac = [];
+    const items = () => b.vrac.map((x) => ({ ...x, ...avecAppareil(x.code) }));
+    const detecteurDispo = 'BarcodeDetector' in window && Boolean(navigator.mediaDevices);
+    const nfcDispo = 'NDEFReader' in window;
+    let cameraVoulue = detecteurDispo && lireJson('avismur_vrac_camera', true) !== false;
+    let fini = false;
+    let flux = null;
+    let minuterie = null;
+    let terminerVide = false;
+    const arretNfc = new AbortController();
+    const recent = new Map(); // code → instant de la dernière lecture (la caméra relit le même code en boucle)
+
+    const video = el('video', { playsinline: '', muted: '', autoplay: '' });
+    video.muted = true;
+    const vue = el('div', { classe: 'camera-vue inv-vrac-video' }, video, el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }));
+    const lecture = el('p', { classe: 'lecture', role: 'status', 'aria-live': 'polite' });
+    const compte = el('span', { classe: 'inv-vrac-total' });
+    const resume = el('div', { classe: 'inv-vrac-resume' });
+    const liste = el('ul', { classe: 'inv-vrac-liste inv-vrac-session' });
+    const champ = el('input', { type: 'text', inputmode: 'none', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'enter',
+      classe: 'inv-vrac-champ', 'aria-label': 'N° biomed ou n° de série (douchette ou saisie)', placeholder: 'Douchette ou saisie du n° biomed…' });
+    const boutonCamera = detecteurDispo ? el('button', { type: 'button', classe: 'inv-vrac-outil', 'aria-pressed': 'false', title: 'Caméra' }) : null;
+    const boutonClavier = el('button', { type: 'button', classe: 'inv-vrac-outil', 'aria-pressed': 'false', title: 'Clavier à l\'écran', 'aria-label': 'Afficher le clavier pour saisir un numéro', texte: '⌨' });
+    const terminer = el('button', { type: 'button', classe: 'camera-bouton' });
+    const fermerBouton = el('button', { type: 'button', classe: 'camera-bouton secondaire', texte: 'Fermer' });
+    const reprise = etat.verifs[c.id];
+    const boutonReprise = reprise && verifDuJour(c.id) && itemsDeVerif(reprise).length
+      ? el('button', { type: 'button', classe: 'lien inv-vrac-reprise', texte: `Repartir du relevé de ${heure(reprise.date)} (${itemsDeVerif(reprise).length})` }) : null;
+
+    const annonce = (texte, classe = '') => { lecture.textContent = texte; lecture.className = `lecture ${classe}`.trim(); };
+    const majTerminer = () => {
+      const n = b.vrac.length;
+      terminer.textContent = terminerVide ? 'Valider un relevé vide ?' : `Terminé${n ? ` (${n})` : ''}`;
+    };
+    const majListe = (nouveau = '') => {
+      const tous = items();
+      compte.textContent = tous.length ? pluriel(tous.length, 'appareil') : 'Rien de scanné';
+      resume.replaceChildren(...compterVrac(tous).map(([type, l]) => el('span', { classe: `inv-vrac-puce${type === NON_IDENTIFIE ? ' inconnu' : ''}` }, el('strong', { texte: String(l.length) }), ` ${type}`)));
+      // Le dernier scanné en haut : c'est lui que l'on veut voir.
+      liste.replaceChildren(...tous.slice().reverse().map((x) => ligneVrac(x, () => {
+        b.vrac = b.vrac.filter((y) => y.id !== x.id);
+        sauverBrouillons();
+        annonce(`Retiré : ${x.appareil ? libelleAppareil(x.appareil) : x.code}.`);
+        majListe();
+      })));
+      if (boutonReprise) boutonReprise.hidden = tous.length > 0;
+      terminerVide = false;
+      majTerminer();
+      if (nouveau) {
+        const li = liste.querySelector(`[data-item="${nouveau}"]`);
+        if (li) { li.classList.add('nouveau'); li.scrollIntoView({ block: 'nearest' }); }
+      }
+    };
+    const surligner = (id) => {
+      const li = liste.querySelector(`[data-item="${id}"]`);
+      if (!li) return;
+      li.classList.remove('deja');
+      void li.offsetWidth; // relance l'animation
+      li.classList.add('deja');
+      li.scrollIntoView({ block: 'nearest' });
+    };
+    const ajouter = (brut, tout = '') => {
+      const code = String(brut || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 200);
+      if (!code || fini) return;
+      if (/#inv=[a-z0-9]{6,16}/.test(code)) { annonce('QR code d\'un inventaire, pas d\'un appareil : ignoré.', 'erreur'); signalVrac(false); return; }
+      const appareil = (tout && appareilParCode(tout)) || appareilParCode(code);
+      const nouveau = { code: appareil ? valeurAppareil(appareil) : code };
+      const k = cleItem({ ...nouveau, appareil });
+      if (k.length < 3) return;
+      const deja = items().find((x) => cleItem(x) === k);
+      if (deja) {
+        annonce(`Déjà scanné : ${appareil ? libelleAppareil(appareil) : code}.`, 'deja');
+        signalVrac(false);
+        surligner(deja.id);
+        return;
+      }
+      if (b.vrac.length >= VRAC_MAX) { annonce(`Liste pleine (${VRAC_MAX}) : appuyez sur Terminé.`, 'erreur'); signalVrac(false); return; }
+      nouveau.id = nouvelId();
+      b.vrac.push(nouveau);
+      sauverBrouillons();
+      signalVrac(true);
+      annonce(appareil ? `✓ ${libelleAppareil(appareil)}` : `✓ Code ${code} (non reconnu, compté à part)`, appareil ? 'ok' : 'inconnu');
+      majListe(nouveau.id);
+    };
+
+    // Douchette Bluetooth : elle « tape » le code très vite puis Entrée (ou Tab, ou rien selon son réglage).
+    let dernierCar = 0;
+    let rafale = 0;
+    let finRafale = null;
+    const soumettre = () => {
+      clearTimeout(finRafale);
+      const t = champ.value.trim();
+      champ.value = '';
+      rafale = 0;
+      if (t) ajouter(t);
+    };
+    const frappe = () => {
+      const t = performance.now();
+      rafale = t - dernierCar < 60 ? rafale + 1 : 0;
+      dernierCar = t;
+      clearTimeout(finRafale);
+      if (rafale >= 3) finRafale = setTimeout(soumettre, 300); // douchette réglée sans suffixe
+    };
+    champ.addEventListener('input', frappe);
+    champ.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || (e.key === 'Tab' && champ.value.trim())) { e.preventDefault(); soumettre(); }
+    });
+    const garderFocus = () => { if (!fini && document.activeElement !== champ && !document.querySelector('.inv-vrac-choix')) champ.focus({ preventScroll: true }); };
+
+    const arreterCamera = () => {
+      clearInterval(minuterie);
+      minuterie = null;
+      if (flux) flux.getTracks().forEach((t) => t.stop());
+      flux = null;
+      video.srcObject = null;
+    };
+    const demarrerCamera = async () => {
+      vue.hidden = false;
+      try {
+        const formats = BarcodeDetector.getSupportedFormats ? await BarcodeDetector.getSupportedFormats() : [];
+        const det = formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
+        const f = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+        if (fini || !cameraVoulue) { f.getTracks().forEach((t) => t.stop()); return; }
+        flux = f;
+        video.srcObject = f;
+        let occupe = false;
+        minuterie = setInterval(async () => {
+          if (occupe || video.readyState < 2 || fini) return;
+          occupe = true;
+          try {
+            const codes = await det.detect(video);
+            const maintenant = Date.now();
+            codes.forEach((x) => {
+              const v = String(x.rawValue || '').trim();
+              if (!v || maintenant - (recent.get(v) || 0) < 2500) { if (v) recent.set(v, maintenant); return; }
+              recent.set(v, maintenant);
+              ajouter(v);
+            });
+          } catch (e) { /* image pas encore prête */ } finally { occupe = false; }
+        }, 250);
+      } catch (e) {
+        annonce('Caméra inaccessible : utilisez la douchette, la puce NFC ou la liste.', 'erreur');
+        cameraVoulue = false;
+        majCamera();
+      }
+    };
+    const majCamera = () => {
+      if (!boutonCamera) { vue.hidden = true; return; }
+      boutonCamera.setAttribute('aria-pressed', String(cameraVoulue));
+      boutonCamera.setAttribute('aria-label', cameraVoulue ? 'Couper la caméra' : 'Allumer la caméra');
+      boutonCamera.replaceChildren(icone('M3 8h3.5l2-3h7l2 3H21v11H3z', 'M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', ...(cameraVoulue ? [] : ['M3 3l18 18'])));
+      vue.hidden = !cameraVoulue;
+      if (cameraVoulue && !flux) demarrerCamera(); else if (!cameraVoulue) arreterCamera();
+    };
+    if (boutonCamera) boutonCamera.addEventListener('click', () => { cameraVoulue = !cameraVoulue; ecrireJson('avismur_vrac_camera', cameraVoulue); majCamera(); garderFocus(); });
+    boutonClavier.addEventListener('click', () => {
+      const ouvrir = champ.inputMode === 'none';
+      champ.inputMode = ouvrir ? 'text' : 'none';
+      boutonClavier.setAttribute('aria-pressed', String(ouvrir));
+      champ.blur();
+      champ.focus();
+    });
+
+    if (nfcDispo) {
+      const lecteur = new NDEFReader();
+      lecteur.addEventListener('reading', (e) => {
+        const recs = [...e.message.records];
+        const dec = (x) => { try { return new TextDecoder(x.encoding || 'utf-8').decode(x.data); } catch (err) { return ''; } };
+        const r = recs.find((x) => ['text', 'url', 'absolute-url'].includes(x.recordType));
+        const code = (r && dec(r)) || e.serialNumber || '';
+        const maintenant = Date.now();
+        if (maintenant - (recent.get(`nfc:${code}`) || 0) < 1500) return;
+        recent.set(`nfc:${code}`, maintenant);
+        ajouter(code, recs.map(dec).join('\n'));
+      });
+      lecteur.scan({ signal: arretNfc.signal }).catch(() => { /* NFC refusé ou éteint : les autres moyens restent possibles */ });
+    }
+
+    // Choix dans la liste des appareils du suivi du matériel (ceux qui ne sont pas encore scannés).
+    const choisirDansListe = () => {
+      const deja = new Set(items().filter((x) => x.appareil).map((x) => x.appareil.id));
+      const tous = appareilsConnus().filter((x) => !deja.has(x.id));
+      const coches = new Set();
+      let filtre = '';
+      const panneau = el('div', { classe: 'inv-vrac-choix', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Ajouter depuis la liste' });
+      const recherche = el('input', { type: 'search', placeholder: 'Type, n° interne, modèle…', 'aria-label': 'Filtrer les appareils', surinput: (e) => { filtre = cle(e.target.value); dessiner(); } });
+      const corps = el('div', { classe: 'inv-vrac-choix-corps' });
+      const ajouterBouton = el('button', { type: 'button', classe: 'camera-bouton' });
+      const fermerPanneau = () => { panneau.remove(); garderFocus(); };
+      const dessiner = () => {
+        const visibles = tous.filter((x) => !filtre || cle(`${x.type} ${x.numInterne} ${x.modele} ${x.numSerie}`).includes(filtre));
+        const parType = new Map();
+        visibles.forEach((x) => { const t = x.type || 'Autre appareil'; if (!parType.has(t)) parType.set(t, []); parType.get(t).push(x); });
+        corps.replaceChildren(...(visibles.length ? [...parType.entries()].sort(([a], [z]) => a.localeCompare(z, 'fr')).map(([type, l]) => el('fieldset', { classe: 'inv-vrac-groupe' },
+          el('legend', { texte: type }),
+          ...l.sort((x, y) => String(x.numInterne).localeCompare(String(y.numInterne), 'fr', { numeric: true })).map((x) => {
+            const i = idChamp();
+            return el('label', { for: i, classe: 'inv-vrac-option' },
+              el('input', { type: 'checkbox', id: i, checked: coches.has(x.id), surchange: (e) => { if (e.target.checked) coches.add(x.id); else coches.delete(x.id); majAjout(); } }),
+              el('span', {}, el('strong', { texte: x.numInterne ? `n° ${x.numInterne}` : '—' }), x.modele ? ` ${x.modele}` : '', x.numSerie ? el('small', { texte: ` S/N ${x.numSerie}` }) : null));
+          })))
+          : [el('p', { classe: 'consigne', texte: tous.length ? 'Aucun appareil ne correspond.' : 'Aucun autre appareil dans le suivi du matériel (ou base pas encore chargée sur ce téléphone).' })]));
+      };
+      const majAjout = () => { ajouterBouton.textContent = coches.size ? `Ajouter (${coches.size})` : 'Ajouter'; ajouterBouton.disabled = !coches.size; };
+      ajouterBouton.addEventListener('click', () => {
+        tous.filter((x) => coches.has(x.id)).forEach((x) => ajouter(x.id));
+        fermerPanneau();
+      });
+      panneau.append(
+        el('div', { classe: 'inv-vrac-haut' }, el('strong', { texte: 'Ajouter depuis la liste' }),
+          el('button', { type: 'button', classe: 'inv-vrac-outil', 'aria-label': 'Fermer la liste', texte: '✕', surclick: fermerPanneau })),
+        el('div', { classe: 'inv-vrac-filtre' }, recherche), corps,
+        el('div', { classe: 'camera-actions' }, el('button', { type: 'button', classe: 'camera-bouton secondaire', texte: 'Annuler', surclick: fermerPanneau }), ajouterBouton));
+      panneau.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); fermerPanneau(); } });
+      dessiner();
+      majAjout();
+      ecran.append(panneau);
+      recherche.focus();
+    };
+
+    const ecran = el('div', { classe: 'camera inv-vrac-ecran', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Scanner le matériel : ${c.nom}` },
+      el('div', { classe: 'inv-vrac-haut' },
+        el('div', { classe: 'inv-vrac-titre' }, el('strong', { texte: c.nom }), compte),
+        boutonCamera, boutonClavier),
+      vue,
+      el('form', { classe: 'inv-vrac-saisie', sursubmit: (e) => { e.preventDefault(); soumettre(); } },
+        champ,
+        el('button', { type: 'submit', classe: 'inv-vrac-outil', 'aria-label': 'Ajouter ce numéro', texte: '+' }),
+        el('button', { type: 'button', classe: 'inv-vrac-outil inv-vrac-bouton-liste', texte: 'Liste', surclick: choisirDansListe })),
+      lecture, resume, boutonReprise, liste,
+      el('div', { classe: 'camera-actions' }, fermerBouton, terminer));
+    const fermer = () => {
+      if (fini) return;
+      fini = true;
+      clearTimeout(finRafale);
+      arreterCamera();
+      arretNfc.abort();
+      ecran.remove();
+      document.body.classList.remove('camera-ouverte');
+    };
+    fermerBouton.addEventListener('click', () => {
+      fermer();
+      if (b.vrac.length) avis = `Scan en cours gardé (${pluriel(b.vrac.length, 'appareil')}) : « Reprendre le scan » pour le terminer.`;
+      rendre({ garderPosition: true });
+    });
+    terminer.addEventListener('click', () => {
+      if (!b.vrac.length && !terminerVide) { terminerVide = true; majTerminer(); annonce('Rien n\'a été scanné : appuyez de nouveau pour noter qu\'il n\'y a aucun matériel ici.', 'deja'); return; }
+      if (!validerVrac(c, items())) { annonce('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur'); return; }
+      fermer();
+      rendre();
+    });
+    if (boutonReprise) {
+      boutonReprise.addEventListener('click', () => {
+        itemsDeVerif(reprise).forEach((x) => { b.vrac.push({ id: nouvelId(), code: x.code }); });
+        sauverBrouillons();
+        annonce('Relevé précédent repris : scannez ce qui a été ajouté, retirez ce qui est parti.');
+        majListe();
+      });
+    }
+    // Touche ailleurs que dans le champ : il reprend le focus (la douchette écrit toujours au bon endroit).
+    ecran.addEventListener('click', (e) => { if (!e.target.closest('input, .inv-vrac-choix')) setTimeout(garderFocus, 0); });
+    ecran.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { fermerBouton.click(); return; }
+      // Caractère tapé (douchette) alors que le focus est sur un bouton : il va dans le champ.
+      if (e.target !== champ && !e.target.closest('.inv-vrac-choix') && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        champ.focus({ preventScroll: true });
+        champ.value += e.key;
+        frappe();
+      }
+    });
+    document.body.append(ecran);
+    document.body.classList.add('camera-ouverte');
+    annonce(['Visez un code', nfcDispo ? 'approchez une puce NFC' : '', 'ou utilisez la douchette'].filter(Boolean).join(', ') + '.');
+    majListe();
+    majCamera();
+    champ.focus({ preventScroll: true });
+  }
+
   // ---------- Contenant scellable : « est-il scellé ? » ----------
   const reponsesScelle = new Set(); // contenants pour lesquels l'agent a répondu « non, il est ouvert » (cette visite)
   /**
@@ -4365,7 +4764,7 @@ const Inventaires = (() => {
       el('p', { classe: 'aide-question', texte: c.categorie ? `${CATEGORIES_CONTENANT[c.categorie].nom} : ${CATEGORIES_CONTENANT[c.categorie].aide}.${c.categorie === 'primaire' ? ' Affiché sur la page des inventaires.' : ' S\'ouvre par recherche, QR code ou NFC, ou depuis son contenant.'}` : 'Seuls les contenants primaires sont affichés sur la page des inventaires.' })) : null;
     const modele = dansUnModele(c.id);
     const verification = c.emplacement || questionScelle || edition || modele || (c.clAmbulancier && !aCocher(c).length) ? null
-      : (consultation ? blocConsultation(c) : blocVerification(c));
+      : (consultation ? (estVrac(c) ? blocVrac(c, true) : blocConsultation(c)) : (estVrac(c) ? blocVrac(c) : blocVerification(c)));
     const listeAvant = Boolean(verification) && !consultation && !v && vuesDe(c).some((x) => x.photo);
     return [
       // Contenant primaire : son nom est déjà dans le bandeau « Vous vérifiez actuellement … ».
@@ -4376,6 +4775,12 @@ const Inventaires = (() => {
       edition ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseScellable },
         el('input', { type: 'checkbox', id: caseScellable, checked: c.scellable, surchange: (e) => { c.scellable = e.target.checked; marquer(c.id); } }),
         el('span', {}, 'Contenant scellable', el('small', { texte: 'fermé par un scellé (plomb) une fois vérifié' }))) : null,
+      edition && !c.emplacement && !modele ? (() => {
+        const i = idChamp();
+        return el('label', { classe: 'cfg-case inv-case-fiche', for: i },
+          el('input', { type: 'checkbox', id: i, checked: c.vrac === true, surchange: (e) => { if (e.target.checked) c.vrac = true; else delete c.vrac; marquer(c.id); rendre({ garderPosition: true }); } }),
+          el('span', {}, 'Inventaire libre (scan en vrac)', el('small', { texte: 'pas de liste attendue : l\'agent scanne à la volée tout le matériel présent (QR, code-barres biomed, douchette, NFC ou liste), compté ensuite par type. Remplace la liste à cocher en check-list.' })));
+      })() : null,
       edition && c.parent ? blocChoixAmbulancier(c) : null,
       edition && c.categorie === 'mobile' && !c.emplacement && !modele && typeof Traceurs !== 'undefined' ? blocTraceur(c) : null,
       edition && !c.parent && !racineExemplaire(c.id) ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseModele },
@@ -4418,8 +4823,8 @@ const Inventaires = (() => {
       ...(questionScelle ? [] : [].concat(blocEnfants(c, fils))),
       c.emplacement || questionScelle ? null : (edition ? blocArticles(c) : (modele ? blocContenuModele(c) : null)),
       ...(verification && !listeAvant ? [].concat(verification) : []),
-      !edition && !aCocher(c).length && !fils.length ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : menu > Administration > Gestion des inventaires pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
-      !edition && (!aCocher(c).length || consultation) ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
+      !edition && !aCocher(c).length && !fils.length && !estVrac(c) ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : menu > Administration > Gestion des inventaires pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
+      !edition && ((!aCocher(c).length && !(estVrac(c) && verification)) || consultation) ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
       edition ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
       edition ? blocAcces(c) : null,
       // La liste papier reste possible depuis l'administration.

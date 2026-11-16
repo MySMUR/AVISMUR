@@ -165,6 +165,16 @@ En check-list, un contenant **scellable** pas encore vérifié aujourd'hui deman
 - **Oui, il est scellé** : son inventaire et celui de tout ce qu'il contient sont validés sur la base du dernier réalisé (mêmes articles présents ou manquants, mêmes dates de péremption connues), avec la remarque « Scellé : validé sur la base de l'inventaire du … ». Impossible si un des contenants n'a jamais été vérifié ou si un emplacement est vide : il faut alors faire l'inventaire complet.
 - **Non, il est ouvert** : l'inventaire se fait normalement.
 
+### Inventaire libre : scan « en vrac » (ex. étagère biomédicale de la réserve)
+
+Case **« Inventaire libre (scan en vrac) »** (Gestion des inventaires, sur tout contenant qui n'est ni un inventaire type ni un emplacement) : pas de liste attendue. En check-list, le bouton **« Scanner le matériel »** ouvre un écran de scan qui reste ouvert :
+
+- **caméra** (QR code, code-barres de l'étiquette biomed ; bouton pour la couper, choix gardé sur le téléphone), **puce NFC**, **douchette Bluetooth** (mode clavier : le champ garde le focus sans afficher le clavier ; Entrée, Tab ou la fin d'une rafale de caractères enregistre le n° et vide le champ pour le suivant), saisie au clavier (bouton ⌨) ou **« Liste »** (appareils du suivi du matériel, cochés par type) ;
+- le dernier scanné s'affiche en haut (bip + vibration), un doublon est signalé (« Déjà scanné ») et surligné, chaque ligne peut être retirée ; les comptes par type s'affichent en direct ;
+- **« Fermer »** garde le scan en cours (« Reprendre le scan ») ; **« Terminé »** enregistre le relevé. Un relevé déjà fait aujourd'hui peut servir de point de départ.
+
+La page du contenant affiche ensuite le dernier relevé **compté par type** (PSE, aspirateurs, respirateurs…), dépliable pour voir les appareils ; les codes non reconnus sont comptés à part et le seront dès que l'appareil sera ajouté au suivi du matériel. Le relevé passe par `verifierInventaire` (une ligne par appareil, valeur = n° biomed, n° de série ou identifiant) : le serveur met à jour le **dernier emplacement** de chaque appareil (suivi du matériel) et GeoTrace. Nécessite Inventaires.gs version 23.
+
 ### Contrôles dans les inventaires
 
 En gestion, « Ajouter un contrôle » insère une ligne qui se relève au lieu de se cocher :
