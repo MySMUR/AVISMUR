@@ -4866,7 +4866,7 @@ const Inventaires = (() => {
         messageVue('Photo illisible ou trop lourde : réessayez.', 'erreur');
       }
     };
-    return el('div', { classe: 'champ inv-vignette' },
+    return el('div', { classe: 'champ inv-vignette-primaire' },
       el('span', { classe: 'inv-libelle', texte: 'Vignette de la page des inventaires' }),
       el('div', { classe: 'inv-vignette-ligne' }, c.vignette ? apercu : null,
         el('div', { classe: 'champ-photo' },
