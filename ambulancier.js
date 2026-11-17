@@ -381,6 +381,23 @@ const Ambulancier = (() => {
 
   // ---------- Informations par véhicule (serveur + actions faites sur cet appareil) ----------
   const CLE_INFOS = 'avismur_infos_vehicules';
+  // Inventaire IADE de chaque véhicule (InventairesVehicules.gs) : photo commune et état du jour.
+  const CLE_INV_VEHICULES = 'avismur_inv_vehicules';
+  /** Inventaire IADE du véhicule : { photo, faits, total, manquants, date, agent } (compteurs du jour seulement) ou null. */
+  function inventaireVehicule(id) {
+    const r = lireStockage(CLE_INV_VEHICULES)[id] || null;
+    const photoLocale = typeof Inventaires !== 'undefined' && Inventaires.photoVehicule ? Inventaires.photoVehicule(id) : '';
+    if (!r) return photoLocale ? { photo: photoLocale, total: 0 } : null;
+    const duJour = r.jour === aujourdhui();
+    return { ...r, photo: r.photo || photoLocale, faits: duJour ? r.faits : 0, manquants: duJour ? r.manquants : 0, date: duJour ? r.date : '', agent: duJour ? r.agent : '' };
+  }
+  /** Photo du véhicule (vignette de son contenant primaire dans les inventaires), posée dans `bloc` une fois chargée. */
+  function poserPhotoVehicule(bloc, id) {
+    if (!id || typeof Inventaires === 'undefined' || !Inventaires.obtenirPhoto) { bloc.remove(); return; }
+    const poser = (d) => { if (d) bloc.append(el('img', { src: d, alt: '' })); else bloc.remove(); };
+    const deja = Inventaires.enMemoire(id);
+    if (deja) poser(deja); else Inventaires.obtenirPhoto(id).then(poser, () => bloc.remove());
+  }
   const infosServeur = (id) => lireStockage(CLE_INFOS)[id] || { defauts: [] };
 
   /**
@@ -454,6 +471,13 @@ const Ambulancier = (() => {
     if (etatV.classe === 'indispo') position.textContent = 'Non disponible';
     else if (estDZ(etatV.position)) position.append(helico(), el('span', { texte: 'DZ' }));
     else if (etatV.position && etatV.position.position) position.textContent = etatV.position.position;
+    // Photo du véhicule : la même que dans les inventaires IADE (vignette de son contenant primaire).
+    const inv = inventaireVehicule(v.id);
+    if (inv && inv.photo) {
+      const photo = el('span', { classe: 'carte-photo', 'aria-hidden': 'true' });
+      bouton.append(photo);
+      poserPhotoVehicule(photo, inv.photo);
+    }
     bouton.append(el('span', { classe: 'carte-entete' },
       el('span', { classe: 'ligne-titre' }, el('strong', { texte: v.nom || v.id }),
         el('small', { texte: v.type !== undefined ? v.type : (v.modele === 'F00' ? 'UMH' : v.modele) }),
@@ -474,6 +498,18 @@ const Ambulancier = (() => {
         el('span', { texte: texteCL }));
       if (Object.keys(brouillons.lire(v.id)).length) ligneCL.append(el('small', { classe: 'en-cours', texte: 'en cours' }));
       bouton.append(ligneCL);
+    }
+
+    // Inventaire IADE du jour (données communes aux deux check-lists) : vert complet, orange manquants, gris à faire.
+    if (etatV.classe !== 'indispo' && inv && inv.total) {
+      const complet = inv.faits >= inv.total;
+      const classe = inv.manquants ? 'anomalie' : (complet ? 'fait' : (inv.faits ? 'en-partie' : 'a-faire'));
+      let texte = 'Inventaire IADE à faire';
+      if (inv.faits) {
+        texte = complet ? `Inventaire IADE fait ${heure(inv.date)} · ${inv.agent}` : `Inventaire IADE : ${inv.faits}/${inv.total} · ${heure(inv.date)} · ${inv.agent}`;
+        if (inv.manquants) texte += ` · ${inv.manquants} manquant${inv.manquants > 1 ? 's' : ''}`;
+      }
+      bouton.append(el('span', { classe: `carte-ligne carte-iade ${classe}` }, el('span', { classe: 'pastille-etat', 'aria-hidden': 'true' }), el('span', { texte })));
     }
 
     // Nettoyages du jour : spray (intérieur) et tuyau d'arrosage (extérieur), verts si faits, gris sinon
@@ -726,8 +762,9 @@ const Ambulancier = (() => {
    * Le serveur fait foi (une ligne supprimée dans Historique disparaît de l'appli) ;
    * on y ajoute seulement ce qui attend encore l'envoi.
    */
-  function majReleves(nouveaux, parc, statuts, enAttente = [], infos = null) {
+  function majReleves(nouveaux, parc, statuts, enAttente = [], infos = null, inventaires = null) {
     releves.fusionner(nouveaux);
+    if (inventaires && typeof inventaires === 'object') ecrireStockage(CLE_INV_VEHICULES, inventaires);
     if (infos) {
       ecrireStockage(CLE_INFOS, infos);
       // Actions encore en attente d'envoi : on les montre déjà.
@@ -803,7 +840,7 @@ const Ambulancier = (() => {
   }
 
   return {
-    initialiser, finChargement, infosVehicule, etatVehicule, estDZ, helico, cadran, carburantActuel, creerCarte: carte, noterEvenement,
+    initialiser, finChargement, infosVehicule, etatVehicule, inventaireVehicule, estDZ, helico, cadran, carburantActuel, creerCarte: carte, noterEvenement,
     ouvrirChecklist: (id) => choisirVehicule(id),
     vehiculeChoisi: () => etat.vehicule,
     mode: () => modeAction,

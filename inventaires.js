@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 24;
+  const VERSION_SERVEUR = 25;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -185,6 +185,9 @@ const Inventaires = (() => {
       nomVue: c.nomVue || '',
       // Vignette de la page des inventaires (contenant primaire : photo du véhicule…) ; à défaut, la photo principale.
       vignette: c.vignette || '',
+      // Contenant primaire relié à un véhicule de la check-list ambulancier : son identifiant, '-' pour aucun ;
+      // absent = d'après le nom (« F21 »). Photo (vignette) et état du jour sont alors communs aux deux check-lists.
+      ...(c.vehicule ? { vehicule: String(c.vehicule) } : {}),
       fleches: flechesPropres(c.fleches), // flèches de la vue principale vers les autres vues
       scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
       // Inventaire libre : pas de liste attendue, le matériel présent est scanné « en vrac » puis compté par type.
@@ -609,10 +612,56 @@ const Inventaires = (() => {
     if (!c || !c.clAmbulancier) return null;
     if (c.clAmbulancier !== 'auto') return listeVehicules().find((v) => v.id === c.clAmbulancier) || { id: c.clAmbulancier };
     const p = primaireDe(c.id);
-    if (!p) return null;
+    if (!p || p.vehicule === '-') return null;
+    return p.vehicule ? listeVehicules().find((v) => v.id === p.vehicule) || { id: p.vehicule } : vehiculeDuNom(p);
+  }
+  /** Véhicule trouvé d'après le nom d'un contenant primaire (« F21 », « VL F21 »), ou null. */
+  function vehiculeDuNom(p) {
     const nom = cle(p.nom);
     return listeVehicules().find((v) => cle(v.id) === nom || (v.nom && cle(v.nom) === nom))
       || listeVehicules().find((v) => new RegExp(`(^|[^a-z0-9])${cle(v.id)}([^a-z0-9]|$)`).test(nom)) || null;
+  }
+  /**
+   * Véhicule de la check-list ambulancier relié à un contenant primaire : choisi en gestion (`vehicule`),
+   * sinon d'après son nom. Les deux check-lists partagent alors la photo du véhicule et leur état du jour.
+   */
+  function vehiculeDuPrimaire(p) {
+    if (!p || p.categorie !== 'primaire' || p.modele || p.vehicule === '-') return null;
+    if (p.vehicule) return listeVehicules().find((v) => v.id === p.vehicule) || { id: p.vehicule };
+    return vehiculeDuNom(p);
+  }
+  /** Contenant primaire relié à ce véhicule (inventaires gardés sur l'appareil), ou null. */
+  function primaireDuVehicule(id) {
+    return Object.values(structure.contenants).find((c) => !c.supprime && vehiculeDuPrimaire(c) && vehiculeDuPrimaire(c).id === id) || null;
+  }
+  /**
+   * Check-list ambulancier du jour d'un véhicule, vue depuis les inventaires : pastille (même couleur que la case
+   * du véhicule) et texte court. null si l'appli n'a pas la check-list ambulancier.
+   */
+  function etatAmbulancier(v) {
+    if (!v || typeof Ambulancier === 'undefined') return null;
+    try {
+      const vehicule = listeVehicules().find((x) => x.id === v.id) || v;
+      const e = Ambulancier.etatVehicule(vehicule);
+      const info = Ambulancier.infosVehicule(v.id);
+      const carb = vehicule.sansPlein ? null : Ambulancier.carburantActuel(info);
+      const seuilPlein = typeof SEUILS_ANOMALIE !== 'undefined' ? SEUILS_ANOMALIE.plein : 5;
+      let texte = e.classe === 'indispo' ? 'Véhicule non disponible' : 'Check-list ambulancier à faire';
+      if (e.statut) {
+        texte = `Check-list ambulancier faite ${new Date(e.statut.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} · ${e.statut.agent}`;
+        if (e.statut.anomalies.length) texte += ` · ${pluriel(e.statut.anomalies.length, 'anomalie')}`;
+      }
+      return { classe: e.classe, texte, anomalies: e.statut ? e.statut.anomalies : [], carburant: carb, pleinAFaire: Boolean(carb && carb.valeur <= seuilPlein) };
+    } catch (e) { return null; }
+  }
+  /** Ligne « check-list ambulancier » d'un véhicule (carte de la page des inventaires, bande du contenant primaire). */
+  function ligneAmbulancier(v, { court = false } = {}) {
+    const e = etatAmbulancier(v);
+    if (!e) return null;
+    return el('span', { classe: `inv-amb-etat ${e.classe}`, title: e.anomalies.length ? `Anomalies : ${e.anomalies.join(' ; ')}` : e.texte },
+      el('span', { classe: 'pastille-etat', 'aria-hidden': 'true' }),
+      el('span', { texte: court ? e.texte.replace('Check-list ambulancier', 'CL ambu') : e.texte }),
+      e.pleinAFaire ? el('span', { classe: 'inv-amb-plein', texte: ` · carburant ${e.carburant.valeur}/8` }) : null);
   }
   /**
    * Éléments que la check-list ambulancier peut vérifier : niveaux (obus, bouteilles) et éléments des listes à cocher.
@@ -663,7 +712,10 @@ const Inventaires = (() => {
   /** Empreinte des check-lists ambulancier utiles à l'écran : on ne redessine que si elle change. */
   function empreinteAmbulancier() {
     return JSON.stringify(Object.values(structure.contenants).filter((c) => c.clAmbulancier && !c.supprime)
-      .map((c) => { const r = releveAmbulancier(c); return [c.id, r.statut ? r.statut.date : '', r.niveaux.map((n) => n.valeur), r.items.map((i) => i.ok)]; }));
+      .map((c) => { const r = releveAmbulancier(c); return [c.id, r.statut ? r.statut.date : '', r.niveaux.map((n) => n.valeur), r.items.map((i) => i.ok)]; })
+      // Contenants primaires reliés à un véhicule : état de sa check-list ambulancier (carte et bande du haut).
+      .concat(Object.values(structure.contenants).filter((c) => c.categorie === 'primaire' && !c.supprime)
+        .map((c) => { const e = etatAmbulancier(vehiculeDuPrimaire(c)); return [c.id, e ? e.texte : '', e && e.pleinAFaire]; })));
   }
 
   /** État d'un contenant et de tout ce qu'il contient. */
@@ -1242,6 +1294,8 @@ const Inventaires = (() => {
         c.emplacement ? el('span', { classe: `inv-carte-occupant${occupant ? '' : ' vide'}`, texte: occupant ? `↳ ${occupant.nom}` : '↳ à identifier (QR, NFC ou liste)' }) : null,
         el('span', { classe: 'inv-carte-etat' }, b.complet ? '✓ ' : '', b.texte,
           sous ? ` · ${pluriel(sous, 'sous-inventaire')}` : ''),
+        // Véhicule : état de sa check-list ambulancier du jour (données communes aux deux check-lists).
+        !numero && !gestion ? ligneAmbulancier(vehiculeDuPrimaire(c), { court: true }) : null,
         el('span', { classe: 'inv-badges' }, ...badges(b))),
       el('span', { classe: 'inv-chevron', 'aria-hidden': 'true', texte: '›' }));
   }
@@ -1460,7 +1514,9 @@ const Inventaires = (() => {
     // Contenant mobile (ou rangé dans un mobile) : il ne dit pas où l'on est, le contenant primaire reste modifiable.
     const modifiable = c && p && dansUnMobile(c);
     return el('div', { classe: `inv-bande-primaire${p ? '' : ' aucun'}`, role: 'status' }, picto('lieu'),
-      el('span', { classe: 'inv-bande-texte' }, p ? 'Vous vérifiez actuellement ' : '', modifiable ? choixPrimaire(p.id) : el('strong', { texte: p ? p.nom : 'Aucun contenant primaire' })));
+      el('span', { classe: 'inv-bande-texte' }, p ? 'Vous vérifiez actuellement ' : '', modifiable ? choixPrimaire(p.id) : el('strong', { texte: p ? p.nom : 'Aucun contenant primaire' })),
+      // Véhicule : sa check-list ambulancier du jour reste visible pendant tout l'inventaire.
+      p ? ligneAmbulancier(vehiculeDuPrimaire(p), { court: true }) : null);
   }
   /**
    * Barre collée en haut de l'écran : bande du contenant primaire, puis flèche retour et nom du niveau affiché
@@ -4750,6 +4806,29 @@ const Inventaires = (() => {
   }
 
   /**
+   * Gestion : véhicule de la check-list ambulancier relié à ce contenant primaire. Les deux check-lists partagent
+   * alors la photo du véhicule (vignette ci-dessous, affichée aussi sur la case du véhicule côté ambulancier)
+   * et leur état du jour (check-list ambulancier visible ici, inventaire IADE visible sur la case du véhicule).
+   */
+  function blocVehicule(c) {
+    const id = idChamp();
+    const parNom = vehiculeDuNom(c);
+    const option = (valeur, texte) => el('option', { value: valeur, texte, selected: (c.vehicule || '') === valeur });
+    const v = vehiculeDuPrimaire(c);
+    return el('div', { classe: 'champ inv-choix-vehicule' },
+      el('label', { for: id, texte: 'Véhicule (check-list ambulancier)' }),
+      el('select', { id, surchange: (e) => {
+        if (e.target.value) c.vehicule = e.target.value; else delete c.vehicule;
+        marquer(c.id); rendre({ garderPosition: true });
+      } }, option('', parNom ? `D'après le nom : ${parNom.nom || parNom.id}` : 'D\'après le nom (aucun véhicule reconnu)'),
+      ...listeVehicules().filter((x) => !x.inactif || x.id === c.vehicule).map((x) => option(x.id, x.nom || x.id)),
+      option('-', 'Aucun véhicule (réserve, pièce…)')),
+      el('p', { classe: 'aide-question', texte: v
+        ? `Relié à ${v.nom || v.id} : la vignette est aussi la photo du véhicule dans la check-list ambulancier ; l'état de chaque check-list du jour est visible de l'autre côté.`
+        : 'Sans véhicule relié, rien n\'est partagé avec la check-list ambulancier.' }));
+  }
+
+  /**
    * Vignette d'un contenant primaire sur la page des inventaires : une image qui le désigne (photo du
    * véhicule, porte de la réserve…) plutôt que la photo d'inventaire. Propre à chaque contenant (non répercutée
    * depuis un inventaire type). Sans vignette, la photo principale est utilisée.
@@ -4829,6 +4908,7 @@ const Inventaires = (() => {
       bandeauGestion(),
       titre ? el('div', { classe: 'inv-entete' }, titre, boutonEdition()) : null,
       choixCategorie,
+      edition && c.categorie === 'primaire' && !modele ? blocVehicule(c) : null,
       edition && c.categorie === 'primaire' ? blocVignette(c) : null,
       edition ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseScellable },
         el('input', { type: 'checkbox', id: caseScellable, checked: c.scellable, surchange: (e) => { c.scellable = e.target.checked; marquer(c.id); } }),
@@ -5793,5 +5873,7 @@ const Inventaires = (() => {
     setTimeout(() => p.remove(), 3500);
   }
 
-  return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate, scanRapide };
+  /** Pour la check-list ambulancier : photo d'un véhicule (vignette de son contenant primaire) gardée sur l'appareil. */
+  const photoVehicule = (id) => { const p = primaireDuVehicule(id); return p ? p.vignette || p.photo || '' : ''; };
+  return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate, scanRapide, obtenirPhoto, enMemoire: (id) => Photos.enMemoire(id), photoVehicule };
 })();

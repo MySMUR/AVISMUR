@@ -309,7 +309,7 @@ async function chargerReleves(silencieux = false) {
   const fin = silencieux ? () => {} : chargement.debut('Chargement des véhicules et des check-lists du jour…');
   try {
     const rep = await appeler('derniersReleves');
-    if (rep.ok) Ambulancier.majReleves(rep.releves, rep.parc, rep.statuts, fileAttente.lire(), rep.infos);
+    if (rep.ok) Ambulancier.majReleves(rep.releves, rep.parc, rep.statuts, fileAttente.lire(), rep.infos, rep.inventaires);
   } catch (err) { /* hors ligne : on garde les derniers relevés connus */ } finally {
     relevesEnCours = false;
     fin();

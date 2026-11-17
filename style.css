@@ -2733,3 +2733,27 @@ body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color:
 }
 .camera .cible-nfc-lien-zone { display: flex; justify-content: center; padding: 0 1rem; }
 .mat-nfc-lecture { display: flex; flex-direction: column; gap: 0.6rem; }
+
+/* ---------- Données communes aux check-lists ambulancier et IADE (même véhicule) ---------- */
+/* Photo du véhicule (vignette de son contenant primaire dans les inventaires) en tête de sa case. */
+.vehicule.carte .carte-photo { display: block; height: 4.5rem; margin: -0.2rem -0.35rem 0.1rem; border-radius: calc(var(--rayon) - 4px); overflow: hidden; background: var(--ciel); }
+.vehicule.carte .carte-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.vehicule.carte.compacte .carte-photo { height: 3rem; }
+.vehicule.carte.indispo .carte-photo img { filter: grayscale(1); opacity: 0.7; }
+/* Inventaire IADE du jour sur la case du véhicule : la pastille suit son propre état. */
+.vehicule.carte .carte-iade .pastille-etat { background: #9AA6B8; }
+.vehicule.carte .carte-iade.en-partie .pastille-etat { background: var(--orange); }
+.vehicule.carte .carte-iade.fait .pastille-etat { background: var(--rhone); }
+.vehicule.carte .carte-iade.anomalie .pastille-etat { background: var(--bleu); }
+/* Check-list ambulancier du jour, vue depuis les inventaires (carte du véhicule, bande du contenant primaire). */
+.inv-amb-etat { display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; color: var(--gris); }
+.inv-amb-etat .pastille-etat { background: #9AA6B8; }
+.inv-amb-etat.fait .pastille-etat { background: var(--rhone); }
+.inv-amb-etat.anomalie .pastille-etat { background: var(--bleu); }
+.inv-amb-etat.indispo .pastille-etat { background: var(--erreur); }
+.inv-amb-plein { color: var(--erreur); font-weight: 700; }
+.inv-bande-primaire .inv-amb-etat { margin-left: auto; padding: 0.1rem 0.55rem; font-size: 0.78rem; color: #fff; background: rgb(255 255 255 / 0.16); border-radius: 999px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.inv-bande-primaire .inv-amb-etat .pastille-etat { box-shadow: 0 0 0 1.5px #fff; }
+.inv-bande-primaire .inv-amb-plein { color: #FFD6D6; }
+.inv-bande-primaire .inv-bande-texte { min-width: 0; }
+@media (max-width: 480px) { .inv-bande-primaire { flex-wrap: wrap; border-radius: 1rem; } .inv-bande-primaire .inv-amb-etat { margin-left: 1.55rem; } }
