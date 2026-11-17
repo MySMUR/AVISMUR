@@ -39,7 +39,7 @@ const Inventaires = (() => {
   let creation = null; // fiche en cours de création ({ denomination, … }) depuis « Ajouter un article »
   let ajoutSousOuvert = false; // formulaire « Ajouter un sous-inventaire » déplié (mode Modifier)
   let baseOuverte = ''; // fiche dépliée dans la base des articles ('nouvelle' : création)
-  let baseFiltre = { texte: '', categorie: '', archives: false };
+  let baseFiltre = { texte: '', categorie: '', archives: false, sansPhoto: false };
   const brouillonsBase = new Map(); // tableau de la base (ordinateur) : fiches modifiées, pas encore enregistrées
   let edition = false;
   let gestion = false;
@@ -3636,6 +3636,239 @@ const Inventaires = (() => {
     return bloc;
   }
 
+  /**
+   * Photos en série des articles de la base : la caméra reste ouverte, l'article à photographier est
+   * affiché par-dessus, les articles défilent dans un bandeau en bas. Après chaque prise : détourage
+   * automatique (fond uni, désactivable), recadrage, puis passage tout seul à l'article suivant.
+   * Les articles proposés suivent la recherche et la catégorie de la base ; « Sans photo » par défaut.
+   */
+  function rafalePhotos() {
+    const reglages = lireJson('avismur_rafale', {});
+    let detourer = reglages.detourage !== false && typeof Detourage !== 'undefined';
+    let sansPhoto = reglages.sansPhoto !== false;
+    let categorie = baseFiltre.categorie;
+    let liste = [];
+    let index = 0;
+    let flux = null;
+    let fini = false;
+    let occupe = false;
+    let torche = false;
+    const faites = new Map(); // id de fiche → photo prise pendant la séance (vignette du bandeau)
+
+    const preparer = () => {
+      // Liste figée à l'ouverture et à chaque changement de filtre : un article photographié reste
+      // dans le bandeau (coché) au lieu de disparaître sous le doigt.
+      liste = chercherFiches(baseFiltre.texte, { categorie }).filter((f) => !sansPhoto || !f.photo || faites.has(f.id));
+      index = Math.max(0, liste.findIndex((f) => !faites.has(f.id)));
+    };
+    const courant = () => liste[index] || null;
+
+    const video = el('video', { playsinline: '', muted: '', autoplay: '' });
+    video.muted = true;
+    const nomArticle0 = el('strong', { classe: 'inv-rafale-nom' });
+    const detailArticle = el('small', { classe: 'inv-rafale-detail' });
+    const etiquette = el('div', { classe: 'inv-rafale-article', 'aria-live': 'polite' }, nomArticle0, detailArticle);
+    const vue = el('div', { classe: 'camera-vue inv-rafale-video' }, video, el('div', { classe: 'inv-rafale-cadre', 'aria-hidden': 'true' }), etiquette);
+    const lecture = el('p', { classe: 'lecture', role: 'status', 'aria-live': 'polite' });
+    const compte = el('span', { classe: 'inv-vrac-total' });
+    const bandeau = el('ol', { classe: 'inv-rafale-bandeau', 'aria-label': 'Articles à photographier' });
+    const fichierSecours = el('input', { type: 'file', accept: 'image/*', capture: 'environment', classe: 'invisible' });
+    const fichierGalerie = el('input', { type: 'file', accept: 'image/*', classe: 'invisible' });
+    const declencheur = el('button', { type: 'button', classe: 'inv-rafale-declencheur', 'aria-label': 'Prendre la photo' }, el('span'));
+    const precedent = el('button', { type: 'button', classe: 'inv-vrac-outil', 'aria-label': 'Article précédent', texte: '‹' });
+    const suivant = el('button', { type: 'button', classe: 'inv-vrac-outil', 'aria-label': 'Passer à l\'article suivant', texte: '›' });
+    const boutonGalerie = el('button', { type: 'button', classe: 'inv-vrac-outil', title: 'Choisir une image', 'aria-label': 'Choisir une image enregistrée' }, iconeImage());
+    const boutonDetourage = el('button', { type: 'button', classe: 'inv-vrac-outil inv-rafale-detourage', title: 'Détourage automatique (objet posé sur un fond uni)' });
+    const boutonTorche = el('button', { type: 'button', classe: 'inv-vrac-outil', title: 'Lampe', 'aria-label': 'Allumer la lampe', 'aria-pressed': 'false', hidden: true, texte: '🔦' });
+    const caseSansPhoto = el('input', { type: 'checkbox', checked: sansPhoto });
+    const choixCategorie = el('select', { 'aria-label': 'Catégorie' }, el('option', { value: '', texte: 'Toutes catégories' }), ...CATEGORIES.map((c) => el('option', { value: c, texte: c })));
+    choixCategorie.value = categorie;
+
+    const annonce = (texte, classe = '') => { lecture.textContent = texte; lecture.className = `lecture ${classe}`.trim(); };
+    const sauverReglages = () => ecrireJson('avismur_rafale', { detourage: detourer, sansPhoto });
+    const majDetourage = () => {
+      boutonDetourage.hidden = typeof Detourage === 'undefined';
+      boutonDetourage.setAttribute('aria-pressed', String(detourer));
+      boutonDetourage.setAttribute('aria-label', detourer ? 'Détourage automatique activé : appuyer pour le couper' : 'Détourage automatique coupé : appuyer pour l\'activer');
+      boutonDetourage.replaceChildren(icone('M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z', 'M5 16l.9 2.1L8 19l-2.1.9L5 22l-.9-2.1L2 19l2.1-.9z', ...(detourer ? [] : ['M3 3l18 18'])));
+    };
+    const majArticle = () => {
+      const f = courant();
+      const reste = liste.filter((x) => !faites.has(x.id)).length;
+      compte.textContent = liste.length ? `${faites.size ? `${faites.size} faite${faites.size > 1 ? 's' : ''} · ` : ''}${pluriel(reste, 'restant', 'restants')}` : '';
+      nomArticle0.textContent = f ? f.denomination : (liste.length ? 'Tous les articles ont une photo' : 'Aucun article');
+      detailArticle.textContent = f ? [f.categorie, f.refInterne && `réf. ${f.refInterne}`, faites.has(f.id) ? '✓ photo prise' : (f.photo ? 'a déjà une photo (sera remplacée)' : '')].filter(Boolean).join(' · ') : (sansPhoto ? 'Décochez « Sans photo » pour reprendre une photo existante.' : 'Modifiez la catégorie ou la recherche.');
+      declencheur.disabled = !f || occupe;
+      boutonGalerie.disabled = !f || occupe;
+      precedent.disabled = index <= 0;
+      suivant.disabled = index >= liste.length - 1;
+      bandeau.querySelectorAll('li').forEach((li, i) => {
+        li.classList.toggle('courant', i === index);
+        li.querySelector('button').setAttribute('aria-current', i === index ? 'true' : 'false');
+      });
+      const li = bandeau.children[index];
+      if (li) li.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+    };
+    const carte = (f, i) => {
+      const image = el('img', { alt: '', hidden: true });
+      const photo = faites.get(f.id) || f.photo;
+      if (photo) {
+        const d = faites.has(f.id) ? faites.get(f.id) : Photos.enMemoire(photo);
+        if (d) { image.src = d; image.hidden = false; } else obtenirPhoto(photo).then((x) => { if (x) { image.src = x; image.hidden = false; } });
+      }
+      return el('li', { classe: faites.has(f.id) ? 'faite' : '' },
+        el('button', { type: 'button', 'aria-label': `${f.denomination}${faites.has(f.id) ? ' (photo prise)' : ''}`, surclick: () => { index = i; majArticle(); } },
+          el('span', { classe: 'inv-rafale-vignette' }, image, faites.has(f.id) ? el('span', { classe: 'inv-rafale-coche', texte: '✓' }) : null),
+          el('span', { classe: 'inv-rafale-carte-nom', texte: f.denomination })));
+    };
+    const majBandeau = () => {
+      bandeau.replaceChildren(...liste.map(carte));
+      majArticle();
+    };
+    const allerSuivantSansPhoto = () => {
+      const apres = liste.findIndex((f, i) => i > index && !faites.has(f.id));
+      const avant = liste.findIndex((f) => !faites.has(f.id));
+      if (apres >= 0) index = apres; else if (avant >= 0) index = avant;
+    };
+
+    /** Image de la caméra à pleine définition. */
+    const saisirImage = () => {
+      const toile = document.createElement('canvas');
+      toile.width = video.videoWidth;
+      toile.height = video.videoHeight;
+      toile.getContext('2d').drawImage(video, 0, 0);
+      return toile.toDataURL('image/jpeg', 0.92);
+    };
+    /** Détourage éventuel, recadrage, puis enregistrement sur la fiche. */
+    const traiter = async (source) => {
+      const f = courant();
+      if (!f || occupe) return;
+      occupe = true;
+      majArticle();
+      try {
+        let variantes = [];
+        if (detourer) {
+          annonce('Détourage…');
+          let res = null;
+          try { res = await Detourage.fondUni(source); } catch (e) { res = null; }
+          if (res && res.trouve) variantes = [{ libelle: 'Détourée', source: res.donnees }, { libelle: 'Originale', source }];
+          else annonce('Objet non détouré (fond pas assez uni) : photo d\'origine.', 'deja');
+        }
+        const recadre = await Recadrage.recadrer(source, { cote: 900, max: PHOTO_MAX, titre: f.denomination, variantes });
+        if (!recadre) { annonce('Photo abandonnée : reprenez-la ou passez à l\'article suivant.'); return; }
+        const id = `local-${nouvelId()}`;
+        await Photos.ecrire(id, recadre.donnees);
+        enregistrerFiche({ ...structure.catalogue[f.id], photo: id });
+        faites.set(f.id, recadre.donnees);
+        const li = bandeau.children[index];
+        if (li) li.replaceWith(carte(structure.catalogue[f.id], index));
+        signalVrac(true);
+        annonce(`✓ Photo enregistrée : ${f.denomination}.`, 'ok');
+        allerSuivantSansPhoto();
+      } catch (e) {
+        annonce('Photo illisible ou trop lourde : réessayez.', 'erreur');
+      } finally {
+        occupe = false;
+        majArticle();
+      }
+    };
+
+    const arreterCamera = () => {
+      if (flux) flux.getTracks().forEach((t) => t.stop());
+      flux = null;
+      video.srcObject = null;
+    };
+    const demarrerCamera = async () => {
+      if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) throw new Error('caméra');
+      const f = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
+      if (fini) { f.getTracks().forEach((t) => t.stop()); return; }
+      flux = f;
+      video.srcObject = f;
+      const piste = f.getVideoTracks()[0];
+      const capacites = piste && piste.getCapabilities ? piste.getCapabilities() : {};
+      boutonTorche.hidden = !capacites.torch;
+    };
+    declencheur.addEventListener('click', () => {
+      if (!courant() || occupe) return;
+      if (!flux || video.readyState < 2 || !video.videoWidth) { fichierSecours.click(); return; }
+      vue.classList.remove('flash');
+      void vue.offsetWidth; // relance l'animation
+      vue.classList.add('flash');
+      traiter(saisirImage());
+    });
+    const recevoirFichier = (e) => {
+      const fichier = e.target.files[0];
+      e.target.value = '';
+      if (!fichier) return;
+      const lecteur = new FileReader();
+      lecteur.onload = () => traiter(lecteur.result);
+      lecteur.onerror = () => annonce('Image illisible.', 'erreur');
+      lecteur.readAsDataURL(fichier);
+    };
+    fichierSecours.addEventListener('change', recevoirFichier);
+    fichierGalerie.addEventListener('change', recevoirFichier);
+    boutonGalerie.addEventListener('click', () => fichierGalerie.click());
+    precedent.addEventListener('click', () => { if (index > 0) { index -= 1; majArticle(); } });
+    suivant.addEventListener('click', () => { if (index < liste.length - 1) { index += 1; majArticle(); } });
+    boutonDetourage.addEventListener('click', () => {
+      detourer = !detourer;
+      sauverReglages();
+      majDetourage();
+      annonce(detourer ? 'Détourage automatique activé : posez l\'objet sur un fond uni et contrasté.' : 'Détourage automatique coupé.');
+    });
+    boutonTorche.addEventListener('click', async () => {
+      const piste = flux && flux.getVideoTracks()[0];
+      if (!piste) return;
+      try {
+        torche = !torche;
+        await piste.applyConstraints({ advanced: [{ torch: torche }] });
+        boutonTorche.setAttribute('aria-pressed', String(torche));
+        boutonTorche.setAttribute('aria-label', torche ? 'Éteindre la lampe' : 'Allumer la lampe');
+      } catch (e) { torche = false; }
+    });
+    caseSansPhoto.addEventListener('change', () => { sansPhoto = caseSansPhoto.checked; sauverReglages(); preparer(); majBandeau(); });
+    choixCategorie.addEventListener('change', () => { categorie = choixCategorie.value; preparer(); majBandeau(); });
+
+    const fermerBouton = el('button', { type: 'button', classe: 'inv-vrac-outil', 'aria-label': 'Fermer', texte: '✕' });
+    const ecran = el('div', { classe: 'camera inv-rafale', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Photos des articles en série' },
+      el('div', { classe: 'inv-vrac-haut' },
+        el('div', { classe: 'inv-vrac-titre' }, el('strong', { texte: 'Photos des articles' }), compte),
+        boutonTorche, boutonDetourage, fermerBouton),
+      el('div', { classe: 'inv-rafale-filtres' },
+        el('label', { classe: 'inv-rafale-sans' }, caseSansPhoto, ' Sans photo'), choixCategorie),
+      vue,
+      el('div', { classe: 'inv-rafale-commandes' }, precedent, boutonGalerie, declencheur, el('span', { classe: 'inv-rafale-vide' }), suivant),
+      lecture, bandeau, fichierSecours, fichierGalerie);
+    const fermer = () => {
+      if (fini) return;
+      fini = true;
+      arreterCamera();
+      ecran.remove();
+      document.body.classList.remove('camera-ouverte');
+      if (faites.size) avis = `${pluriel(faites.size, 'photo enregistrée', 'photos enregistrées')} dans la base des articles.`;
+      rendre({ garderPosition: true });
+    };
+    fermerBouton.addEventListener('click', fermer);
+    ecran.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { fermer(); return; }
+      if (e.target.closest('select, input')) return;
+      if (e.key === 'ArrowRight') suivant.click();
+      else if (e.key === 'ArrowLeft') precedent.click();
+      else if ((e.key === ' ' || e.key === 'Enter') && !e.target.closest('button')) { e.preventDefault(); declencheur.click(); }
+    });
+    preparer();
+    document.body.append(ecran);
+    document.body.classList.add('camera-ouverte');
+    majDetourage();
+    majBandeau();
+    declencheur.focus();
+    annonce(detourer ? 'Posez l\'article sur un fond uni (feuille blanche…) et déclenchez.' : 'Cadrez l\'article et déclenchez.');
+    demarrerCamera().catch(() => {
+      vue.classList.add('sans-camera');
+      annonce('Caméra inaccessible ici : le déclencheur ouvre l\'appareil photo du téléphone.', 'deja');
+    });
+  }
+
   function vueBase() {
     const admin = aDroitApp('ARTICLES');
     // Sur ordinateur (écran large), les gestionnaires éditent la base dans un tableau.
@@ -3676,7 +3909,8 @@ const Inventaires = (() => {
     };
     function remplir() {
       liste.innerHTML = '';
-      const trouvees = chercherFiches(baseFiltre.texte, { archives: baseFiltre.archives, categorie: baseFiltre.categorie });
+      const trouvees = chercherFiches(baseFiltre.texte, { archives: baseFiltre.archives, categorie: baseFiltre.categorie })
+        .filter((f) => !baseFiltre.sansPhoto || !f.photo);
       const max = enTableau ? 300 : 60;
       const affichees = trouvees.slice(0, max);
       compte.textContent = trouvees.length ? `${pluriel(trouvees.length, 'article')}${trouvees.length > max ? ` — ${max} premiers affichés, précisez la recherche` : ''}` : 'Aucun article ne correspond.';
@@ -3705,6 +3939,7 @@ const Inventaires = (() => {
         el('label', { for: i, texte: cat || 'Toutes' }));
     });
     const caseArchives = idChamp();
+    const caseSansPhoto = idChamp();
     remplir();
     if (baseOuverte === 'nouvelle') {
       nouvelle.append(formulaireFiche({ id: nouvelId(), denomination: baseFiltre.texte.trim(), categorie: baseFiltre.categorie, horsStock: false, refInterne: '', refFournisseur: '', consommable: true, perissable: baseFiltre.categorie === 'Médicament', archive: false }, {
@@ -3717,7 +3952,9 @@ const Inventaires = (() => {
     return [
       barreHaut({ titre: 'Inventaires', h1: false, bande: false, retour: () => aller('') }),
       el('div', { classe: 'inv-entete' }, el('h1', { tabindex: '-1', texte: 'Base des articles' }),
-        admin && baseOuverte !== 'nouvelle' ? el('button', { type: 'button', classe: 'cfg-bouton', texte: '＋ Nouvel article', surclick: () => { baseOuverte = 'nouvelle'; rendre({ garderPosition: true, focus: '.inv-fiche input' }); } }) : null),
+        admin && baseOuverte !== 'nouvelle' ? el('div', { classe: 'inv-entete-actions' },
+          el('button', { type: 'button', classe: 'cfg-bouton', title: 'Caméra ouverte : les articles défilent en bas, une photo après l\'autre', surclick: rafalePhotos }, iconeAppareil(), ' Photos en série'),
+          el('button', { type: 'button', classe: 'cfg-bouton', texte: '＋ Nouvel article', surclick: () => { baseOuverte = 'nouvelle'; rendre({ garderPosition: true, focus: '.inv-fiche input' }); } })) : null),
       ligneSynchro(), ligneAvis(),
       el('p', { classe: 'consigne', texte: 'Chaque article des inventaires est décrit ici une seule fois. Une modification de fiche s\'applique à tous les inventaires qui l\'utilisent.' }),
       nouvelle,
@@ -3725,6 +3962,7 @@ const Inventaires = (() => {
         el('input', { id: champ, type: 'search', autocomplete: 'off', valeur: baseFiltre.texte, surinput: (e) => { baseFiltre.texte = e.target.value; remplir(); } })),
       filtres,
       el('label', { classe: 'cfg-case', for: caseArchives }, el('input', { type: 'checkbox', id: caseArchives, checked: baseFiltre.archives, surchange: (e) => { baseFiltre.archives = e.target.checked; remplir(); } }), 'Afficher les articles archivés'),
+      el('label', { classe: 'cfg-case', for: caseSansPhoto }, el('input', { type: 'checkbox', id: caseSansPhoto, checked: baseFiltre.sansPhoto, surchange: (e) => { baseFiltre.sansPhoto = e.target.checked; remplir(); } }), 'Seulement les articles sans photo'),
       compte, liste, tableau,
       el('div', { classe: 'inv-pied' }, el('a', { classe: 'lien', href: lien(''), texte: '← Tous les inventaires' })),
     ];

@@ -9,7 +9,8 @@
  *
  * Options : cote (plus grand côté en sortie, px), max (taille maximale de la data URL, caractères),
  * qualites (qualités JPEG essayées dans l'ordre), carre (cadre carré : photo de profil),
- * titre (titre de la fenêtre).
+ * titre (titre de la fenêtre), variantes ([{ libelle, source }] : versions de la photo proposées en
+ * boutons, ex. « Détourée » / « Originale » ; la première est affichée d'abord, `source` est alors ignorée).
  *
  * Recadrage.photo(source, options) : raccourci qui résout directement la data URL (ou null si annulé).
  */
@@ -29,19 +30,27 @@ const Recadrage = (() => {
   }
 
   function recadrer(source, options = {}) {
-    const { cote = 1280, max = Infinity, qualites = [0.72, 0.6, 0.5], carre = false, titre = 'Recadrer la photo' } = options;
+    const { cote = 1280, max = Infinity, qualites = [0.72, 0.6, 0.5], carre = false, titre = 'Recadrer la photo', variantes = [] } = options;
+    const charger = (src) => new Promise((ok, ko) => {
+      const im = new Image();
+      const url = typeof src === 'string' ? src : URL.createObjectURL(src);
+      const liberer = () => { if (typeof src !== 'string') URL.revokeObjectURL(url); };
+      im.onerror = () => { liberer(); ko(new Error('image')); };
+      im.onload = () => { liberer(); if (!im.width || !im.height) ko(new Error('image')); else ok(im); };
+      im.src = url;
+    });
     return new Promise((ok, ko) => {
-      const img = new Image();
-      const url = typeof source === 'string' ? source : URL.createObjectURL(source);
-      const liberer = () => { if (typeof source !== 'string') URL.revokeObjectURL(url); };
-      img.onerror = () => { liberer(); ko(new Error('image')); };
-      img.onload = () => {
-        liberer();
-        if (!img.width || !img.height) { ko(new Error('image')); return; }
+      charger(variantes.length ? variantes[0].source : source).then((img0) => {
+        let img = img0;
+        let lw = 0;
+        let lh = 0;
         // Travail sur une copie limitée à 2400 px : fluide sur smartphone, largement assez pour la sortie.
-        const echelle = Math.min(1, 2400 / Math.max(img.width, img.height));
-        const lw = Math.round(img.width * echelle);
-        const lh = Math.round(img.height * echelle);
+        const mesurer = () => {
+          const echelle = Math.min(1, 2400 / Math.max(img.width, img.height));
+          lw = Math.round(img.width * echelle);
+          lh = Math.round(img.height * echelle);
+        };
+        mesurer();
         let quarts = 0;
         const toile = el('canvas', { classe: 'inv-recadrage-toile' });
         // Cadre de départ : toute la photo, ou le plus grand carré centré.
@@ -144,6 +153,20 @@ const Recadrage = (() => {
           };
           ok({ donnees, transformer });
         };
+        // Versions de la photo (ex. détourée / originale) : on passe de l'une à l'autre, le cadre repart de zéro.
+        const boutonsVariantes = variantes.length > 1 ? variantes.map((v, i) => el('button', {
+          type: 'button', classe: `cfg-mini inv-recadrage-variante${i ? '' : ' choisie'}`, 'aria-pressed': i ? 'false' : 'true', texte: v.libelle,
+          surclick: () => {
+            charger(v.source).then((im) => {
+              img = im;
+              mesurer();
+              dessiner();
+              r = initial();
+              placer();
+              boutonsVariantes.forEach((b, j) => { b.classList.toggle('choisie', i === j); b.setAttribute('aria-pressed', String(i === j)); });
+            }).catch(() => {});
+          },
+        })) : [];
         compteur += 1;
         const idTitre = `recadrage-titre-${compteur}`;
         // <dialog> ouvert en modal : passe au-dessus de toute fenêtre déjà ouverte (fiche matériel, information…),
@@ -151,6 +174,7 @@ const Recadrage = (() => {
         const fond = el('dialog', { classe: 'inv-recadrage', 'aria-labelledby': idTitre },
           el('div', { classe: 'inv-recadrage-tete' },
             el('h2', { id: idTitre, texte: titre }),
+            ...boutonsVariantes,
             el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': 'Tourner d\'un quart de tour', title: 'Tourner', texte: '↻', surclick: () => { quarts = (quarts + 1) % 4; dessiner(); r = initial(); placer(); } }),
             el('button', { type: 'button', classe: 'cfg-mini', title: carre ? 'Plus grand carré' : 'Toute la photo', texte: 'Tout', surclick: () => { r = initial(); placer(); } })),
           el('div', { classe: 'inv-recadrage-zone' }, scene),
@@ -163,8 +187,7 @@ const Recadrage = (() => {
         fond.addEventListener('cancel', (e) => { e.preventDefault(); fermer(); ok(null); }); // touche Échap / retour Android
         document.body.append(fond);
         if (fond.showModal) fond.showModal();
-      };
-      img.src = url;
+      }).catch(ko);
     });
   }
 

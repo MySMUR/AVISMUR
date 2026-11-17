@@ -2757,3 +2757,61 @@ body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color:
 .inv-bande-primaire .inv-amb-plein { color: #FFD6D6; }
 .inv-bande-primaire .inv-bande-texte { min-width: 0; }
 @media (max-width: 480px) { .inv-bande-primaire { flex-wrap: wrap; border-radius: 1rem; } .inv-bande-primaire .inv-amb-etat { margin-left: 1.55rem; } }
+
+/* ---------- Photos des articles en série (caméra ouverte, bandeau d'articles) ---------- */
+.inv-entete-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.inv-entete-actions .cfg-bouton { display: inline-flex; align-items: center; gap: 0.35rem; }
+.inv-rafale .lecture { padding: 0.35rem 1rem; min-height: 1.9rem; font-size: 0.9rem; }
+.inv-rafale .lecture.ok { color: #7EE2B8; }
+.inv-rafale .lecture.deja { color: #FFC37A; }
+.inv-rafale .lecture.erreur { color: #FF9C9C; }
+.inv-rafale-filtres { display: flex; align-items: center; gap: 0.6rem; padding: 0 0.8rem 0.5rem; }
+.inv-rafale-sans { display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; white-space: nowrap; }
+.inv-rafale-sans input { width: 1.2rem; height: 1.2rem; }
+.inv-rafale-filtres select { flex: 1; min-width: 0; padding: 0.35rem 0.5rem; border-radius: 8px; border: 1px solid #5B6B85; background: #1B2638; color: #fff; }
+.inv-rafale-video { min-height: 10rem; }
+.inv-rafale-video.sans-camera { background: #1B2638; }
+.inv-rafale-cadre { position: absolute; inset: 22% 8% 6%; border: 2px dashed rgb(255 255 255 / 0.55); border-radius: 12px; pointer-events: none; }
+.inv-rafale-video.flash::after { content: ''; position: absolute; inset: 0; background: #fff; animation: inv-rafale-flash 0.25s ease-out forwards; pointer-events: none; }
+@keyframes inv-rafale-flash { from { opacity: 0.8; } to { opacity: 0; } }
+.inv-rafale-article {
+  position: absolute; left: 0.6rem; right: 0.6rem; top: 0.6rem;
+  display: flex; flex-direction: column; padding: 0.45rem 0.7rem;
+  background: rgb(10 20 40 / 0.72); border-radius: 10px; text-align: center;
+}
+.inv-rafale-nom { font-size: 1.15rem; line-height: 1.25; }
+.inv-rafale-detail { opacity: 0.85; }
+.inv-rafale-commandes { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.6rem 1.2rem 0.2rem; }
+.inv-rafale-vide { width: 2.6rem; }
+.inv-rafale-declencheur {
+  width: 4.6rem; height: 4.6rem; flex: none; padding: 0.3rem;
+  border-radius: 50%; border: 4px solid #fff; background: transparent; cursor: pointer;
+}
+.inv-rafale-declencheur span { display: block; width: 100%; height: 100%; border-radius: 50%; background: #fff; transition: transform 0.1s; }
+.inv-rafale-declencheur:active span { transform: scale(0.88); }
+.inv-rafale-declencheur:disabled { opacity: 0.4; }
+.inv-rafale-bandeau {
+  list-style: none; margin: 0; padding: 0.3rem 0.8rem max(0.8rem, env(safe-area-inset-bottom));
+  display: flex; gap: 0.5rem; overflow-x: auto; scroll-snap-type: x proximity; flex: none;
+}
+.inv-rafale-bandeau li { flex: none; width: 5.4rem; scroll-snap-align: center; }
+.inv-rafale-bandeau button {
+  width: 100%; display: flex; flex-direction: column; gap: 0.25rem; padding: 0.25rem;
+  color: #fff; background: #1B2638; border: 2px solid transparent; border-radius: 10px; cursor: pointer;
+}
+.inv-rafale-bandeau li.courant button { border-color: var(--orange); }
+.inv-rafale-vignette { position: relative; display: block; aspect-ratio: 1; border-radius: 7px; background: #2C3A52; overflow: hidden; }
+.inv-rafale-vignette img { width: 100%; height: 100%; object-fit: cover; background: #fff; }
+.inv-rafale-vignette img[hidden] { display: none; }
+.inv-rafale-coche {
+  position: absolute; right: 0.2rem; bottom: 0.2rem; width: 1.3rem; height: 1.3rem; line-height: 1.3rem;
+  text-align: center; font-weight: 700; color: #fff; background: #1A8F5C; border-radius: 50%;
+}
+.inv-rafale-carte-nom {
+  font-size: 0.72rem; line-height: 1.15; text-align: left;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 1.65rem;
+}
+.inv-recadrage-variante { white-space: nowrap; }
+.inv-recadrage-variante.choisie { background: var(--bleu); color: #fff; border-color: #6F9BE0; }
+.inv-recadrage-tete:has(.inv-recadrage-variante) { flex-wrap: wrap; }
+.inv-recadrage-tete:has(.inv-recadrage-variante) h2 { flex-basis: 100%; }
