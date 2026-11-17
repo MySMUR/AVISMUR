@@ -2828,3 +2828,8 @@ button.inv-miniature:hover, button.inv-miniature:focus-visible { border-color: v
 .inv-miniature-vide { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #B5C0CF; background: #F3F6FA; }
 .inv-resultat.inv-resultat-photo { flex-direction: row; align-items: center; gap: 0.7rem; }
 .inv-resultat-texte { display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; }
+/* Appareil photo de l'appli (remplace celui du téléphone pour toutes les prises de vue) */
+dialog.appareil { margin: 0; padding: 0; border: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; box-sizing: border-box; }
+dialog.appareil:not([open]) { display: none; }
+.appareil .lecture { padding: 0.35rem 1rem max(0.9rem, env(safe-area-inset-bottom)); font-size: 0.9rem; }
+.appareil-vue.flash::after { content: ''; position: absolute; inset: 0; background: #fff; animation: inv-rafale-flash 0.25s ease-out forwards; pointer-events: none; }
