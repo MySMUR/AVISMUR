@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 23;
+  const VERSION_SERVEUR = 24;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -183,6 +183,8 @@ const Inventaires = (() => {
       // La photo principale (`photo`, `points`, nom `nomVue`) est la vue 1.
       vues: Array.isArray(c.vues) ? c.vues.map((v) => ({ id: v.id, nom: v.nom || '', photo: v.photo || '', points: Array.isArray(v.points) ? v.points : [], fleches: flechesPropres(v.fleches) })) : [],
       nomVue: c.nomVue || '',
+      // Vignette de la page des inventaires (contenant primaire : photo du véhicule…) ; à défaut, la photo principale.
+      vignette: c.vignette || '',
       fleches: flechesPropres(c.fleches), // flèches de la vue principale vers les autres vues
       scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
       // Inventaire libre : pas de liste attendue, le matériel présent est scanné « en vrac » puis compté par type.
@@ -299,7 +301,7 @@ const Inventaires = (() => {
     c.points = t(c.points);
     c.vues = c.vues.map((v) => ({ ...v, points: t(v.points) }));
   }
-  const photosDe = (c) => [c.photo, ...c.vues.map((v) => v.photo)].filter(Boolean);
+  const photosDe = (c) => [c.photo, c.vignette, ...c.vues.map((v) => v.photo)].filter(Boolean);
   /**
    * Texte des gommettes d'un sous-inventaire (le même sur toutes les vues) : `undefined` = numéro automatique
    * (rang dans la liste), '' = gommette sans texte, sinon 1 à 3 caractères (lettres, chiffres…).
@@ -861,6 +863,7 @@ const Inventaires = (() => {
         Object.values(structure.contenants).forEach((x) => {
           let change = false;
           if (x.photo === locale) { x.photo = distante; change = true; }
+          if (x.vignette === locale) { x.vignette = distante; change = true; }
           x.vues.forEach((v) => { if (v.photo === locale) { v.photo = distante; change = true; } });
           if (change) modifs.ids[x.id] = (modifs.ids[x.id] || 0) + 1;
         });
@@ -1202,10 +1205,12 @@ const Inventaires = (() => {
     const b = bilan(c.id);
     const t = numero ? (texte === undefined ? String(numero) : texte) : '';
     const repere = el('span', { classe: `inv-repere ${b.classe}${numero ? classesTexte(t) : ''}`, 'aria-hidden': 'true', texte: t });
-    if (!numero && c.photo) {
+    // Vignette : image choisie pour la liste (ex. photo du véhicule), sinon la photo d'inventaire.
+    const imageCarte = numero ? '' : (c.vignette || c.photo);
+    if (imageCarte) {
       const vignette = (donnees) => { if (donnees) repere.append(el('img', { src: donnees, alt: '' })); };
-      if (Photos.enMemoire(c.photo)) vignette(Photos.enMemoire(c.photo));
-      else obtenirPhoto(c.photo).then(vignette);
+      if (Photos.enMemoire(imageCarte)) vignette(Photos.enMemoire(imageCarte));
+      else obtenirPhoto(imageCarte).then(vignette);
     }
     // Check-list : un contenant mobile pas encore pointé aujourd'hui reste anonyme — l'agent doit le lire ou le scanner.
     if (!gestion && masquerMobile(c)) {
@@ -4744,6 +4749,51 @@ const Inventaires = (() => {
     return bloc;
   }
 
+  /**
+   * Vignette d'un contenant primaire sur la page des inventaires : une image qui le désigne (photo du
+   * véhicule, porte de la réserve…) plutôt que la photo d'inventaire. Propre à chaque contenant (non répercutée
+   * depuis un inventaire type). Sans vignette, la photo principale est utilisée.
+   */
+  function blocVignette(c) {
+    const prendre = idChamp();
+    const choisir = idChamp();
+    const apercu = el('span', { classe: 'inv-vignette-apercu', 'aria-hidden': 'true' });
+    const montrer = (d) => { if (d) apercu.append(el('img', { src: d, alt: '' })); };
+    if (c.vignette) { if (Photos.enMemoire(c.vignette)) montrer(Photos.enMemoire(c.vignette)); else obtenirPhoto(c.vignette).then(montrer); }
+    const remplacer = async (id) => {
+      if (c.vignette && c.vignette.startsWith('local-')) await Photos.supprimer(c.vignette);
+      c.vignette = id;
+      marquer(c.id);
+      rendre({ garderPosition: true });
+    };
+    const recevoir = async (e) => {
+      const fichier = e.target.files[0];
+      e.target.value = '';
+      if (!fichier) return;
+      try {
+        const donnees = await Recadrage.photo(fichier, { cote: 480, max: PHOTO_MAX, carre: true, titre: 'Cadrer la vignette' });
+        if (!donnees) return;
+        const id = `local-${nouvelId()}`;
+        await Photos.ecrire(id, donnees);
+        await remplacer(id);
+      } catch (err) {
+        messageVue('Photo illisible ou trop lourde : réessayez.', 'erreur');
+      }
+    };
+    return el('div', { classe: 'champ inv-vignette' },
+      el('span', { classe: 'inv-libelle', texte: 'Vignette de la page des inventaires' }),
+      el('div', { classe: 'inv-vignette-ligne' }, c.vignette ? apercu : null,
+        el('div', { classe: 'champ-photo' },
+          el('label', { for: prendre, classe: 'bouton-photo', texte: c.vignette ? '📷 Reprendre' : '📷 Prendre la photo' }),
+          el('input', { type: 'file', id: prendre, accept: 'image/*', capture: 'environment', classe: 'invisible', surchange: recevoir }),
+          el('label', { for: choisir, classe: 'bouton-photo', texte: 'Choisir une image' }),
+          el('input', { type: 'file', id: choisir, accept: 'image/*', classe: 'invisible', surchange: recevoir }),
+          c.vignette ? el('button', { type: 'button', classe: 'lien danger', texte: 'Retirer', surclick: () => remplacer('') }) : null)),
+      el('p', { classe: 'aide-question', texte: c.vignette
+        ? 'Image affichée dans la liste des contenants primaires (cadre carré).'
+        : 'Une image qui désigne ce contenant (ex. photo du véhicule). Sans vignette, la liste affiche la photo d\'inventaire.' }));
+  }
+
   function vueContenant(c) {
     const fils = enfants(c.id);
     const b = bilan(c.id);
@@ -4779,6 +4829,7 @@ const Inventaires = (() => {
       bandeauGestion(),
       titre ? el('div', { classe: 'inv-entete' }, titre, boutonEdition()) : null,
       choixCategorie,
+      edition && c.categorie === 'primaire' ? blocVignette(c) : null,
       edition ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseScellable },
         el('input', { type: 'checkbox', id: caseScellable, checked: c.scellable, surchange: (e) => { c.scellable = e.target.checked; marquer(c.id); } }),
         el('span', {}, 'Contenant scellable', el('small', { texte: 'fermé par un scellé (plomb) une fois vérifié' }))) : null,
