@@ -4770,22 +4770,29 @@ const Inventaires = (() => {
   function blocChoixAmbulancier(c) {
     const id = idChamp();
     const auto = primaireDe(c.id);
-    const vAuto = c.clAmbulancier === 'auto' ? vehiculeAmbulancier(c) : null;
+    // Le véhicule est celui du contenant primaire (champ « Véhicule » de sa fiche) : rien à préciser ici.
+    const vAuto = vehiculeAmbulancier({ ...c, clAmbulancier: 'auto' });
     const regler = (faire) => { faire(); marquer(c.id); rendre({ garderPosition: true }); };
-    const option = (valeur, texte) => { const o = el('option', { value: valeur, texte }); o.selected = (c.clAmbulancier || '') === valeur; return o; };
     const bloc = el('div', { classe: 'champ inv-choix-ambulancier' },
-      el('label', { for: id, texte: 'Vérifié par la check-list ambulancier' }),
-      el('select', { id, surchange: (e) => regler(() => {
-        if (e.target.value) c.clAmbulancier = e.target.value; else { delete c.clAmbulancier; delete c.clElements; }
-      }) }, option('', 'Non (inventaire IADE)'),
-      option('auto', `Oui — véhicule du contenant primaire${auto && !auto.modele ? ` (${auto.nom})` : ''}`),
-      ...listeVehicules().filter((v) => !v.inactif || v.id === c.clAmbulancier).map((v) => option(v.id, `Oui — check-list de ${v.nom || v.id}`))));
+      el('label', { classe: 'cfg-case inv-case-fiche', for: id },
+        el('input', { type: 'checkbox', id, checked: Boolean(c.clAmbulancier), surchange: (e) => regler(() => {
+          if (e.target.checked) c.clAmbulancier = 'auto'; else { delete c.clAmbulancier; delete c.clElements; }
+        }) }),
+        el('span', {}, 'Vérifié par la check-list ambulancier',
+          el('small', { texte: vAuto ? `check-list de ${vAuto.nom || vAuto.id}, le véhicule de ce contenant primaire`
+            : (auto ? 'véhicule du contenant primaire' : 'véhicule du contenant primaire de chaque exemplaire') }))));
     if (!c.clAmbulancier) {
       bloc.append(el('p', { classe: 'aide-question', texte: 'La gommette passe au vert quand la check-list ambulancier du jour est faite ; un clic montre ce qui a été relevé.' }));
       return bloc;
     }
-    if (c.clAmbulancier === 'auto' && auto && !auto.modele && !vAuto) {
-      bloc.append(el('p', { classe: 'note-parc anomalie', texte: `Aucun véhicule ne correspond à « ${auto.nom} » : nommez le contenant primaire comme le véhicule (ex. F21) ou choisissez le véhicule.` }));
+    if (auto && !vAuto) {
+      bloc.append(el('p', { classe: 'note-parc anomalie', texte: `« ${auto.nom} » n'est relié à aucun véhicule : choisissez-le dans le champ « Véhicule » de sa fiche.` }));
+    }
+    // Ancien réglage (véhicule choisi ici) : on suit désormais le véhicule du contenant primaire.
+    if (c.clAmbulancier !== 'auto' && vAuto && vAuto.id === c.clAmbulancier) c.clAmbulancier = 'auto';
+    if (c.clAmbulancier !== 'auto' && vAuto) {
+      bloc.append(el('p', { classe: 'note-parc anomalie' }, `Réglé sur la check-list de ${c.clAmbulancier}, alors que le contenant primaire est ${vAuto.nom || vAuto.id}. `,
+        el('button', { type: 'button', classe: 'lien', texte: `Suivre ${vAuto.nom || vAuto.id}`, surclick: () => regler(() => { c.clAmbulancier = 'auto'; }) })));
     }
     const v = c.clAmbulancier === 'auto' ? vAuto : listeVehicules().find((x) => x.id === c.clAmbulancier);
     const elements = elementsAmbulancier(v || null);
