@@ -5881,6 +5881,6 @@ const Inventaires = (() => {
   }
 
   /** Pour la check-list ambulancier : photo d'un véhicule (vignette de son contenant primaire) gardée sur l'appareil. */
-  const photoVehicule = (id) => { const p = primaireDuVehicule(id); return p ? p.vignette || p.photo || '' : ''; };
+  const photoVehicule = (id) => { const p = primaireDuVehicule(id); return p ? p.vignette || '' : ''; };
   return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate, scanRapide, obtenirPhoto, enMemoire: (id) => Photos.enMemoire(id), photoVehicule };
 })();
