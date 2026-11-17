@@ -3503,6 +3503,15 @@ const Inventaires = (() => {
   const iconeArchive = () => icone('M3 4h18v4H3z', 'M5 8v12h14V8', 'M10 12h4');
   const iconeReactiver = () => icone('M4 12a8 8 0 1 0 2.5-5.8', 'M4 4v4h4');
 
+  /** Miniature carrée de la photo d'une fiche (ou pictogramme gris s'il n'y en a pas). */
+  function miniatureFiche(id) {
+    if (!id) return el('span', { classe: 'inv-miniature-vide', 'aria-hidden': 'true' }, iconeImage());
+    const img = el('img', { alt: '' });
+    const d = Photos.enMemoire(id);
+    if (d) img.src = d; else obtenirPhoto(id).then((x) => { if (x) img.src = x; });
+    return img;
+  }
+
   /**
    * Base des articles sur ordinateur : tableau éditable. Les modifications de plusieurs lignes
    * sont gardées en brouillon (brouillonsBase) et enregistrées ensemble.
@@ -3572,12 +3581,20 @@ const Inventaires = (() => {
       const cat = el('select', { 'aria-label': `Catégorie : ${f0.denomination}`, surchange: (e) => { modifier(f0, 'categorie', e.target.value); } },
         el('option', { value: '', texte: '—' }), ...CATEGORIES.map((c) => el('option', { value: c, texte: c })));
       cat.value = f.categorie;
-      // Vignette de la photo (rafraîchie quand on en ajoute une).
-      const vignette = el('img', { classe: 'inv-tb-base-vignette', alt: '', hidden: true });
+      // Miniature de la photo (rafraîchie quand on en ajoute une) : la toucher l'ouvre en grand,
+      // ou, sans photo, ouvre l'appareil photo.
+      const idPrendre = idChamp();
+      const idChoisir = idChamp();
+      const vignette = el('button', { type: 'button', classe: 'inv-miniature' });
       const montrer = (id) => {
-        vignette.hidden = !id;
-        if (id) obtenirPhoto(id).then((d) => { if (d) { vignette.src = d; vignette.hidden = false; } });
+        vignette.replaceChildren(miniatureFiche(id));
+        vignette.title = id ? 'Voir la photo en grand' : 'Pas de photo : en prendre une';
+        vignette.setAttribute('aria-label', `${id ? 'Voir la photo' : 'Prendre une photo'} : ${f0.denomination}`);
       };
+      vignette.addEventListener('click', () => {
+        const g = valeur(f0);
+        if (g.photo) voirFiche(g); else document.getElementById(idPrendre).click();
+      });
       montrer(f.photo);
       const recevoir = async (e) => {
         const fichier = e.target.files[0];
@@ -3592,8 +3609,6 @@ const Inventaires = (() => {
           montrer(id);
         } catch (err) { erreur.textContent = `Photo illisible ou trop lourde pour « ${f0.denomination} » : réessayez.`; erreur.hidden = false; }
       };
-      const idPrendre = idChamp();
-      const idChoisir = idChamp();
       const archive = el('button', { type: 'button', classe: 'cfg-mini inv-tb-base-icone' });
       const majArchive = () => {
         const a = valeur(f0).archive;
@@ -3609,7 +3624,8 @@ const Inventaires = (() => {
       archive.addEventListener('click', () => { modifier(f0, 'archive', !valeur(f0).archive); majArchive(); });
       majArchive();
       tr.append(
-        el('td', { classe: 'inv-tb-base-nom' }, vignette, el('input', {
+        el('td', { classe: 'inv-tb-base-photo' }, vignette),
+        el('td', { classe: 'inv-tb-base-nom' }, el('input', {
           type: 'text', valeur: f.denomination, maxlength: '120', 'aria-label': 'Dénomination', autocomplete: 'off',
           title: nb ? `Dans ${pluriel(nb, 'inventaire')}` : 'Utilisé dans aucun inventaire',
           surinput: (e) => { modifier(f0, 'denomination', e.target.value); },
@@ -3628,7 +3644,7 @@ const Inventaires = (() => {
           archive));
       corps.append(tr);
     });
-    const tete = el('thead', {}, el('tr', {}, ...['Dénomination', 'Catégorie', 'Réf. interne', 'Réf. fournisseur', 'Consommable', 'Périssable', 'Hors stock', '']
+    const tete = el('thead', {}, el('tr', {}, ...['Photo', 'Dénomination', 'Catégorie', 'Réf. interne', 'Réf. fournisseur', 'Consommable', 'Périssable', 'Hors stock', '']
       .map((t) => el('th', { scope: 'col', texte: t }))));
     const bloc = el('div', { classe: 'inv-tb-base' }, barre(), compteur, erreur,
       el('div', { classe: 'inv-tb-base-defile' }, el('table', { classe: 'inv-tb-base-table' }, tete, corps)), barre());
@@ -3924,9 +3940,11 @@ const Inventaires = (() => {
         const ouvert = baseOuverte === f.id;
         const nb = (usages[f.id] || []).length;
         const li = el('li', { classe: `inv-base-article${f.archive ? ' archive' : ''}${ouvert ? ' ouvert' : ''}` },
-          el('button', { type: 'button', classe: 'inv-resultat', 'aria-expanded': String(ouvert), surclick: () => { baseOuverte = ouvert ? '' : f.id; remplir(); } },
-            el('strong', { texte: f.denomination }),
-            el('small', { texte: `${resumeFiche(f)}${nb ? ` · ${pluriel(nb, 'inventaire')}` : ''}` })));
+          el('button', { type: 'button', classe: 'inv-resultat inv-resultat-photo', 'aria-expanded': String(ouvert), surclick: () => { baseOuverte = ouvert ? '' : f.id; remplir(); } },
+            el('span', { classe: 'inv-miniature' }, miniatureFiche(f.photo)),
+            el('span', { classe: 'inv-resultat-texte' },
+              el('strong', { texte: f.denomination }),
+              el('small', { texte: `${resumeFiche(f)}${nb ? ` · ${pluriel(nb, 'inventaire')}` : ''}` }))));
         if (ouvert) li.append(detail(f));
         liste.append(li);
       });
