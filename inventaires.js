@@ -3660,7 +3660,10 @@ const Inventaires = (() => {
    */
   function rafalePhotos() {
     const reglages = lireJson('avismur_rafale', {});
-    let detourer = reglages.detourage !== false && typeof Detourage !== 'undefined';
+    // Détourage : même réglage que le bouton « ✨ Détourer » de l'outil de recadrage (toutes les photos).
+    const detourageDispo = typeof Detourage !== 'undefined';
+    if (detourageDispo && reglages.detourage !== undefined) { Recadrage.memoriserDetourage(reglages.detourage !== false); delete reglages.detourage; ecrireJson('avismur_rafale', reglages); }
+    let detourer = detourageDispo && Recadrage.detourageVoulu();
     let sansPhoto = reglages.sansPhoto !== false;
     let categorie = baseFiltre.categorie;
     let liste = [];
@@ -3701,9 +3704,9 @@ const Inventaires = (() => {
     choixCategorie.value = categorie;
 
     const annonce = (texte, classe = '') => { lecture.textContent = texte; lecture.className = `lecture ${classe}`.trim(); };
-    const sauverReglages = () => ecrireJson('avismur_rafale', { detourage: detourer, sansPhoto });
+    const sauverReglages = () => { ecrireJson('avismur_rafale', { sansPhoto }); if (detourageDispo) Recadrage.memoriserDetourage(detourer); };
     const majDetourage = () => {
-      boutonDetourage.hidden = typeof Detourage === 'undefined';
+      boutonDetourage.hidden = !detourageDispo;
       boutonDetourage.setAttribute('aria-pressed', String(detourer));
       boutonDetourage.setAttribute('aria-label', detourer ? 'Détourage automatique activé : appuyer pour le couper' : 'Détourage automatique coupé : appuyer pour l\'activer');
       boutonDetourage.replaceChildren(icone('M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z', 'M5 16l.9 2.1L8 19l-2.1.9L5 22l-.9-2.1L2 19l2.1-.9z', ...(detourer ? [] : ['M3 3l18 18'])));
@@ -3762,15 +3765,10 @@ const Inventaires = (() => {
       occupe = true;
       majArticle();
       try {
-        let variantes = [];
-        if (detourer) {
-          annonce('Détourage…');
-          let res = null;
-          try { res = await Detourage.fondUni(source); } catch (e) { res = null; }
-          if (res && res.trouve) variantes = [{ libelle: 'Détourée', source: res.donnees }, { libelle: 'Originale', source }];
-          else annonce('Objet non détouré (fond pas assez uni) : photo d\'origine.', 'deja');
-        }
-        const recadre = await Recadrage.recadrer(source, { cote: 900, max: PHOTO_MAX, titre: f.denomination, variantes });
+        const recadre = await Recadrage.recadrer(source, { cote: 900, max: PHOTO_MAX, titre: f.denomination, detourer });
+        // « ✨ Détourer » a pu être changé dans le recadrage : le bouton de la séance suit.
+        detourer = detourageDispo && Recadrage.detourageVoulu();
+        majDetourage();
         if (!recadre) { annonce('Photo abandonnée : reprenez-la ou passez à l\'article suivant.'); return; }
         const id = `local-${nouvelId()}`;
         await Photos.ecrire(id, recadre.donnees);

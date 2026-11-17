@@ -7,6 +7,7 @@
  *   donnees : data URL JPEG — l'objet sur fond blanc, recadré autour de lui avec une marge
  *             (ou la photo d'origine si l'objet n'a pas été trouvé).
  *   trouve : false si le fond n'a pas pu être séparé de l'objet.
+ *   boite : { x, y, w, h } (0..1) — l'objet et sa marge sur la photo d'origine.
  *
  * Principe : le fond est « rempli » depuis les bords de la photo, de proche en proche, tant qu'on ne
  * franchit pas un contour net. Un éclairage inégal ou une ombre douce changent la couleur lentement :
@@ -19,7 +20,8 @@
  *
  * Options : pas (saut de couleur toléré d'un point au voisin, défaut 3.2), teinte (écart de teinte
  * maximal avec le fond, quelle que soit la lumière, défaut 18), marge (part de la taille de
- * l'objet ajoutée autour, défaut 0.06), cote (plus grand côté en sortie, défaut 1600), qualite (JPEG, 0.9).
+ * l'objet ajoutée autour, défaut 0.06), recadrer (false : photo entière sur fond blanc, sans recadrage,
+ * défaut true), cote (plus grand côté en sortie, défaut 1600), qualite (JPEG, 0.9).
  */
 const Detourage = (() => {
   const TRAVAIL = 720; // côté du masque calculé : rapide sur smartphone, lissé ensuite à la taille réelle
@@ -57,7 +59,7 @@ const Detourage = (() => {
   }
 
   async function fondUni(source, options = {}) {
-    const { pas = 3.2, teinte = 18, marge = 0.06, cote = 1600, qualite = 0.9 } = options;
+    const { pas = 3.2, teinte = 18, marge = 0.06, recadrer = true, cote = 1600, qualite = 0.9 } = options;
     const image = await charger(source);
     const W0 = largeur(image); const H0 = hauteur(image);
     const echelle = Math.min(1, cote / Math.max(W0, H0));
@@ -180,7 +182,7 @@ const Detourage = (() => {
       masque.data[p * 4 + 3] = 255;
     }
     // Rien trouvé, ou presque toute la photo : le détourage n'a pas de sens.
-    if (surface < n * 0.005 || surface > n * 0.9) return { donnees: original(), trouve: false };
+    if (surface < n * 0.005 || surface > n * 0.9) return { donnees: original(), trouve: false, boite: { x: 0, y: 0, w: 1, h: 1 } };
 
     // 4. Les contours épaissis ont un peu grossi l'objet : on le ramène (2 points), puis bord adouci
     //    (léger flou du masque) et agrandi en douceur à la taille réelle.
@@ -216,13 +218,21 @@ const Detourage = (() => {
     const mg = Math.max(bw, bh) * marge;
     const sx = Math.max(0, Math.floor(bx - mg)); const sy = Math.max(0, Math.floor(by - mg));
     const sw = Math.min(W, Math.ceil(bx + bw + mg)) - sx; const sh = Math.min(H, Math.ceil(by + bh + mg)) - sy;
+    const boite = { x: sx / W, y: sy / H, w: sw / W, h: sh / H };
     const sortie = document.createElement('canvas');
-    sortie.width = sw; sortie.height = sh;
     const sctx = sortie.getContext('2d');
-    sctx.fillStyle = '#fff';
-    sctx.fillRect(0, 0, sw, sh);
-    sctx.drawImage(objet, sx, sy, sw, sh, 0, 0, sw, sh);
-    return { donnees: sortie.toDataURL('image/jpeg', qualite), trouve: true };
+    if (recadrer) {
+      sortie.width = sw; sortie.height = sh;
+      sctx.fillStyle = '#fff';
+      sctx.fillRect(0, 0, sw, sh);
+      sctx.drawImage(objet, sx, sy, sw, sh, 0, 0, sw, sh);
+    } else {
+      sortie.width = W; sortie.height = H;
+      sctx.fillStyle = '#fff';
+      sctx.fillRect(0, 0, W, H);
+      sctx.drawImage(objet, 0, 0);
+    }
+    return { donnees: sortie.toDataURL('image/jpeg', qualite), trouve: true, boite };
   }
 
   return { fondUni };

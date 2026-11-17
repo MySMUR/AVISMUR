@@ -1,7 +1,7 @@
 // À incrémenter à chaque mise à jour, avec les ?v= de index.html.
-const CACHE = 'avismur-v196';
+const CACHE = 'avismur-v197';
 const FICHIERS = [
-  './', 'index.html', 'style.css?v=93', 'app.js?v=52', 'config.js?v=6', 'checklists.js?v=13', 'ambulancier.js?v=26', 'actions.js?v=12', 'config-admin.js?v=6', 'utilisateurs.js?v=11', 'parc.js?v=7', 'compteur.js?v=5', 'traceurs.js?v=1', 'inventaires.js?v=66', 'infos.js?v=6', 'materiel.js?v=17', 'profil.js?v=6', 'annuaire.js?v=3', 'meteo.js?v=1', 'lib/qrcode.js?v=1', 'recadrage.js?v=3', 'detourage.js?v=2', 'cible-nfc.js?v=1', 
+  './', 'index.html', 'style.css?v=93', 'app.js?v=52', 'config.js?v=6', 'checklists.js?v=13', 'ambulancier.js?v=26', 'actions.js?v=12', 'config-admin.js?v=6', 'utilisateurs.js?v=11', 'parc.js?v=7', 'compteur.js?v=5', 'traceurs.js?v=1', 'inventaires.js?v=67', 'infos.js?v=6', 'materiel.js?v=17', 'profil.js?v=6', 'annuaire.js?v=3', 'meteo.js?v=1', 'lib/qrcode.js?v=1', 'recadrage.js?v=4', 'detourage.js?v=3', 'cible-nfc.js?v=1', 
   'manifest.webmanifest',
   'img/logo-smur.png', 'img/logo-cha.png', 'img/icon-192.png', 'img/icon-512.png', 'img/icon-maskable-512.png',
   'img/vues/jumpy_gauche.svg', 'img/vues/jumpy_droite.svg', 'img/vues/jumpy_avant.svg', 'img/vues/jumpy_arriere.svg',

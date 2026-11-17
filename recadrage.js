@@ -9,13 +9,21 @@
  *
  * Options : cote (plus grand côté en sortie, px), max (taille maximale de la data URL, caractères),
  * qualites (qualités JPEG essayées dans l'ordre), carre (cadre carré : photo de profil),
- * titre (titre de la fenêtre), variantes ([{ libelle, source }] : versions de la photo proposées en
- * boutons, ex. « Détourée » / « Originale » ; la première est affichée d'abord, `source` est alors ignorée).
+ * titre (titre de la fenêtre), detourer (true / false : détourage automatique à l'ouverture ; sans cette
+ * option, on reprend le dernier choix fait avec le bouton « Détourer », mémorisé sur l'appareil).
+ *
+ * Bouton « Détourer » (si detourage.js est chargé) : l'objet posé sur un fond uni est mis sur fond blanc
+ * et le cadre se place autour de lui ; un second appui revient à la photo d'origine.
  *
  * Recadrage.photo(source, options) : raccourci qui résout directement la data URL (ou null si annulé).
  */
 const Recadrage = (() => {
   let compteur = 0;
+  const CLE_DETOURAGE = 'avismur_detourage';
+  const detourageDispo = () => typeof Detourage !== 'undefined';
+  /** Dernier choix du bouton « Détourer » (mémorisé sur l'appareil, partagé par toutes les photos). */
+  function detourageVoulu() { try { return localStorage.getItem(CLE_DETOURAGE) === '1'; } catch (e) { return false; } }
+  function memoriserDetourage(oui) { try { localStorage.setItem(CLE_DETOURAGE, oui ? '1' : '0'); } catch (e) { /* stockage indisponible */ } }
   function el(balise, attributs = {}, ...enfants) {
     const n = document.createElement(balise);
     Object.entries(attributs).forEach(([cle, v]) => {
@@ -30,7 +38,7 @@ const Recadrage = (() => {
   }
 
   function recadrer(source, options = {}) {
-    const { cote = 1280, max = Infinity, qualites = [0.72, 0.6, 0.5], carre = false, titre = 'Recadrer la photo', variantes = [] } = options;
+    const { cote = 1280, max = Infinity, qualites = [0.72, 0.6, 0.5], carre = false, titre = 'Recadrer la photo', detourer } = options;
     const charger = (src) => new Promise((ok, ko) => {
       const im = new Image();
       const url = typeof src === 'string' ? src : URL.createObjectURL(src);
@@ -40,8 +48,9 @@ const Recadrage = (() => {
       im.src = url;
     });
     return new Promise((ok, ko) => {
-      charger(variantes.length ? variantes[0].source : source).then((img0) => {
+      charger(source).then((img0) => {
         let img = img0;
+        const imgOriginale = img0;
         let lw = 0;
         let lh = 0;
         // Travail sur une copie limitée à 2400 px : fluide sur smartphone, largement assez pour la sortie.
@@ -153,20 +162,49 @@ const Recadrage = (() => {
           };
           ok({ donnees, transformer });
         };
-        // Versions de la photo (ex. détourée / originale) : on passe de l'une à l'autre, le cadre repart de zéro.
-        const boutonsVariantes = variantes.length > 1 ? variantes.map((v, i) => el('button', {
-          type: 'button', classe: `cfg-mini inv-recadrage-variante${i ? '' : ' choisie'}`, 'aria-pressed': i ? 'false' : 'true', texte: v.libelle,
-          surclick: () => {
-            charger(v.source).then((im) => {
-              img = im;
-              mesurer();
-              dessiner();
-              r = initial();
-              placer();
-              boutonsVariantes.forEach((b, j) => { b.classList.toggle('choisie', i === j); b.setAttribute('aria-pressed', String(i === j)); });
-            }).catch(() => {});
-          },
-        })) : [];
+        // Détourage : sur la photo d'origine (même taille, fond blanc), le cadre se pose autour de l'objet.
+        const aide = el('p', { classe: 'aide-question', texte: 'Faites glisser le cadre ou ses coins.' });
+        let detouree = null; // { img, boite } une fois calculée
+        let enCours = false;
+        const boutonDetourer = detourageDispo() ? el('button', { type: 'button', classe: 'cfg-mini inv-recadrage-variante', 'aria-pressed': 'false', title: 'Détourer : l\'objet posé sur un fond uni passe sur fond blanc', texte: '✨ Détourer' }) : null;
+        const tourner = (b) => { let x = { ...b }; for (let i = 0; i < quarts; i += 1) x = { x: 1 - x.y - x.h, y: x.x, w: x.h, h: x.w }; return x; };
+        const montrerDetourage = (oui) => {
+          img = oui ? detouree.img : imgOriginale;
+          mesurer();
+          dessiner();
+          r = oui && !carre ? tourner(detouree.boite) : initial();
+          placer();
+          boutonDetourer.classList.toggle('choisie', oui);
+          boutonDetourer.setAttribute('aria-pressed', String(oui));
+        };
+        const detourer2 = async (oui) => {
+          if (!boutonDetourer || enCours) return;
+          if (!oui) { montrerDetourage(false); aide.textContent = 'Photo d\'origine. Faites glisser le cadre ou ses coins.'; return; }
+          if (!detouree) {
+            enCours = true;
+            boutonDetourer.disabled = true;
+            aide.textContent = 'Détourage…';
+            try {
+              const base = document.createElement('canvas');
+              base.width = lw; base.height = lh;
+              base.getContext('2d').drawImage(imgOriginale, 0, 0, lw, lh);
+              const res = await Detourage.fondUni(base, { recadrer: false, cote: 2400 });
+              if (res.trouve) detouree = { img: await charger(res.donnees), boite: res.boite };
+            } catch (e) { detouree = null; }
+            enCours = false;
+            boutonDetourer.disabled = false;
+          }
+          if (!detouree) { aide.textContent = 'Objet non détouré (fond trop chargé, ou objet de la couleur du fond) : photo d\'origine gardée.'; return; }
+          montrerDetourage(true);
+          aide.textContent = 'Détourée. Ajustez le cadre si besoin ; « ✨ Détourer » de nouveau pour la photo d\'origine.';
+        };
+        if (boutonDetourer) {
+          boutonDetourer.addEventListener('click', () => {
+            const oui = boutonDetourer.getAttribute('aria-pressed') !== 'true';
+            memoriserDetourage(oui);
+            detourer2(oui);
+          });
+        }
         compteur += 1;
         const idTitre = `recadrage-titre-${compteur}`;
         // <dialog> ouvert en modal : passe au-dessus de toute fenêtre déjà ouverte (fiche matériel, information…),
@@ -174,11 +212,11 @@ const Recadrage = (() => {
         const fond = el('dialog', { classe: 'inv-recadrage', 'aria-labelledby': idTitre },
           el('div', { classe: 'inv-recadrage-tete' },
             el('h2', { id: idTitre, texte: titre }),
-            ...boutonsVariantes,
+            boutonDetourer,
             el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': 'Tourner d\'un quart de tour', title: 'Tourner', texte: '↻', surclick: () => { quarts = (quarts + 1) % 4; dessiner(); r = initial(); placer(); } }),
             el('button', { type: 'button', classe: 'cfg-mini', title: carre ? 'Plus grand carré' : 'Toute la photo', texte: 'Tout', surclick: () => { r = initial(); placer(); } })),
           el('div', { classe: 'inv-recadrage-zone' }, scene),
-          el('p', { classe: 'aide-question', texte: 'Faites glisser le cadre ou ses coins.' }),
+          aide,
           el('div', { classe: 'inv-recadrage-actions' },
             el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Annuler', surclick: () => { fermer(); ok(null); } }),
             el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: 'Valider', surclick: valider })));
@@ -187,11 +225,12 @@ const Recadrage = (() => {
         fond.addEventListener('cancel', (e) => { e.preventDefault(); fermer(); ok(null); }); // touche Échap / retour Android
         document.body.append(fond);
         if (fond.showModal) fond.showModal();
+        if (boutonDetourer && (detourer === undefined ? detourageVoulu() : detourer)) detourer2(true);
       }).catch(ko);
     });
   }
 
   const photo = (source, options) => recadrer(source, options).then((res) => (res ? res.donnees : null));
 
-  return { recadrer, photo };
+  return { recadrer, photo, detourageVoulu, memoriserDetourage };
 })();
