@@ -921,12 +921,12 @@ const Materiel = (() => {
     for (const x of final.values()) {
       if (x.archive) continue;
       const cles = [];
-      if (x.numInterne) cles.push([`i|${normaliser(x.type)}|${normaliser(x.numInterne)}`, `Le n° interne ${x.numInterne} est déjà attribué à un autre ${String(x.type || 'appareil').toLowerCase()}.`]);
+      if (x.numInterne) cles.push([`i|${normaliser(x.type)}|${normaliser(x.modele)}|${normaliser(x.numInterne)}`, `${nomAppareil(x)} existe déjà.`]);
       if (x.numSerie) cles.push([`s|${normaliser(x.numSerie)}`, `Le n° de série ${x.numSerie} est déjà attribué.`]);
       if (x.numBiomed) cles.push([`b|${normaliser(x.numBiomed)}`, `Le n° biomed ${x.numBiomed} est déjà attribué.`]);
       for (const [cle, texte] of cles) {
         const deja = vus.get(cle);
-        if (deja && deja !== x.id && (concernes.has(x.id) || concernes.has(deja))) return concernes.has(x.id) ? texte : `${nomAppareil(final.get(deja))} : ${texte.charAt(0).toLowerCase()}${texte.slice(1)}`;
+        if (deja && deja !== x.id && (concernes.has(x.id) || concernes.has(deja))) return texte;
         if (!deja || concernes.has(x.id)) vus.set(cle, x.id);
       }
     }
@@ -1561,7 +1561,7 @@ const Materiel = (() => {
     /** Appareils en service (ni archivés ni réformés), pour le choix « dans la liste » d'un matériel attendu en inventaire. */
     appareils() {
       return fiches().filter((f) => !f.archive && f.statut !== 'Réformé')
-        .map((f) => ({ id: f.id, type: f.type || '', modele: f.modele || '', numInterne: f.numInterne || '', numSerie: f.numSerie || '' }));
+        .map((f) => ({ id: f.id, type: f.type || '', modele: f.modele || '', numInterne: f.numInterne || '', numSerie: f.numSerie || '', numBiomed: f.numBiomed || '' }));
     },
     /** Types d'appareils connus (types par défaut + types utilisés dans la base). */
     types() {

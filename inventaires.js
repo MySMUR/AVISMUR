@@ -456,14 +456,28 @@ const Inventaires = (() => {
     const t = cle(String(v || ''));
     if (!t) return null;
     const liste = appareilsPour(a);
-    return liste.find((x) => x.numInterne && cle(x.numInterne) === t) || liste.find((x) => x.numSerie && cle(x.numSerie) === t) || null;
+    // N° interne propre à chaque modèle : deux appareils du même type peuvent porter le même n° (Osiris 3 n° 1, Monnal n° 1).
+    const parNum = liste.filter((x) => x.numInterne && cle(x.numInterne) === t);
+    return (parNum.length === 1 ? parNum[0] : null) || liste.find((x) => x.numSerie && cle(x.numSerie) === t)
+      || liste.find((x) => x.numBiomed && cle(x.numBiomed) === t) || null;
+  }
+  /** Valeur inscrite pour un appareil : son n° interne s'il est le seul de ce type à le porter, sinon son n° de série ou biomed. */
+  function codeAppareil(a, x) {
+    const liste = a ? appareilsPour(a) : appareilsConnus().filter((y) => cle(y.type) === cle(x.type));
+    const n = x.numInterne;
+    if (n && liste.filter((y) => y.numInterne && cle(y.numInterne) === cle(n)).length <= 1) return String(n);
+    return String(x.numSerie || x.numBiomed || n || '');
   }
   /** Évalue une valeur relevée : { ok, rempli }. */
   function evaluer(a, v) {
     const t = String(v === undefined || v === null ? '' : v).trim();
     if (!t) return { ok: false, rempli: false };
     if (a.controle === 'materiel') {
-      if (a.attendu && t.toLowerCase() !== String(a.attendu).trim().toLowerCase()) return { ok: false, rempli: true };
+      if (a.attendu && t.toLowerCase() !== String(a.attendu).trim().toLowerCase()) {
+        // N° inscrit sous forme de n° de série (n° interne partagé par deux modèles) : on compare le n° interne de l'appareil.
+        const x = appareilDe(a, t);
+        if (!x || cle(x.numInterne) !== cle(String(a.attendu))) return { ok: false, rempli: true };
+      }
       // Type demandé : l'appareil doit exister dans le suivi du matériel avec ce type (base non chargée : pas de blocage).
       if (a.typeMateriel && appareilsConnus().length && !appareilDe(a, t)) return { ok: false, rempli: true };
       return { ok: true, rempli: true };
@@ -2218,16 +2232,16 @@ const Inventaires = (() => {
       const remplir = (t) => { entree.value = t; poser(t); majNom(); };
       const bouton = (classe, label, title, contenu, action) => el('button', { type: 'button', classe: `cfg-mini inv-bouton-lecture ${classe}`, 'aria-label': `${label} : ${nomArticle(a)}`, title, surclick: action }, contenu);
       saisie = el('span', { classe: 'inv-valeur-zone' }, entree,
-        bouton('', 'Scanner le QR code', 'QR code / code-barres', logoQr(), () => lireCode(remplir, { qr: true, nfc: false })),
-        bouton('', 'Lire la puce NFC', 'Puce NFC', logoNfc(), () => lireCode(remplir, { qr: false, nfc: true })),
+        bouton('', 'Scanner le QR code', 'QR code / code-barres', logoQr(), () => lireCode(remplir, { qr: true, nfc: false, article: a })),
+        bouton('', 'Lire la puce NFC', 'Puce NFC', logoNfc(), () => lireCode(remplir, { qr: false, nfc: true, article: a })),
         bouton('inv-bouton-liste', 'Choisir dans la liste', 'Choisir dans la liste', '☰', () => choisirAppareil(a, remplir)));
       etiquette.append(nomAppareil);
       majNom();
     } else if (a.controle === 'scan') {
       const entree = el('input', { id: champ, classe: 'inv-valeur inv-valeur-texte', autocomplete: 'off', maxlength: '120', placeholder: 'Scanner ou saisir', valeur: val(), surinput: (e) => poser(e.target.value.trim()) });
       const remplir = (t) => { entree.value = t; poser(t); };
-      const boutonQr = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Scanner le QR code ou code-barres : ${nomArticle(a)}`, title: 'QR code / code-barres', surclick: () => lireCode(remplir, { qr: true, nfc: false }) }, logoQr());
-      const boutonNfc = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Lire la puce NFC : ${nomArticle(a)}`, title: 'Puce NFC', surclick: () => lireCode(remplir, { qr: false, nfc: true }) }, logoNfc());
+      const boutonQr = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Scanner le QR code ou code-barres : ${nomArticle(a)}`, title: 'QR code / code-barres', surclick: () => lireCode(remplir, { qr: true, nfc: false, article: a }) }, logoQr());
+      const boutonNfc = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Lire la puce NFC : ${nomArticle(a)}`, title: 'Puce NFC', surclick: () => lireCode(remplir, { qr: false, nfc: true, article: a }) }, logoNfc());
       saisie = el('span', { classe: 'inv-valeur-zone' }, entree, boutonQr, boutonNfc);
     } else {
       const unite = a.controle === 'temperature' ? '°C' : (a.controle === 'batterie' ? '%' : (a.unite || ''));
@@ -2253,7 +2267,7 @@ const Inventaires = (() => {
       el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: a.typeMateriel ? `Quel « ${a.typeMateriel} » ?` : 'Quel appareil ?' }),
         el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
       liste.length ? el('ul', { classe: 'inv-etages-liste' }, ...liste.map((x) => el('li', {},
-        el('button', { type: 'button', classe: 'inv-etage', surclick: () => { fermer(); surChoix(x.numInterne || x.numSerie); } },
+        el('button', { type: 'button', classe: 'inv-etage', surclick: () => { fermer(); surChoix(codeAppareil(a, x)); } },
           el('span', { classe: 'inv-etage-rang', 'aria-hidden': 'true', texte: x.numInterne || '?' }),
           el('span', { classe: 'inv-etage-nom', texte: `${x.type}${x.modele ? ` ${x.modele}` : ''}` }),
           x.numSerie ? el('small', { texte: `S/N ${x.numSerie}` }) : null))))
@@ -2289,10 +2303,10 @@ const Inventaires = (() => {
       const brut = String(t || '').trim();
       if (!brut || fini) return;
       const appareil = typeof Materiel !== 'undefined' ? Materiel.identifier(tout || brut) || Materiel.identifier(brut) : null;
-      const v = (appareil && appareil.numInterne ? appareil.numInterne : brut).slice(0, 120);
+      const v = ((appareil && codeAppareil(choix.article, appareil)) || brut).slice(0, 120);
       fermer();
       surLu(v);
-      if (appareil && appareil.numInterne) messageVue(`${libelleAppareil(appareil)} reconnu.`);
+      if (appareil) messageVue(`${libelleAppareil(appareil)} reconnu.`);
     };
     const ecran = el('div', { classe: 'camera', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Lire un code' },
       el('div', { classe: `camera-vue${qr ? '' : ' inv-nfc-seul'}` }, qr ? video : el('div', { classe: 'inv-attente-nfc', 'aria-hidden': 'true' }, logoNfc()),
