@@ -1777,6 +1777,21 @@ textarea:focus { border-color: var(--bleu); }
 .inv-boutons-scelle { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 .inv-boutons-scelle .principal { width: auto; flex: 1 1 12rem; }
 .inv-boutons-scelle .cfg-bouton { flex: 1 1 10rem; min-height: 3rem; }
+.inv-scelles-groupes { padding: 0.8rem; }
+.inv-scelles-groupes h2 { display: flex; align-items: center; gap: 0.4rem; font-size: 1.1rem; }
+.inv-scelles-groupes h2 .inv-tb-cadenas { width: 1.3rem; height: 1.3rem; color: var(--bleu); }
+.inv-scelles-groupes .aide-question { margin: 0 0 0.5rem; font-size: 0.85rem; }
+.inv-scelles-liste { list-style: none; margin: 0 0 0.7rem; padding: 0; display: grid; gap: 0.3rem; }
+.inv-scelles-liste li { display: flex; align-items: center; gap: 0.55rem; padding: 0.45rem 0.5rem; background: #fff; border-radius: 10px; }
+.inv-scelles-liste li > input { width: 1.4rem; height: 1.4rem; flex-shrink: 0; margin: 0; }
+.inv-scelles-liste li > label, .inv-scelles-liste li > span:not(.inv-scelle-puce) { flex: 1; min-width: 0; }
+.inv-scelles-liste small { color: #555; }
+.inv-scelles-liste .inv-scelle-obstacle { color: #B45309; }
+.inv-scelles-liste li.bloque { opacity: 0.75; }
+.inv-scelle-ouvrir { flex-shrink: 0; padding: 0 0.5rem; font-size: 1.5rem; line-height: 1; text-decoration: none; color: var(--bleu); }
+.inv-scelle-puce { width: 1.4rem; height: 1.4rem; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #9CA3AF; color: #fff; font-weight: 700; font-size: 0.85rem; }
+.inv-scelles-groupes .inv-bouton-lecture { display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; }
+.inv-scelles-groupes .inv-bouton-lecture svg { width: 1.2rem; height: 1.2rem; }
 
 /* Tableau de bord des contenants (« #inv-tableau ») : un grand cadre par contenant primaire, cadres emboîtés */
 .inv-lien-tableau { margin-right: 1.2rem; }

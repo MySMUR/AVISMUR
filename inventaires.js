@@ -2764,32 +2764,37 @@ const Inventaires = (() => {
   }
   /** Le contenant `x`, identifié par l'agent, est celui qui se trouve à la place de `y`. */
   function confirmerIdentification(y, idX, dans = '') {
+    const x = enregistrerIdentification(y, idX, dans);
+    if (x) aller(x.id);
+  }
+  /** Enregistre l'identification (pointage, et déplacement si besoin) sans changer d'écran : le contenant `x`, ou null. */
+  function enregistrerIdentification(y, idX, dans = '') {
     // Un emplacement ne quitte jamais son contenant : c'est son occupant qui est remplacé (ou, vide, il reçoit le contenant).
     if (y && y.emplacement) { const e = y; y = enfants(e.id)[0] || null; if (!y) dans = e.id; }
-    if ((y && dansUnModele(y.id)) || (dans && dansUnModele(dans))) { messageVue('Un inventaire type ne se range pas dans un contenant.', 'erreur'); return; }
+    if ((y && dansUnModele(y.id)) || (dans && dansUnModele(dans))) { messageVue('Un inventaire type ne se range pas dans un contenant.', 'erreur'); return null; }
     const x = contenant(idX);
-    if (!x) { messageVue('Inventaire inconnu : vérifiez l\'étiquette ou la saisie.', 'erreur'); return; }
-    if (y && x.id === y.id) { noterPointage(y.parent, y.id); identification = ''; aller(y.id); return; }
-    if (!y && x.parent === dans) { noterPointage(dans, x.id); identification = ''; aller(x.id); return; }
-    if (x.categorie !== 'mobile' || x.emplacement || dansUnModele(x.id)) { messageVue(`« ${x.nom} » n'est pas un contenant mobile : choisissez celui qui se trouve réellement ici.`, 'erreur'); return; }
+    if (!x) { messageVue('Inventaire inconnu : vérifiez l\'étiquette ou la saisie.', 'erreur'); return null; }
+    if (y && x.id === y.id) { noterPointage(y.parent, y.id); identification = ''; return x; }
+    if (!y && x.parent === dans) { noterPointage(dans, x.id); identification = ''; return x; }
+    if (x.categorie !== 'mobile' || x.emplacement || dansUnModele(x.id)) { messageVue(`« ${x.nom} » n'est pas un contenant mobile : choisissez celui qui se trouve réellement ici.`, 'erreur'); return null; }
     const vers = y ? y.parent : dans;
     const emp = contenant(vers) && contenant(vers).emplacement ? contenant(vers) : null;
     if (emp && !modelesEmplacement(emp).includes(x.source)) {
       const noms = modelesEmplacement(emp).map((m) => (contenant(m) || {}).nom).filter(Boolean);
       messageVue(`Cet emplacement attend un exemplaire de ${noms.length ? noms.map((n) => `« ${n} »`).join(' ou ') : 'l\'inventaire type prévu'} : « ${x.nom} » n'en est pas un.`, 'erreur');
-      return;
+      return null;
     }
-    if (chemin(vers).some((c) => c.id === x.id)) { messageVue('Un contenant ne peut pas être rangé dans lui-même.', 'erreur'); return; }
+    if (chemin(vers).some((c) => c.id === x.id)) { messageVue('Un contenant ne peut pas être rangé dans lui-même.', 'erreur'); return null; }
     const parent = contenant(vers);
     const date = new Date().toISOString();
     const ok = App.mettreEnFile({ action: 'deplacerContenant', contenant: x.id, ...(y ? { place: y.id } : { dans }), vers, date });
-    if (!ok) { messageVue('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur'); return; }
+    if (!ok) { messageVue('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur'); return null; }
     affecterLocal(x, y, date, dans);
     noterPointage(vers, x.id);
     identification = '';
     // Ni l'emplacement précédent ni le contenant prévu ne sont dévoilés : les écarts sortent en fin de vérification.
     avis = `« ${x.nom} » identifié dans « ${parent ? parent.nom : '?'} ».`;
-    aller(x.id);
+    return x;
   }
   /** Emplacement à plusieurs inventaires types : une photo par modèle, l'agent touche celui qu'il a sous les yeux. */
   function choixTypeEnPhotos(types) {
@@ -4971,7 +4976,8 @@ const Inventaires = (() => {
     });
     return obstacles;
   }
-  function validerScelle(c) {
+  /** Valide par le scellé le contenant et tout ce qu'il contient : nombre d'inventaires validés, ou -1 (mémoire pleine). */
+  function appliquerScelle(c) {
     const maintenant = new Date().toISOString();
     let n = 0;
     for (const d of descendants(c.id)) {
@@ -4992,11 +4998,16 @@ const Inventaires = (() => {
       });
       const remarque = `Scellé : validé sur la base de l'inventaire du ${new Date(derniere.date).toLocaleDateString('fr-FR')} (${derniere.agent}).`;
       const ok = App.mettreEnFile({ action: 'verifierInventaire', contenant: d.id, detail: { chemin: cheminNoms(d.id, ' > '), articles, remarque, scelle: true } });
-      if (!ok) { avis = 'Non enregistré : la mémoire de l\'appareil est pleine.'; rendre(); return; }
+      if (!ok) { sauverEtat(); return -1; }
       etat.verifs[d.id] = { date: maintenant, agent: App.agent(), manquants: derniere.manquants, remarque, scelle: true, valeurs: derniere.valeurs || {} };
       n += 1;
     }
     sauverEtat();
+    return n;
+  }
+  function validerScelle(c) {
+    const n = appliquerScelle(c);
+    if (n < 0) { avis = 'Non enregistré : la mémoire de l\'appareil est pleine.'; rendre(); return; }
     avis = `« ${c.nom} » scellé : ${pluriel(n, 'inventaire')} validé${n > 1 ? 's' : ''} sur la base du dernier réalisé.`;
     if (gestion) aller(c.id); else remonterApresValidation(c);
   }
@@ -5009,6 +5020,121 @@ const Inventaires = (() => {
       el('div', { classe: 'inv-boutons-scelle' },
         el('button', { type: 'button', classe: 'principal', disabled: obstacles.length > 0, texte: 'Oui, il est scellé', surclick: () => validerScelle(c) }),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Non, il est ouvert', surclick: () => { reponsesScelle.add(c.id); rendre({ garderPosition: true }); } })));
+  }
+
+  // ---------- Sous-contenants scellables : « tout est scellé » en une fois ----------
+  /** Scellables décochés par l'agent (ouverts : à faire un par un), pour le contenant affiché. */
+  let scellesDecoches = { de: '', ids: new Set() };
+  /**
+   * Sous-contenants scellables (à toute profondeur) du contenant affiché, pas encore vérifiés aujourd'hui :
+   *   - prets : identifiés (fixes, ou mobiles pointés aujourd'hui), validables d'un coup ;
+   *   - aIdentifier : emplacements ou contenants mobiles scellables pas encore pointés aujourd'hui (jamais nommés).
+   * On ne descend pas dans un scellable (sa validation couvre son contenu) ni dans un mobile non identifié.
+   */
+  function scellablesSous(c) {
+    const prets = [];
+    const aIdentifier = [];
+    const vus = new Set([c.id]);
+    const scellableAttendu = (e) => modelesEmplacement(e).some((m) => contenant(m) && contenant(m).scellable);
+    const parcourir = (p) => enfants(p.id).forEach((f) => {
+      if (vus.has(f.id) || dansUnModele(f.id)) return;
+      vus.add(f.id);
+      let x = f;
+      if (f.emplacement) {
+        x = occupantDuJour(f);
+        if (!x) { if (scellableAttendu(f)) aIdentifier.push(f); return; }
+        vus.add(x.id);
+      } else if (masquerMobile(f)) {
+        if (f.scellable) aIdentifier.push(f);
+        return;
+      }
+      if (x.scellable) { const bx = bilan(x.id); if (bx.total > 0 && !bx.complet) prets.push(x); return; }
+      parcourir(x);
+    });
+    parcourir(c);
+    return { prets, aIdentifier };
+  }
+  /** Où se trouve `x` sous `c` (« Tiroir D › Case 2 »), sans les emplacements ni `x` lui-même. */
+  function cheminSous(c, x) {
+    const suite = chemin(x.id);
+    const i = suite.findIndex((z) => z.id === c.id);
+    return suite.slice(i + 1, -1).filter((z) => !z.emplacement).map((z) => z.nom).join(' › ');
+  }
+  function validerScellesGroupes(c, liste) {
+    let n = 0;
+    const faits = [];
+    for (const x of liste) {
+      const k = appliquerScelle(x);
+      if (k < 0) { avis = `Non enregistré : la mémoire de l'appareil est pleine${faits.length ? ` (validés avant l'erreur : ${faits.join(', ')})` : ''}.`; rendre({ garderPosition: true }); return; }
+      n += k;
+      faits.push(x.nom);
+    }
+    avis = `Scellés : ${faits.map((f) => `« ${f} »`).join(', ')} — ${pluriel(n, 'inventaire')} validé${n > 1 ? 's' : ''} sur la base du dernier réalisé.`;
+    scellesDecoches = { de: '', ids: new Set() };
+    if (bilan(c.id).complet) remonterApresValidation(c); else rendre({ garderPosition: true });
+  }
+  /**
+   * Identification à la suite des scellables non pointés : le lecteur se rouvre après chaque contenant reconnu
+   * tant qu'il en reste. Le contenant scanné prend la place qui lui correspond (lui-même, ou un emplacement de son modèle).
+   */
+  function scannerScelles(c) {
+    scanner({ qr: true, nfc: true }, (id) => {
+      const x = contenant(id);
+      const places = scellablesSous(c).aIdentifier;
+      if (!x) { alerteBreve('Inventaire inconnu : vérifiez l\'étiquette.'); return; }
+      const exacte = places.find((s) => (s.emplacement ? (enfants(s.id)[0] || {}).id === x.id : s.id === x.id));
+      const parModele = places.find((s) => (s.emplacement ? modelesEmplacement(s).includes(x.source) : (x.source && s.source === x.source)));
+      const s = exacte || parModele;
+      if (!s) { alerteBreve(`« ${x.nom} » n'a pas de place à identifier ici.`); return; }
+      let ok;
+      if (s.emplacement) { const occ = enfants(s.id)[0]; ok = enregistrerIdentification(occ || null, x.id, occ ? '' : s.id); } else ok = enregistrerIdentification(s, x.id);
+      if (!ok) return;
+      avis = '';
+      alerteBreve(`« ${x.nom} » identifié.`);
+      rendre({ garderPosition: true });
+      if (scellablesSous(c).aIdentifier.length) setTimeout(() => { if (idCourant() === c.id) scannerScelles(c); }, 900);
+    });
+  }
+  function blocScellesGroupes(c) {
+    const { prets, aIdentifier } = scellablesSous(c);
+    if (!prets.length && !aIdentifier.length) return null;
+    if (scellesDecoches.de !== c.id) scellesDecoches = { de: c.id, ids: new Set() };
+    const bloques = new Map(prets.map((x) => [x.id, obstaclesScelle(x)]).filter(([, o]) => o.length));
+    const choisis = () => prets.filter((x) => !bloques.has(x.id) && !scellesDecoches.ids.has(x.id));
+    const bouton = el('button', { type: 'button', classe: 'principal', surclick: () => validerScellesGroupes(c, choisis()) });
+    const majBouton = () => {
+      const n = choisis().length;
+      bouton.disabled = n === 0;
+      bouton.textContent = n > 1 ? `Tout est scellé (${n})` : (n === 1 ? 'Il est scellé' : 'Aucun scellé coché');
+    };
+    majBouton();
+    return el('section', { classe: 'inv-question-scelle inv-scelles-groupes' },
+      el('h2', {}, logoCadenas(), el('span', { texte: 'Contenants scellés' })),
+      el('p', { classe: 'aide-question', texte: 'Plomb intact = complet et opérationnel : validés sur la base du dernier inventaire. Décochez ceux qui sont ouverts, puis faites-les un par un.' }),
+      el('ul', { classe: 'inv-scelles-liste' },
+        ...prets.map((x) => {
+          const i = idChamp();
+          const o = bloques.get(x.id);
+          const ou = cheminSous(c, x);
+          return el('li', { classe: o ? 'bloque' : '' },
+            el('input', { type: 'checkbox', id: i, checked: !o && !scellesDecoches.ids.has(x.id), disabled: Boolean(o), surchange: (e) => {
+              if (e.target.checked) scellesDecoches.ids.delete(x.id); else scellesDecoches.ids.add(x.id);
+              majBouton();
+            } }),
+            el('label', { for: i }, el('strong', { texte: x.nom }), ou ? el('small', { texte: ` · ${ou}` }) : null,
+              o ? el('small', { classe: 'inv-scelle-obstacle', texte: ` — inventaire complet requis : ${o.join(', ')}` }) : null),
+            el('a', { href: lien(x.id), classe: 'inv-scelle-ouvrir', 'aria-label': `Ouvrir ${x.nom}`, title: 'Ouvrir', texte: '›' }));
+        }),
+        ...aIdentifier.map((f) => {
+          const ou = cheminSous(c, f);
+          return el('li', { classe: 'a-identifier' }, el('span', { classe: 'inv-scelle-puce', 'aria-hidden': 'true', texte: '?' }),
+            el('span', {}, el('strong', { texte: f.emplacement ? f.nom : 'Contenant mobile' }), ou ? el('small', { texte: ` · ${ou}` }) : null,
+              el('small', { classe: 'inv-scelle-obstacle', texte: ' — à identifier' })));
+        })),
+      el('div', { classe: 'inv-boutons-scelle' },
+        prets.length ? bouton : null,
+        aIdentifier.length ? el('button', { type: 'button', classe: 'cfg-bouton inv-bouton-lecture', surclick: () => scannerScelles(c) },
+          logoQr(), el('span', { texte: ` Identifier ${aIdentifier.length > 1 ? `les ${aIdentifier.length}` : 'le contenant'} (QR / NFC)` })) : null));
   }
 
   /** Administration d'un emplacement : inventaires types acceptés (un ou plusieurs). */
@@ -5231,6 +5357,7 @@ const Inventaires = (() => {
         c.desaffecte.ignore ? el('small', { classe: 'inv-trace', texte: `Alerte ignorée${c.desaffecte.ignore.par ? ` par ${c.desaffecte.ignore.par}` : ''}${c.desaffecte.ignore.le ? ` le ${new Date(c.desaffecte.ignore.le).toLocaleDateString('fr-FR')}` : ''}. ` }) : null,
         el('button', { type: 'button', classe: 'lien', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) })) : null,
       ...(questionScelle ? [blocQuestionScelle(c)] : []),
+      !edition && !consultation && !modele && !questionScelle && !gestion ? blocScellesGroupes(c) : null,
       c.clAmbulancier && !edition && !modele ? blocNiveauxOxygene(c) : null,
       // Check-list : pas de récapitulatif (place laissée à la photo ; l'état se lit sur les gommettes).
       edition || modele || !gestion ? null : el('p', { classe: `inv-statut ${b.classe}` },
