@@ -914,16 +914,20 @@ const Materiel = (() => {
     const final = new Map(fiches().map((x) => [x.id, x]));
     nouvelles.forEach((x) => final.set(x.id, x));
     [...final.keys()].forEach((id) => final.set(id, resoudre(final.get(id), tousModeles)));
+    // Seuls les appareils enregistrés comptent : un doublon déjà présent entre deux autres appareils ne bloque pas.
+    const concernes = new Set(nouvelles.map((x) => x.id));
+    modelesModifies.forEach((m) => final.forEach((x) => { if (x.modeleType === m.id) concernes.add(x.id); }));
     const vus = new Map();
     for (const x of final.values()) {
       if (x.archive) continue;
       const cles = [];
-      if (x.numInterne) cles.push([`i|${normaliser(x.type)}|${normaliser(x.numInterne)}`, `${nomAppareil(x)} existe déjà.`]);
+      if (x.numInterne) cles.push([`i|${normaliser(x.type)}|${normaliser(x.numInterne)}`, `Le n° interne ${x.numInterne} est déjà attribué à un autre ${String(x.type || 'appareil').toLowerCase()}.`]);
       if (x.numSerie) cles.push([`s|${normaliser(x.numSerie)}`, `Le n° de série ${x.numSerie} est déjà attribué.`]);
       if (x.numBiomed) cles.push([`b|${normaliser(x.numBiomed)}`, `Le n° biomed ${x.numBiomed} est déjà attribué.`]);
       for (const [cle, texte] of cles) {
-        if (vus.has(cle) && vus.get(cle) !== x.id) return texte;
-        vus.set(cle, x.id);
+        const deja = vus.get(cle);
+        if (deja && deja !== x.id && (concernes.has(x.id) || concernes.has(deja))) return concernes.has(x.id) ? texte : `${nomAppareil(final.get(deja))} : ${texte.charAt(0).toLowerCase()}${texte.slice(1)}`;
+        if (!deja || concernes.has(x.id)) vus.set(cle, x.id);
       }
     }
     return '';
