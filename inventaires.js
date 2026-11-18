@@ -5330,6 +5330,10 @@ const Inventaires = (() => {
     }
     if (identifierEmplacement) identification = identifierEmplacement;
     if (aIdentifier) { identification = aIdentifier; aIdentifier = ''; }
+    // Même page redessinée (modification, synchro…) : on garde la hauteur pendant la reconstruction,
+    // sinon la page vidée ramène le défilement en haut dès qu'une mesure force la mise en page.
+    const yAvant = window.scrollY;
+    if (!nouveau) zone.style.minHeight = `${zone.offsetHeight}px`;
     zone.innerHTML = '';
     const empId = identification.startsWith('emp:') ? identification.slice(4) : '';
     if (empId && contenant(empId) && contenant(empId).parent === id) {
@@ -5374,6 +5378,10 @@ const Inventaires = (() => {
       zone.classList.remove('inv-entree', 'inv-sortie');
       void zone.offsetWidth; // relance l'animation
       zone.classList.add(retourArriere ? 'inv-sortie' : 'inv-entree');
+    }
+    if (!nouveau) {
+      zone.style.minHeight = '';
+      if (window.scrollY !== yAvant) window.scrollTo(0, yAvant);
     }
     if (focus && zone.querySelector(focus)) zone.querySelector(focus).focus();
     else if (nouveau && retourArriere && positionsDefilement.has(id)) {
