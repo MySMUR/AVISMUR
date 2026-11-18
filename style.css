@@ -1457,6 +1457,11 @@ h1 .inv-tag-scellable { font-size: 0.8rem; vertical-align: 0.35em; }
 .inv-edition-fiche .inv-edition-nom { flex: 1 1 auto; }
 .inv-edition-separation { flex-wrap: nowrap; }
 .inv-edition-separation .inv-nom-article { flex: 1 1 auto !important; min-width: 0; }
+/* Repère « Photo » : choisit la place de la photo dans la check-list */
+.inv-edition-repere-photo { background: #FFF6E0; border: 1px dashed var(--orange); }
+.inv-edition-repere-photo .inv-repere-aide { flex: 1 1 auto; min-width: 0; color: var(--gris); }
+.inv-photo-dans-liste { grid-column: 1 / -1; margin: 0.6rem 0 0.2rem; }
+.inv-photo-dans-liste .inv-bloc-photo { margin: 0; }
 /* Sous-inventaires : poignée à gauche de la carte */
 .inv-liste-triable > li.inv-ligne-triable { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 0.2rem; }
 .inv-liste-triable > li.inv-ligne-triable > .inv-outils { grid-column: 2; }

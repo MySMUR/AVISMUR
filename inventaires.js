@@ -435,6 +435,12 @@ const Inventaires = (() => {
 
   /** Articles à cocher (sans les séparations, qui ne servent qu'à regrouper la liste). */
   const aCocher = (c) => c.articles.filter((a) => !a.separateur);
+  // Repère « Photo » dans la liste des articles : la photo de navigation s'affiche à cet endroit de la check-list.
+  // C'est une séparation particulière (rien à cocher) ; sans repère, la photo vient avant la liste
+  // tant que l'inventaire n'est pas validé, puis passe dessous.
+  const estReperePhoto = (a) => Boolean(a && a.separateur && a.photo === true);
+  const reperePhoto = (c) => c.articles.findIndex(estReperePhoto);
+  const nomSeparation = (a) => (estReperePhoto(a) ? 'emplacement de la photo' : `séparation « ${a.nom} »`);
   // ---------- Contrôles : valeur à relever au lieu d'une case ----------
   const CONTROLES = {
     scan: { nom: 'À scanner / renseigner', aide: 'n° de série, matériel biomédical', defaut: 'Numéro de série' },
@@ -2414,7 +2420,17 @@ const Inventaires = (() => {
       if (confirmer) { confirmer = ''; messageVue(''); zone.querySelector('.inv-valider').textContent = 'Valider cet inventaire'; }
       maj();
     };
-    c.articles.forEach((a) => {
+    // Photo placée dans la liste par le repère (sauf en tête : elle passe alors avant toute la section).
+    const iPhoto = reperePhoto(c);
+    const photoDansListe = iPhoto > 0 && vuesDe(c).some((x) => x.photo);
+    c.articles.forEach((a, rang) => {
+      if (estReperePhoto(a)) {
+        if (!photoDansListe || rang !== iPhoto) return;
+        const fils = enfants(c.id);
+        const photo = [blocPhoto(c, fils), ...[].concat(blocEnfants(c, fils))].filter(Boolean);
+        if (photo.length) liste.append(el('li', { classe: 'inv-photo-dans-liste' }, ...photo));
+        return;
+      }
       if (a.separateur) {
         const g = { membres: [] };
         let i = c.articles.indexOf(a) + 1;
@@ -3401,6 +3417,13 @@ const Inventaires = (() => {
       const nom = nomArticle(a);
       const retirer = el('button', { type: 'button', classe: 'cfg-mini danger', 'aria-label': `Retirer ${nom} de cet inventaire`, texte: '✕', surclick: () => { c.articles.splice(c.articles.indexOf(a), 1); marquer(c.id); rendre({ garderPosition: true }); } });
       const fleches = [retirer];
+      if (estReperePhoto(a)) {
+        liste.append(el('div', { classe: 'cfg-ligne inv-edition-article inv-edition-separation inv-edition-repere-photo', 'data-cle': a.id }, poignee('Photo'),
+          el('span', { classe: 'inv-etiquette-separation', texte: '📷 Photo' }),
+          el('small', { classe: 'inv-repere-aide', texte: i === 0 ? 'Affichée avant la liste' : (i === c.articles.length - 1 ? 'Affichée après la liste' : 'Affichée ici, dans la liste') }),
+          el('button', { type: 'button', classe: 'cfg-mini danger', 'aria-label': 'Retirer l\'emplacement de la photo (retour au placement automatique)', title: 'Retour au placement automatique', texte: '✕', surclick: () => { c.articles.splice(c.articles.indexOf(a), 1); marquer(c.id); rendre({ garderPosition: true }); } })));
+        return;
+      }
       if (a.separateur) {
         liste.append(el('div', { classe: 'cfg-ligne inv-edition-article inv-edition-separation', 'data-cle': a.id }, poignee(a.nom),
           el('span', { classe: 'inv-etiquette-separation', 'aria-hidden': 'true', texte: 'Séparation' }),
@@ -3535,6 +3558,11 @@ const Inventaires = (() => {
               const ch = zone.querySelector('.inv-edition-controle:last-of-type input');
               if (ch) ch.select();
             } }, el('strong', { texte: t.nom }), el('small', { texte: ` — ${t.aide}` }))))),
+          reperePhoto(c) < 0 ? el('button', { type: 'button', classe: 'cfg-bouton', title: 'Choisir où la photo s\'affiche dans la check-list : faites glisser le repère « Photo » parmi les articles', texte: '📷 Placer la photo', surclick: () => {
+            c.articles.unshift({ id: nouvelId(), nom: 'Photo', separateur: true, photo: true });
+            marquer(c.id);
+            rendre({ garderPosition: true });
+          } }) : null,
           el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter une séparation', surclick: () => {
             c.articles.push({ id: nouvelId(), nom: 'Nouvelle séparation', separateur: true });
             marquer(c.id);
@@ -4146,7 +4174,7 @@ const Inventaires = (() => {
   const egal = (a, b) => canonique(a === undefined ? null : a) === canonique(b === undefined ? null : b);
   const copieProfonde = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   /** Article réduit à ce qui se répercute (le nom des articles de la base vient de la fiche). */
-  const sigArticle = (a) => (a.separateur ? { separateur: true, nom: a.nom }
+  const sigArticle = (a) => (a.separateur ? { separateur: true, nom: a.nom, photo: a.photo === true || undefined }
     : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu, typeMateriel: a.typeMateriel, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined }
       : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || ''), quantiteMin: a.quantiteMin === true || undefined, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined });
   /** Gommette réduite à ce qui se répercute : position, texte et taille éventuels. */
@@ -4197,8 +4225,8 @@ const Inventaires = (() => {
     const v = vueExemplaire(e);
     const lignes = [];
     const oui = (x) => (x ? 'oui' : 'non');
-    const nomBase = (a) => (a.separateur ? `séparation « ${a.nom} »` : (fiche(a) ? fiche(a).denomination : (a.refNom || a.nom || 'article')));
-    const nomLocal = (a) => (a.separateur ? `séparation « ${a.nom} »` : nomArticle(a));
+    const nomBase = (a) => (a.separateur ? nomSeparation(a) : (fiche(a) ? fiche(a).denomination : (a.refNom || a.nom || 'article')));
+    const nomLocal = (a) => (a.separateur ? nomSeparation(a) : nomArticle(a));
     personnalisations(e).forEach((k) => {
       if (k === 'nom') lignes.push(`Nom : « ${b.nom} » → « ${e.nom} »`);
       else if (k === 'ordre') lignes.push('Place changée parmi les sous-inventaires');
@@ -4280,7 +4308,7 @@ const Inventaires = (() => {
     let conserves = 0;
     const idsI = e.articles.map((a) => a.id);
     const ordreInchange = egal(idsI, (base || []).map((a) => a.id));
-    const nomA = (a) => (a.separateur ? `séparation « ${a.nom} »` : nomArticle(a));
+    const nomA = (a) => (a.separateur ? nomSeparation(a) : nomArticle(a));
     const communs = (l) => l.map((a) => a.id).filter((id) => I[id] && M[id]);
     const ordreConflit = !forcer && !ordreInchange && !egal(communs(e.articles), communs(m.articles));
     const ordreModele = forcer || ordreInchange || (ordreConflit && decider(e, 'ordre-articles', 'Ordre des articles changé dans ce contenant'));
@@ -4574,7 +4602,7 @@ const Inventaires = (() => {
   function blocContenuModele(c) {
     if (!c.articles.length) return null;
     return el('section', { classe: 'inv-section' }, el('h2', { texte: 'Contenu' }),
-      el('ul', { classe: 'inv-liste-modele' }, ...c.articles.map((a) => (a.separateur
+      el('ul', { classe: 'inv-liste-modele' }, ...c.articles.filter((a) => !estReperePhoto(a)).map((a) => (a.separateur
         ? el('li', { classe: 'inv-separation', texte: a.nom })
         : el('li', {}, nomArticle(a), a.quantite ? el('span', { classe: 'inv-qte-attendue', texte: ` × ${a.quantite}` }) : null)))));
   }
@@ -5459,7 +5487,12 @@ const Inventaires = (() => {
     const modele = dansUnModele(c.id);
     const verification = c.emplacement || questionScelle || modele || (c.clAmbulancier && !aCocher(c).length) ? null
       : (consultation ? (estVrac(c) ? blocVrac(c, true) : blocConsultation(c)) : (estVrac(c) ? blocVrac(c) : blocVerification(c)));
-    const listeAvant = Boolean(verification) && !consultation && !v && vuesDe(c).some((x) => x.photo);
+    const avecPhoto = vuesDe(c).some((x) => x.photo);
+    // Repère « Photo » posé dans la liste (gestion des inventaires) : c'est lui qui décide de la place de la photo,
+    // avant comme après validation. En tête de liste : la photo passe avant la liste.
+    const iPhoto = !consultation && !estVrac(c) && aCocher(c).length ? reperePhoto(c) : -1;
+    const photoDansListe = Boolean(verification) && iPhoto > 0 && avecPhoto;
+    const listeAvant = Boolean(verification) && !consultation && !v && avecPhoto && iPhoto < 0;
     return [
       // Contenant primaire : son nom est déjà dans le bandeau « Vous vérifiez actuellement … ».
       barreContenant(c, { h1: !(c.categorie === 'primaire' && !gestion) }),
@@ -5490,11 +5523,11 @@ const Inventaires = (() => {
       modele || !gestion ? null : el('p', { classe: `inv-statut ${b.classe}` },
         el('strong', { texte: `${b.complet ? '✓ ' : ''}${b.texte}` }),
         el('span', { classe: 'inv-badges' }, ...badges(b))),
-      // Photo de navigation ET éléments à cocher : la liste passe avant la photo tant que
-      // l'inventaire n'est pas validé (pour ne pas l'oublier), puis redescend sous la photo.
+      // Photo de navigation ET éléments à cocher, sans repère « Photo » : la liste passe avant la photo
+      // tant que l'inventaire n'est pas validé (pour ne pas l'oublier), puis redescend sous la photo.
       ...(listeAvant ? [].concat(verification) : []),
-      questionScelle ? null : blocPhoto(c, fils),
-      ...(questionScelle ? [] : [].concat(blocEnfants(c, fils))),
+      questionScelle || photoDansListe ? null : blocPhoto(c, fils),
+      ...(questionScelle || photoDansListe ? [] : [].concat(blocEnfants(c, fils))),
       c.emplacement || questionScelle || !modele ? null : blocContenuModele(c),
       ...(verification && !listeAvant ? [].concat(verification) : []),
       !aCocher(c).length && !fils.length && !estVrac(c) ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : menu > Administration > Gestion des inventaires pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
@@ -5528,7 +5561,7 @@ const Inventaires = (() => {
         ? `Consultation seule. Pour vérifier : touchez « Je suis dans ${p.nom} » en haut, ou scannez l'étiquette sur place.`
         : 'Consultation seule. Pour vérifier : choisissez en haut le contenant primaire où vous êtes.' }),
       datesModifiables && articles.some(suiviPeremption) ? el('p', { classe: 'aide-question', texte: 'Les dates de péremption restent modifiables : chaque date est enregistrée dès sa saisie.' }) : null,
-      el('ul', { classe: 'inv-liste-modele' }, ...c.articles.map((a) => {
+      el('ul', { classe: 'inv-liste-modele' }, ...c.articles.filter((a) => !estReperePhoto(a)).map((a) => {
         if (a.separateur) return el('li', { classe: 'inv-separation', texte: a.nom });
         const date = suiviPeremption(a) ? datePeremption(c.id, a.id) : '';
         const pe = suiviPeremption(a) ? etatPeremption(date) : null;
@@ -6204,7 +6237,7 @@ const Inventaires = (() => {
       const niveau = chemin(x.id).length - profondeur;
       return el('section', { classe: 'imp-niveau', style: `margin-left:${niveau * 1.2}em` },
         el(niveau ? 'h2' : 'h1', { texte: `${x.nom}${x.scellable ? ' (scellable)' : ''}` }),
-        x.articles.length ? el('ul', {}, ...x.articles.map((a) => (a.separateur ? el('li', { classe: 'imp-separation', texte: a.nom }) : el('li', {},
+        aCocher(x).length ? el('ul', {}, ...x.articles.filter((a) => !estReperePhoto(a)).map((a) => (a.separateur ? el('li', { classe: 'imp-separation', texte: a.nom }) : el('li', {},
           el('span', { classe: 'imp-case', 'aria-hidden': 'true' }),
           el('span', { classe: 'imp-nom', texte: estControle(a) ? `${nomArticle(a)}${texteAttente(a) ? ` (${texteAttente(a)})` : ''} : ${a.controle === 'oui' ? 'Oui / Non' : '……………'}` : `${nomArticle(a)}${a.quantite ? ` × ${estMinimum(a) ? '≥ ' : ''}${a.quantite}` : ''}${estFacultatif(a) ? ' (facultatif)' : ''}${a.commentaire ? ` — ${a.commentaire}` : ''}` }),
           suiviPeremption(a) ? el('span', { classe: 'imp-date', texte: `Pér. ${afficherDate(datePeremption(x.id, a.id)) || '……/………'}` }) : null)))) : null);
