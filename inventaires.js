@@ -5023,8 +5023,6 @@ const Inventaires = (() => {
   }
 
   // ---------- Sous-contenants scellables : « tout est scellé » en une fois ----------
-  /** Scellables décochés par l'agent (ouverts : à faire un par un), pour le contenant affiché. */
-  let scellesDecoches = { de: '', ids: new Set() };
   /**
    * Sous-contenants scellables (à toute profondeur) du contenant affiché, pas encore vérifiés aujourd'hui :
    *   - prets : identifiés (fixes, ou mobiles pointés aujourd'hui), validables d'un coup ;
@@ -5060,6 +5058,10 @@ const Inventaires = (() => {
     const i = suite.findIndex((z) => z.id === c.id);
     return suite.slice(i + 1, -1).filter((z) => !z.emplacement).map((z) => z.nom).join(' › ');
   }
+  /**
+   * « Tout est scellé » : les sous-contenants scellables pas encore vérifiés passent en « scellé ». Les non scellables
+   * ne sont jamais touchés. S'il ne reste rien à vérifier ici, retour au niveau du dessus ; sinon on reste.
+   */
   function validerScellesGroupes(c, liste) {
     let n = 0;
     const faits = [];
@@ -5069,9 +5071,39 @@ const Inventaires = (() => {
       n += k;
       faits.push(x.nom);
     }
-    avis = `Scellés : ${faits.map((f) => `« ${f} »`).join(', ')} — ${pluriel(n, 'inventaire')} validé${n > 1 ? 's' : ''} sur la base du dernier réalisé.`;
-    scellesDecoches = { de: '', ids: new Set() };
-    if (bilan(c.id).complet) remonterApresValidation(c); else rendre({ garderPosition: true });
+    avis = `Scellés : ${faits.map((f) => `« ${f} »`).join(', ')}.`;
+    const bc = bilan(c.id);
+    if (bc.complet) {
+      const dessus = etagesAuDessus(c)[0];
+      allerDirect(dessus ? dessus.id : '');
+    } else rendre({ garderPosition: true });
+  }
+  /** Fenêtre de confirmation « Les autres contenants sont-ils bien scellés ? ». */
+  function confirmerScelles(c, prets, bloques, aIdentifier) {
+    const fond = el('div', { classe: 'fenetre-fond', surclick: (e) => { if (e.target === fond) fermer(); } });
+    const retour = document.activeElement;
+    const fermer = () => { fond.remove(); document.body.classList.remove('fenetre-ouverte'); if (retour && retour.isConnected) retour.focus(); };
+    const titre = idChamp();
+    const ok = prets.filter((x) => !bloques.has(x.id));
+    const exclus = [
+      ...prets.filter((x) => bloques.has(x.id)).map((x) => `« ${x.nom} » (inventaire complet requis : ${bloques.get(x.id).join(', ')})`),
+      ...aIdentifier.map((f) => `${f.emplacement ? `« ${f.nom} »` : 'un contenant mobile'} (à identifier)`),
+    ];
+    fond.append(el('div', { classe: 'fenetre inv-confirmer-scelles', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': titre },
+      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: 'Les autres contenants sont-ils bien scellés ?' }),
+        el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
+      el('ul', { classe: 'inv-scelles-liste' }, ...ok.map((x) => {
+        const ou = cheminSous(c, x);
+        return el('li', {}, logoCadenas(), el('span', {}, el('strong', { texte: x.nom }), ou ? el('small', { texte: ` · ${ou}` }) : null));
+      })),
+      exclus.length ? el('p', { classe: 'aide-question inv-scelle-obstacle', texte: `Non concernés : ${exclus.join(', ')}.` }) : null,
+      el('div', { classe: 'inv-boutons-scelle' },
+        el('button', { type: 'button', classe: 'principal', texte: 'Oui', surclick: () => { fermer(); validerScellesGroupes(c, ok); } }),
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Non', surclick: fermer }))));
+    fond.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
+    document.body.append(fond);
+    document.body.classList.add('fenetre-ouverte');
+    fond.querySelector('.principal').focus();
   }
   /**
    * Identification à la suite des scellables non pointés : le lecteur se rouvre après chaque contenant reconnu
@@ -5095,46 +5127,23 @@ const Inventaires = (() => {
       if (scellablesSous(c).aIdentifier.length) setTimeout(() => { if (idCourant() === c.id) scannerScelles(c); }, 900);
     });
   }
+  /**
+   * Bouton « Tout est scellé » du contenant affiché : l'agent vérifie d'abord les sous-contenants de son choix
+   * en y entrant, puis valide d'un coup les scellables restants (après confirmation).
+   */
   function blocScellesGroupes(c) {
     const { prets, aIdentifier } = scellablesSous(c);
     if (!prets.length && !aIdentifier.length) return null;
-    if (scellesDecoches.de !== c.id) scellesDecoches = { de: c.id, ids: new Set() };
     const bloques = new Map(prets.map((x) => [x.id, obstaclesScelle(x)]).filter(([, o]) => o.length));
-    const choisis = () => prets.filter((x) => !bloques.has(x.id) && !scellesDecoches.ids.has(x.id));
-    const bouton = el('button', { type: 'button', classe: 'principal', surclick: () => validerScellesGroupes(c, choisis()) });
-    const majBouton = () => {
-      const n = choisis().length;
-      bouton.disabled = n === 0;
-      bouton.textContent = n > 1 ? `Tout est scellé (${n})` : (n === 1 ? 'Il est scellé' : 'Aucun scellé coché');
-    };
-    majBouton();
-    return el('section', { classe: 'inv-question-scelle inv-scelles-groupes' },
-      el('h2', {}, logoCadenas(), el('span', { texte: 'Contenants scellés' })),
-      el('p', { classe: 'aide-question', texte: 'Plomb intact = complet et opérationnel : validés sur la base du dernier inventaire. Décochez ceux qui sont ouverts, puis faites-les un par un.' }),
-      el('ul', { classe: 'inv-scelles-liste' },
-        ...prets.map((x) => {
-          const i = idChamp();
-          const o = bloques.get(x.id);
-          const ou = cheminSous(c, x);
-          return el('li', { classe: o ? 'bloque' : '' },
-            el('input', { type: 'checkbox', id: i, checked: !o && !scellesDecoches.ids.has(x.id), disabled: Boolean(o), surchange: (e) => {
-              if (e.target.checked) scellesDecoches.ids.delete(x.id); else scellesDecoches.ids.add(x.id);
-              majBouton();
-            } }),
-            el('label', { for: i }, el('strong', { texte: x.nom }), ou ? el('small', { texte: ` · ${ou}` }) : null,
-              o ? el('small', { classe: 'inv-scelle-obstacle', texte: ` — inventaire complet requis : ${o.join(', ')}` }) : null),
-            el('a', { href: lien(x.id), classe: 'inv-scelle-ouvrir', 'aria-label': `Ouvrir ${x.nom}`, title: 'Ouvrir', texte: '›' }));
-        }),
-        ...aIdentifier.map((f) => {
-          const ou = cheminSous(c, f);
-          return el('li', { classe: 'a-identifier' }, el('span', { classe: 'inv-scelle-puce', 'aria-hidden': 'true', texte: '?' }),
-            el('span', {}, el('strong', { texte: f.emplacement ? f.nom : 'Contenant mobile' }), ou ? el('small', { texte: ` · ${ou}` }) : null,
-              el('small', { classe: 'inv-scelle-obstacle', texte: ' — à identifier' })));
-        })),
+    const n = prets.length - bloques.size;
+    return el('section', { classe: 'inv-scelles-groupes' },
+      el('p', { classe: 'inv-scelles-resume' }, logoCadenas(),
+        el('span', { texte: `${pluriel(prets.length + aIdentifier.length, 'contenant')} scellable${prets.length + aIdentifier.length > 1 ? 's' : ''} non vérifié${prets.length + aIdentifier.length > 1 ? 's' : ''}` })),
       el('div', { classe: 'inv-boutons-scelle' },
-        prets.length ? bouton : null,
+        prets.length ? el('button', { type: 'button', classe: 'principal', disabled: n === 0, texte: 'Tout est scellé',
+          title: n === 0 ? 'Inventaire complet requis avant la validation par le scellé' : '', surclick: () => confirmerScelles(c, prets, bloques, aIdentifier) }) : null,
         aIdentifier.length ? el('button', { type: 'button', classe: 'cfg-bouton inv-bouton-lecture', surclick: () => scannerScelles(c) },
-          logoQr(), el('span', { texte: ` Identifier ${aIdentifier.length > 1 ? `les ${aIdentifier.length}` : 'le contenant'} (QR / NFC)` })) : null));
+          logoQr(), el('span', { texte: ` Identifier ${aIdentifier.length > 1 ? `les ${aIdentifier.length}` : 'le contenant'}` })) : null));
   }
 
   /** Administration d'un emplacement : inventaires types acceptés (un ou plusieurs). */
