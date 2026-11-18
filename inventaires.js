@@ -4683,13 +4683,13 @@ const Inventaires = (() => {
 
     const video = el('video', { playsinline: '', muted: '', autoplay: '' });
     video.muted = true;
-    const vue = el('div', { classe: 'camera-vue inv-vrac-video' }, video, el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }));
+    const vue = el('div', { classe: 'camera-vue inv-vrac-video' }, video, el('div', { classe: 'viseur inv-vrac-viseur', 'aria-hidden': 'true' }));
     const lecture = el('p', { classe: 'lecture', role: 'status', 'aria-live': 'polite' });
     const compte = el('span', { classe: 'inv-vrac-total' });
     const resume = el('div', { classe: 'inv-vrac-resume' });
     const liste = el('ul', { classe: 'inv-vrac-liste inv-vrac-session' });
     const champ = el('input', { type: 'text', inputmode: 'none', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'enter',
-      classe: 'inv-vrac-champ', 'aria-label': 'N° biomed ou n° de série (douchette ou saisie)', placeholder: 'Douchette ou saisie du n° biomed…' });
+      classe: 'inv-vrac-champ', 'aria-label': 'N° biomed ou n° de série (douchette ou saisie)', placeholder: 'N° biomed…' });
     const boutonCamera = detecteurDispo ? el('button', { type: 'button', classe: 'inv-vrac-outil', 'aria-pressed': 'false', title: 'Caméra' }) : null;
     const boutonClavier = el('button', { type: 'button', classe: 'inv-vrac-outil', 'aria-pressed': 'false', title: 'Clavier à l\'écran', 'aria-label': 'Afficher le clavier pour saisir un numéro', texte: '⌨' });
     const terminer = el('button', { type: 'button', classe: 'camera-bouton' });
@@ -4715,6 +4715,7 @@ const Inventaires = (() => {
         majListe();
       })));
       if (boutonReprise) boutonReprise.hidden = tous.length > 0;
+      ecran.classList.toggle('vide', !tous.length);
       terminerVide = false;
       majTerminer();
       if (nouveau) {
@@ -4890,16 +4891,20 @@ const Inventaires = (() => {
       recherche.focus();
     };
 
-    const ecran = el('div', { classe: 'camera inv-vrac-ecran', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Scanner le matériel : ${c.nom}` },
+    const liens = [boutonReprise, nfcDispo ? CibleNfc.lien() : null].filter(Boolean);
+    const ecran = el('div', { classe: 'camera inv-vrac-ecran vide', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Scanner le matériel : ${c.nom}` },
       el('div', { classe: 'inv-vrac-haut' },
         el('div', { classe: 'inv-vrac-titre' }, el('strong', { texte: c.nom }), compte),
+        el('button', { type: 'button', classe: 'inv-vrac-outil inv-vrac-bouton-liste', texte: 'Liste', 'aria-label': 'Ajouter depuis la liste des appareils', surclick: choisirDansListe }),
         boutonCamera, boutonClavier),
       vue,
       el('form', { classe: 'inv-vrac-saisie', sursubmit: (e) => { e.preventDefault(); soumettre(); } },
         champ,
-        el('button', { type: 'submit', classe: 'inv-vrac-outil', 'aria-label': 'Ajouter ce numéro', texte: '+' }),
-        el('button', { type: 'button', classe: 'inv-vrac-outil inv-vrac-bouton-liste', texte: 'Liste', surclick: choisirDansListe })),
-      lecture, nfcDispo ? el('div', { classe: 'cible-nfc-lien-zone' }, CibleNfc.lien()) : null, resume, boutonReprise, liste,
+        el('button', { type: 'submit', classe: 'inv-vrac-outil', 'aria-label': 'Ajouter ce numéro', texte: '+' })),
+      lecture,
+      el('div', { classe: 'inv-vrac-corps' }, resume, liste,
+        el('p', { classe: 'inv-vrac-vide', texte: 'Les appareils scannés s\'afficheront ici, le dernier en haut.' })),
+      liens.length ? el('div', { classe: 'inv-vrac-liens' }, ...liens) : null,
       el('div', { classe: 'camera-actions' }, fermerBouton, terminer));
     const cacherCible = nfcDispo ? CibleNfc.montrer() : () => {};
     const fermer = () => {

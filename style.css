@@ -2632,24 +2632,17 @@ body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color:
 }
 .inv-vrac-outil[aria-pressed="true"] { background: var(--bleu); border-color: #6F9BE0; }
 .inv-vrac-bouton-liste { font-size: 0.95rem; }
-.inv-vrac-video { flex: none; height: 32vh; height: 32dvh; min-height: 9rem; }
 .inv-vrac-video[hidden] { display: none; }
-.inv-vrac-video .viseur { top: 30%; height: 40%; left: 12%; right: 12%; }
-.inv-vrac-saisie { display: flex; gap: 0.4rem; padding: 0.6rem 0.8rem 0; }
 .inv-vrac-champ {
   flex: 1; min-width: 0; height: 2.9rem; padding: 0 0.8rem; font-size: 1.05rem;
   color: var(--encre); background: #fff; border: 2px solid #6F9BE0; border-radius: var(--rayon);
 }
 .inv-vrac-champ:focus { border-color: var(--orange); outline: none; }
-.inv-vrac-ecran .lecture { padding: 0.45rem 1rem 0.3rem; min-height: 2.2rem; font-weight: 700; }
 .inv-vrac-ecran .lecture.ok { color: #7EE2B8; }
 .inv-vrac-ecran .lecture.inconnu, .inv-vrac-ecran .lecture.deja { color: #FFC37A; }
 .inv-vrac-ecran .lecture.erreur { color: #FF9D94; }
-.inv-vrac-resume { display: flex; flex-wrap: wrap; gap: 0.35rem; padding: 0 0.8rem 0.4rem; }
 .inv-vrac-puce { padding: 0.15rem 0.6rem; font-size: 0.85rem; background: #23324A; border-radius: 1rem; }
 .inv-vrac-puce.inconnu { color: #FFC37A; }
-.inv-vrac-reprise { align-self: center; margin: 0 0 0.4rem; color: #A9C6F2; }
-.inv-vrac-session { flex: 1; min-height: 4rem; overflow: auto; margin: 0; padding: 0 0.8rem 0.4rem; align-content: start; }
 .inv-vrac-session .inv-vrac-item { color: var(--encre); }
 .inv-vrac-item.nouveau { animation: inv-vrac-nouveau 1.2s ease-out; }
 .inv-vrac-item.deja { animation: inv-vrac-deja 0.9s ease-out; }
@@ -2835,3 +2828,24 @@ dialog.appareil { margin: 0; padding: 0; border: 0; width: 100vw; height: 100dvh
 dialog.appareil:not([open]) { display: none; }
 .appareil .lecture { padding: 0.35rem 1rem max(0.9rem, env(safe-area-inset-bottom)); font-size: 0.9rem; }
 .appareil-vue.flash::after { content: ''; position: absolute; inset: 0; background: #fff; animation: inv-rafale-flash 0.25s ease-out forwards; pointer-events: none; }
+
+/* Écran de scan : la caméra occupe la place libre tant que rien n'est scanné, puis cède la place à la liste. */
+.inv-vrac-ecran .inv-vrac-haut { padding-bottom: 0.5rem; }
+.inv-vrac-ecran .inv-vrac-bouton-liste { font-size: 0.95rem; }
+.inv-vrac-video { flex: none; height: 30vh; height: 30dvh; min-height: 8rem; }
+.inv-vrac-ecran.vide .inv-vrac-video { flex: 1 1 auto; height: auto; min-height: 12rem; }
+.inv-vrac-video[hidden] { display: none; }
+.inv-vrac-viseur { left: 50%; right: auto; top: 50%; width: min(78%, 22rem); height: 42%; min-height: 4rem; transform: translate(-50%, -50%); }
+.inv-vrac-saisie { display: flex; gap: 0.4rem; padding: 0.6rem 0.8rem 0; }
+.inv-vrac-ecran .lecture { padding: 0.35rem 1rem; min-height: 0; font-size: 0.95rem; font-weight: 700; line-height: 1.3; }
+.inv-vrac-ecran .lecture:empty { display: none; }
+.inv-vrac-corps { flex: 1 1 0; min-height: 4.5rem; overflow: auto; display: flex; flex-direction: column; gap: 0.4rem; padding: 0.2rem 0.8rem 0.4rem; }
+.inv-vrac-ecran.vide .inv-vrac-corps { flex: 0 0 auto; min-height: 0; }
+.inv-vrac-resume { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.inv-vrac-resume:empty { display: none; }
+.inv-vrac-session { margin: 0; padding: 0; }
+.inv-vrac-vide { margin: 0.3rem 0; font-size: 0.85rem; text-align: center; color: #9FB0C8; }
+.inv-vrac-ecran:not(.vide) .inv-vrac-vide { display: none; }
+.inv-vrac-liens { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.3rem 1rem; padding: 0.3rem 0.8rem 0; }
+.inv-vrac-liens .cible-nfc-lien { margin: 0; min-height: 2.2rem; padding: 0.2rem 0.7rem; font-size: 0.82rem; }
+.inv-vrac-reprise { margin: 0; font-size: 0.85rem; color: #A9C6F2; }
