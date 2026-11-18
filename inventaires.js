@@ -4972,7 +4972,6 @@ const Inventaires = (() => {
     const obstacles = [];
     descendants(c.id).forEach((d) => {
       if (d.emplacement && !enfants(d.id).length) obstacles.push(`${d.nom} (emplacement vide)`);
-      else if (aCocher(d).length && !etat.verifs[d.id]) obstacles.push(`${d.nom} (jamais vérifié)`);
     });
     return obstacles;
   }
@@ -4982,7 +4981,8 @@ const Inventaires = (() => {
     let n = 0;
     for (const d of descendants(c.id)) {
       if (!aCocher(d).length || verifDuJour(d.id)) continue;
-      const derniere = etat.verifs[d.id];
+      // Jamais inventorié : plombé = complet et opérationnel, on le valide comme complet (quantités attendues).
+      const derniere = etat.verifs[d.id] || { manquants: [], valeurs: {} };
       const manquants = new Set(derniere.manquants.map((m) => m.id));
       const articles = aCocher(d).map((a) => {
         if (estControle(a)) {
@@ -4996,7 +4996,9 @@ const Inventaires = (() => {
           ...(suiviPeremption(a) ? { peremption: datePeremption(d.id, a.id) } : {}),
         };
       });
-      const remarque = `Scellé : validé sur la base de l'inventaire du ${new Date(derniere.date).toLocaleDateString('fr-FR')} (${derniere.agent}).`;
+      const remarque = derniere.date
+        ? `Scellé : validé sur la base de l'inventaire du ${new Date(derniere.date).toLocaleDateString('fr-FR')} (${derniere.agent}).`
+        : 'Scellé : aucun inventaire antérieur, réputé complet.';
       const ok = App.mettreEnFile({ action: 'verifierInventaire', contenant: d.id, detail: { chemin: cheminNoms(d.id, ' > '), articles, remarque, scelle: true } });
       if (!ok) { sauverEtat(); return -1; }
       etat.verifs[d.id] = { date: maintenant, agent: App.agent(), manquants: derniere.manquants, remarque, scelle: true, valeurs: derniere.valeurs || {} };
@@ -5090,7 +5092,7 @@ const Inventaires = (() => {
       ...aIdentifier.map((f) => `${f.emplacement ? `« ${f.nom} »` : 'un contenant mobile'} (à identifier)`),
     ];
     fond.append(el('div', { classe: 'fenetre inv-confirmer-scelles', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': titre },
-      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: 'Les autres contenants sont-ils bien scellés ?' }),
+      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: ok.length ? 'Les autres contenants sont-ils bien scellés ?' : 'Validation par le scellé impossible' }),
         el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
       el('ul', { classe: 'inv-scelles-liste' }, ...ok.map((x) => {
         const ou = cheminSous(c, x);
@@ -5098,12 +5100,12 @@ const Inventaires = (() => {
       })),
       exclus.length ? el('p', { classe: 'aide-question inv-scelle-obstacle', texte: `Non concernés : ${exclus.join(', ')}.` }) : null,
       el('div', { classe: 'inv-boutons-scelle' },
-        el('button', { type: 'button', classe: 'principal', texte: 'Oui', surclick: () => { fermer(); validerScellesGroupes(c, ok); } }),
-        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Non', surclick: fermer }))));
+        ok.length ? el('button', { type: 'button', classe: 'principal', texte: 'Oui', surclick: () => { fermer(); validerScellesGroupes(c, ok); } }) : null,
+        el('button', { type: 'button', classe: ok.length ? 'cfg-bouton' : 'principal', texte: ok.length ? 'Non' : 'Fermer', surclick: fermer }))));
     fond.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
     document.body.append(fond);
     document.body.classList.add('fenetre-ouverte');
-    fond.querySelector('.principal').focus();
+    fond.querySelector('.inv-boutons-scelle button').focus();
   }
   /**
    * Identification à la suite des scellables non pointés : le lecteur se rouvre après chaque contenant reconnu
@@ -5135,13 +5137,11 @@ const Inventaires = (() => {
     const { prets, aIdentifier } = scellablesSous(c);
     if (!prets.length && !aIdentifier.length) return null;
     const bloques = new Map(prets.map((x) => [x.id, obstaclesScelle(x)]).filter(([, o]) => o.length));
-    const n = prets.length - bloques.size;
     return el('section', { classe: 'inv-scelles-groupes' },
       el('p', { classe: 'inv-scelles-resume' }, logoCadenas(),
         el('span', { texte: `${pluriel(prets.length + aIdentifier.length, 'contenant')} scellable${prets.length + aIdentifier.length > 1 ? 's' : ''} non vérifié${prets.length + aIdentifier.length > 1 ? 's' : ''}` })),
       el('div', { classe: 'inv-boutons-scelle' },
-        prets.length ? el('button', { type: 'button', classe: 'principal', disabled: n === 0, texte: 'Tout est scellé',
-          title: n === 0 ? 'Inventaire complet requis avant la validation par le scellé' : '', surclick: () => confirmerScelles(c, prets, bloques, aIdentifier) }) : null,
+        prets.length ? el('button', { type: 'button', classe: 'principal', texte: 'Tout est scellé', surclick: () => confirmerScelles(c, prets, bloques, aIdentifier) }) : null,
         aIdentifier.length ? el('button', { type: 'button', classe: 'cfg-bouton inv-bouton-lecture', surclick: () => scannerScelles(c) },
           logoQr(), el('span', { texte: ` Identifier ${aIdentifier.length > 1 ? `les ${aIdentifier.length}` : 'le contenant'}` })) : null));
   }
