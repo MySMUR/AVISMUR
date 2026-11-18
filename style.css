@@ -1936,8 +1936,9 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .mat-corps { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .mat-ids, .mat-derniere { font-size: 0.85rem; color: var(--gris); }
 .mat-traceur { margin-left: 0.35rem; }
-.mat-etats { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; }
-.mat-pastille { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 99px; font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
+.mat-etats { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; min-width: 0; max-width: 100%; }
+/* Pastilles : une ligne si possible, mais retour à la ligne plutôt que déborder de l'écran (libellés de maintenance longs). */
+.mat-pastille { display: inline-block; max-width: 100%; padding: 0.1rem 0.55rem; border-radius: 99px; font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
 .rev-ok { background: #E3F4F1; color: #12655D; }
 .rev-bientot { background: #FFF1DE; color: #8A4B00; }
 .rev-retard { background: #FDE8E6; color: var(--erreur); }
@@ -1950,6 +1951,7 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 @media (max-width: 560px) {
   .mat-ouvrir { flex-wrap: wrap; }
   .mat-etats { flex-direction: row; flex-wrap: wrap; align-items: flex-start; width: 100%; padding-left: 3.4rem; }
+  .mat-pastille { white-space: normal; overflow-wrap: anywhere; border-radius: 10px; }
 }
 
 /* Fenêtres (fiche, modification, répercussion, intervention) */
@@ -1996,7 +1998,7 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .mat-puce button { border: 0; background: none; color: var(--gris); cursor: pointer; padding: 0 0.1rem; font: inherit; }
 .mat-cadre select { min-height: 2.75rem; border: 2px solid var(--trait); border-radius: 10px; font: inherit; padding: 0.4rem; background: #fff; }
 .mat-filtres select, .mat-filtres input[type="search"] { width: auto; }
-.mat-filtres select { flex: 0 1 auto; }
+.mat-filtres select { flex: 0 1 auto; min-width: 0; max-width: 100%; }
 .mat-type-libre input { width: 100%; min-height: 2.75rem; margin-top: 0.4rem; padding: 0.45rem 0.6rem; border: 2px solid var(--trait); border-radius: 10px; font: inherit; }
 .mat-apercu { margin: 0; padding: 0.6rem 0.8rem; border-radius: 10px; background: var(--ciel); font-size: 0.85rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mat-nfc { display: flex; flex-direction: column; gap: 0.7rem; }
