@@ -915,25 +915,27 @@ const Infos = (() => {
           type: 'button', classe: `choix-icone-bouton${nom === t.icone ? ' actif' : ''}`, title: ICONES[nom].nom, 'aria-label': ICONES[nom].nom,
           surclick: () => { t.icone = nom; rendreTypes(); },
         }, icone(nom)))));
+      // Deux lignes : pictogramme et nom ; puis importance par défaut, ordre et archivage.
       return el('li', { classe: `type-ligne${t.archive ? ' archive' : ''}` },
         choixIcone,
         el('div', { classe: 'type-champs' },
           el('label', { for: idLibelle, classe: 'invisible', texte: 'Nom du type' }),
-          el('input', { id: idLibelle, valeur: t.libelle, maxlength: '40', surinput: (e) => { t.libelle = e.target.value; } }),
-          el('label', { classe: 'type-importance' }, 'Importance par défaut ',
-            el('select', { surchange: (e) => { t.importance = e.target.value; } },
-              IMPORTANCES.map((imp) => el('option', { value: imp.id, selected: imp.id === t.importance, texte: imp.libelle }))))),
-        el('div', { classe: 'type-boutons' },
-          el('button', { type: 'button', classe: 'info-bouton', 'aria-label': `Monter ${t.libelle}`, disabled: i === 0, texte: '↑', surclick: () => { [brouillonTypes[i - 1], brouillonTypes[i]] = [brouillonTypes[i], brouillonTypes[i - 1]]; rendreTypes(); } }),
-          el('button', { type: 'button', classe: 'info-bouton', 'aria-label': `Descendre ${t.libelle}`, disabled: i === brouillonTypes.length - 1, texte: '↓', surclick: () => { [brouillonTypes[i + 1], brouillonTypes[i]] = [brouillonTypes[i], brouillonTypes[i + 1]]; rendreTypes(); } }),
-          el('button', { type: 'button', classe: 'info-bouton', texte: t.archive ? 'Réactiver' : 'Archiver', surclick: () => { t.archive = !t.archive; rendreTypes(); } })));
+          el('input', { id: idLibelle, valeur: t.libelle, maxlength: '40', placeholder: 'Nom du type', surinput: (e) => { t.libelle = e.target.value; } })),
+        el('div', { classe: 'type-bas' },
+          el('select', { classe: `type-importance-choix importance-${t.importance}`, 'aria-label': `Importance proposée par défaut pour ${t.libelle}`, title: 'Importance proposée par défaut à la publication',
+            surchange: (e) => { t.importance = e.target.value; e.target.className = `type-importance-choix importance-${t.importance}`; } },
+            IMPORTANCES.map((imp) => el('option', { value: imp.id, selected: imp.id === t.importance, texte: imp.libelle }))),
+          el('span', { classe: 'type-boutons' },
+            el('button', { type: 'button', classe: 'info-bouton', 'aria-label': `Monter ${t.libelle}`, disabled: i === 0, texte: '↑', surclick: () => { [brouillonTypes[i - 1], brouillonTypes[i]] = [brouillonTypes[i], brouillonTypes[i - 1]]; rendreTypes(); } }),
+            el('button', { type: 'button', classe: 'info-bouton', 'aria-label': `Descendre ${t.libelle}`, disabled: i === brouillonTypes.length - 1, texte: '↓', surclick: () => { [brouillonTypes[i + 1], brouillonTypes[i]] = [brouillonTypes[i], brouillonTypes[i + 1]]; rendreTypes(); } }),
+            el('button', { type: 'button', classe: 'info-bouton', texte: t.archive ? 'Réactiver' : 'Archiver', surclick: () => { t.archive = !t.archive; rendreTypes(); } }))));
     });
 
     zone.innerHTML = '';
     zone.append(
       el('button', { type: 'button', classe: 'lien', texte: '← Retour aux informations', surclick: () => App.ouvrirVue('accueil') }),
       el('h1', { texte: 'Types d\'informations' }),
-      el('p', { classe: 'consigne', texte: 'Ordre d\'affichage, nom, pictogramme et importance proposée par défaut à la publication. Un type déjà utilisé ne peut pas être supprimé : archivez-le, il ne sera plus proposé.' }),
+      el('p', { classe: 'aide-question', texte: 'Ordre d\'affichage, pictogramme, nom et importance proposée par défaut à la publication. Un type déjà utilisé ne se supprime pas : archivez-le, il ne sera plus proposé.' }),
       el('ul', { classe: 'types-liste' }, lignes),
       el('button', { type: 'button', classe: 'lien', texte: '+ Ajouter un type', surclick: () => { brouillonTypes.push({ id: '', libelle: '', icone: 'info', importance: 'normale', archive: false }); rendreTypes(); focaliser('.types-liste li:last-child input'); } }),
       el('div', { classe: 'types-enregistrer' },

@@ -44,6 +44,17 @@ Liens connexes à prévoir (fonctionnalités non encore développées) :
 | Maintenance | Fiche véhicule ; Matériel ; Aujourd'hui (échéances) |
 | Pilotage (cadre, chef d'unité) | Menu (rubrique à créer) ; historiques par véhicule et par agent |
 
+## Écrans d'administration : rangement commun
+
+Tous les écrans d'administration suivent les mêmes règles (classes CSS communes `onglets-page`, `barre-enregistrer`, `adm-entete`, `adm-recherche`) :
+
+- **En-tête** : titre, puis les actions principales alignées à droite (« + Nouveau », actualiser…).
+- **Recherche toujours visible**, filtres secondaires repliés derrière un bouton « Filtres (n) » qui indique le nombre de filtres actifs (Suivi du matériel, Base des articles).
+- **Une ligne par élément**, détail déplié au toucher (véhicules et questions de la Configuration, sous-inventaires, fiches).
+- **Actions sensibles à part** : suppression, réinitialisation, déconnexion… dans une zone séparée ou repliée (« Autres actions », « Avancé »).
+- **Onglets** quand un écran a plusieurs parties : Gestion des inventaires (Contenu, Réglages, Étiquette, Exemplaires), Configuration (Véhicules, Par véhicule, Check-lists).
+- **Enregistrement explicite** (Configuration) : une barre collée en bas apparaît dès qu'il y a une modification, avec « Annuler » et « Enregistrer ».
+
 ## Mon compte (menu, sous Accueil)
 
 Pour tous les agents (`profil.js`, backend `Profil.gs`) : changer son mot de passe, son numéro de portable (confirmé par un code SMS), son adresse mail, choisir de partager son numéro avec les autres utilisateurs (annuaire du personnel) et avec l'application (SMS d'alerte ou de rappel), activer ou désactiver les notifications push sur l'appareil et retirer un ancien appareil.

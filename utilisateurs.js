@@ -118,9 +118,11 @@ const Utilisateurs = (() => {
         : (a.droits.length ? a.droits.map(libelleDroit).join(', ') : 'Aucun')));
 
     const gerable = aDroit(a.etudiant ? 'ETUDIANTS' : 'UTILISATEURS');
+    const principale = el('div', { classe: 'usr-actions' });
+    // Actions rares ou sensibles (mot de passe, appareils, suppression, administrateur) : repliées.
     const actions = el('div', { classe: 'usr-actions' });
     if (gerable) {
-      actions.append(el('button', {
+      principale.append(el('button', {
         type: 'button', classe: 'cfg-bouton', texte: 'Modifier la fiche',
         surclick: () => {
           edition = {
@@ -157,8 +159,10 @@ const Utilisateurs = (() => {
     if (a.etudiant && a.periode === 'a-venir') notes.push(`Connexion possible à partir du ${dateFr(a.debut)} : identifiant « ${a.identifiant} », puis « Recevoir un code par SMS ».`);
     if (a.etudiant && a.periode === 'terminee') notes.push('Stage terminé : l\'étudiant ne peut plus se connecter. Pour un nouveau stage ou une prolongation, utilisez les stages ci-dessous.');
     if (!a.telephone) notes.push('Sans numéro de portable valide, l\'agent ne peut ni créer ni réinitialiser son mot de passe.');
+    const autres = actions.children.length ? el('details', { classe: 'usr-autres', open: aConfirmer.endsWith(`:${a.cri}`) },
+      el('summary', { texte: 'Autres actions' }), actions) : null;
     return el('div', { classe: 'usr-fiche' }, infos,
-      ...notes.map((t) => el('p', { classe: 'note-parc', texte: t })), a.etudiant ? rendreStages(a, gerable) : null, actions, rendreDroits(a));
+      ...notes.map((t) => el('p', { classe: 'note-parc', texte: t })), principale, a.etudiant ? rendreStages(a, gerable) : null, rendreDroits(a), autres);
   }
 
   // ---------- Stages des étudiants (DB_EIADE) ----------
@@ -445,7 +449,7 @@ const Utilisateurs = (() => {
     const liste = visibles();
     const actifs = agents.filter((a) => a.compteActif).length;
     const recherche = el('input', {
-      type: 'search', id: 'usr-recherche', valeur: filtre, placeholder: 'Nom, CRI, identifiant ou fonction', autocomplete: 'off',
+      type: 'search', id: 'usr-recherche', valeur: filtre, placeholder: 'Nom, CRI, fonction…', autocomplete: 'off',
       surinput: (e) => { filtre = e.target.value; rendreListe(); },
     });
     const choixRole = el('select', { id: 'usr-filtre', surchange: (e) => { filtreRole = e.target.value; rendreListe(); } },
@@ -456,14 +460,10 @@ const Utilisateurs = (() => {
     zone.innerHTML = '';
     // append() écrirait « null » pour un élément absent : on filtre.
     zone.append(...[
-      el('h1', { texte: 'Gestion des utilisateurs' }),
-      el('p', { classe: 'consigne', texte: `${agents.filter((a) => !a.etudiant).length} agents et ${agents.filter((a) => a.etudiant).length} étudiants IADE, ${actifs} avec un mot de passe créé.` }),
-      el('div', { classe: 'usr-outils' },
-        el('div', { classe: 'champ usr-champ' }, el('label', { for: 'usr-recherche', texte: 'Rechercher' }), recherche),
-        el('div', { classe: 'champ usr-champ' }, el('label', { for: 'usr-filtre', texte: 'Afficher' }), choixRole),
-        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Actualiser', surclick: () => charger() }),
+      el('div', { classe: 'adm-entete' }, el('h1', { texte: 'Gestion des utilisateurs' }),
+        el('button', { type: 'button', classe: 'adm-icone', 'aria-label': 'Actualiser la liste', title: 'Actualiser', texte: '↻', surclick: () => charger() }),
         el('button', {
-          type: 'button', classe: 'cfg-bouton usr-ajouter', texte: '+ Nouveau compte', disabled: !fonctions.length,
+          type: 'button', classe: 'principal usr-ajouter', texte: '+ Nouveau', title: 'Nouveau compte', disabled: !fonctions.length,
           hidden: !aDroit('UTILISATEURS') && !aDroit('ETUDIANTS'),
           surclick: () => {
             edition = { ancienCri: '', nom: '', cri: '', code: '', telephone: '', nomSeul: '', prenom: '', debut: '', fin: '', ifia: '' };
@@ -471,6 +471,10 @@ const Utilisateurs = (() => {
             ouvert = ''; aConfirmer = ''; message(''); rendre();
           },
         })),
+      el('p', { classe: 'aide-question', texte: `${agents.filter((a) => !a.etudiant).length} agents et ${agents.filter((a) => a.etudiant).length} étudiants IADE, ${actifs} avec un mot de passe créé.` }),
+      el('div', { classe: 'usr-outils adm-recherche' },
+        el('label', { for: 'usr-recherche', classe: 'invisible', texte: 'Rechercher' }), recherche,
+        el('label', { for: 'usr-filtre', classe: 'invisible', texte: 'Afficher' }), choixRole),
       el('p', { classe: `message usr-message ${messageCourant.classe}`.trim(), role: 'status', texte: messageCourant.texte }),
       edition && !edition.ancienCri ? el('div', { classe: 'usr-agent ouvert' }, rendreFormulaire()) : null,
       el('ul', { classe: 'usr-liste' }, ...liste.map(rendreAgent)),

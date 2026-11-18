@@ -2935,3 +2935,125 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 .inv-ajout-commentaire:hover { color: var(--bleu); text-decoration: underline; }
 .inv-ajout-commentaire { width: auto; margin-left: 0; margin-right: auto; text-align: left; padding: 0; min-height: 0; }
 @media (min-width: 760px) { .inv-onglet-gestion { flex: 0 0 auto; min-width: 7.5rem; padding-inline: 0.9rem; } }
+
+/* ---------- Écrans d'administration : rangement commun ---------- */
+/* Onglets de page (Configuration, Suivi du matériel…) : même aspect que ceux de la gestion des inventaires. */
+.onglets-page { display: flex; gap: 0; margin: 0.4rem 0 1rem; overflow-x: auto; border-bottom: 1px solid #E1E8F2; scrollbar-width: none; }
+.onglets-page::-webkit-scrollbar { display: none; }
+.onglet-page {
+  flex: 1 0 auto; min-height: 2.6rem; padding: 0.35rem 0.6rem; font: inherit; font-size: 0.92rem; font-weight: 700; white-space: nowrap;
+  color: var(--gris); background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: 0; cursor: pointer;
+}
+.onglet-page:hover { color: var(--bleu); }
+.onglet-page[aria-selected="true"] { color: var(--bleu); border-bottom-color: var(--bleu); }
+@media (min-width: 760px) { .onglet-page { flex: 0 0 auto; min-width: 8rem; padding-inline: 1rem; } }
+/* Barre d'enregistrement collée en bas de l'écran */
+.barre-enregistrer {
+  position: sticky; bottom: 0; z-index: 15; display: flex; align-items: center; gap: 0.5rem; margin: 1rem -1.25rem 0;
+  padding: 0.55rem 1.25rem max(0.55rem, env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid #E1E8F2;
+  box-shadow: 0 -4px 14px rgba(19, 41, 75, 0.06);
+}
+@media (min-width: 640px) { .barre-enregistrer { margin-inline: -2.5rem; padding-inline: 2.5rem; } }
+.barre-enregistrer-etat { flex: 1 1 auto; font-size: 0.88rem; color: var(--gris); }
+.barre-enregistrer.modifiee .barre-enregistrer-etat { color: #8A4B05; font-weight: 700; }
+.barre-enregistrer .principal { width: auto; margin: 0; padding-inline: 1.2rem; min-height: 2.6rem; }
+.barre-enregistrer .cfg-bouton { margin: 0; }
+.barre-enregistrer button:disabled { opacity: 0.45; cursor: default; }
+.cfg-avance { margin: 1.2rem 0 0; }
+.cfg-avance > summary { cursor: pointer; font-weight: 700; color: var(--gris); }
+.cfg-zone-danger { margin-top: 0.7rem; padding-top: 0.6rem; border-top: 1px dashed var(--trait); }
+/* Véhicules : une ligne chacun, détail dépliable */
+.cfg-veh { border: 1px solid #E1E8F2; border-radius: var(--rayon); background: #fff; margin: 0 0 0.45rem; }
+.cfg-veh.cfg-inactif { opacity: 0.65; }
+.cfg-veh.ouvert { border-color: var(--bleu); }
+.cfg-veh-resume { display: flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.4rem 0.3rem 0.6rem; }
+.cfg-veh-icone { font-size: 1.3rem; width: 1.8rem; text-align: center; }
+.cfg-veh-nom, .cfg-question-titre {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.2rem; font: inherit; text-align: left;
+  color: var(--encre); background: none; border: 0; cursor: pointer;
+}
+.cfg-veh-nom strong { font-size: 1.02rem; }
+.cfg-veh-nom small, .cfg-question-nom small { display: block; color: var(--gris); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; }
+.cfg-veh-nom small { flex: 1 1 auto; white-space: nowrap; }
+.cfg-veh-chevron { margin-left: auto; color: var(--bleu); font-size: 0.9rem; }
+.cfg-veh-detail { padding: 0.2rem 0.8rem 0.8rem; border-top: 1px solid #E1E8F2; }
+.cfg-veh-champs { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.5rem 0.7rem; margin: 0.5rem 0; }
+.cfg-veh-champs label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; font-weight: 700; }
+.cfg-veh-champs input, .cfg-veh-champs select { width: 100%; box-sizing: border-box; }
+.cfg-veh-cases { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; }
+/* Questions d'une check-list : une ligne chacune, champs dépliables */
+.cfg-question-repliable { padding: 0.15rem 0.4rem 0.15rem 0.2rem; }
+.cfg-question-repliable.ouvert { padding-bottom: 0.8rem; border-color: var(--bleu); }
+.cfg-question-entete { display: flex; align-items: center; gap: 0.3rem; }
+.cfg-question-nom { flex: 1 1 auto; min-width: 0; }
+.cfg-question-nom > span { font-weight: 700; }
+.cfg-question-repliable.ouvert > .champ, .cfg-question-repliable.ouvert > .cfg-case, .cfg-question-repliable.ouvert > details,
+.cfg-question-repliable.ouvert > p, .cfg-question-repliable.ouvert > .cfg-zone-danger { margin-left: 0.6rem; margin-right: 0.4rem; }
+.barre-enregistrer:not(.modifiee) { display: none; }
+.onglets-page + .cfg-section { border-top: 0; padding-top: 0; margin-top: 0; }
+/* Suivi du matériel : en-tête compact, compteurs sur une ligne, filtres repliés, lignes lisibles au téléphone */
+.mat-entete .mat-nouveau { width: auto; margin: 0; padding-inline: 1.1rem; min-height: 2.6rem; }
+.mat-boutons-secondaires { flex-basis: 100%; gap: 0.4rem; }
+.mat-filtres { flex-wrap: nowrap; }
+.mat-filtres input[type="search"] { flex: 1 1 auto; min-width: 0; }
+.mat-bouton-filtres { flex: none; margin: 0; }
+.mat-filtres-panneau { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.6rem; background: var(--ciel); border-radius: var(--rayon); }
+.mat-filtres-panneau[hidden] { display: none; }
+.mat-filtres-panneau select { min-height: 2.6rem; padding: 0.3rem 0.5rem; border: 2px solid var(--trait); border-radius: 10px; font: inherit; background: #fff; max-width: 100%; }
+@media (max-width: 560px) {
+  .mat-compteurs { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.35rem; }
+  .mat-compteur { padding: 0.45rem 0.4rem; }
+  .mat-compteur strong { font-size: 1.25rem; }
+  .mat-compteur span { font-size: 0.68rem; line-height: 1.2; }
+  .mat-ligne { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; column-gap: 0.35rem; }
+  .mat-ligne > .mat-case { margin-top: 1.4rem; }
+  .mat-ligne > .mat-ouvrir { grid-column: 2; }
+  .mat-ligne > .mat-actions { grid-column: 3; flex-direction: column; padding-top: 0.3rem; }
+  .mat-ligne > .mat-detail { grid-column: 1 / -1; margin-left: 0; }
+  .mat-ouvrir { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 0.6rem; row-gap: 0.35rem; }
+  .mat-ouvrir > .mat-vignette { display: none; }
+  .mat-etats { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: flex-start; width: auto; padding-left: 0; }
+}
+.mat-entete h1 { flex: 1 1 auto; width: auto; }
+/* Base des articles : recherche + bouton Filtres */
+.inv-base-recherche { display: flex; gap: 0.5rem; align-items: center; margin: 0.4rem 0 0.6rem; }
+.inv-base-recherche input { flex: 1 1 auto; min-width: 0; }
+.inv-base-recherche .cfg-bouton { flex: none; margin: 0; }
+.inv-base-filtres { display: flex; flex-direction: column; gap: 0.35rem; margin: 0 0 0.7rem; padding: 0.6rem 0.7rem; background: var(--ciel); border-radius: var(--rayon); }
+.inv-base-filtres[hidden] { display: none; }
+.inv-base-filtres .puces { margin: 0 0 0.3rem; }
+.inv-base-filtres .lien { align-self: flex-start; }
+/* En-tête d'écran d'administration : titre, puis actions alignées à droite */
+.adm-entete { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.adm-entete h1 { flex: 1 1 auto; margin: 0; width: auto; }
+.adm-entete .principal { width: auto; margin: 0; padding-inline: 1.1rem; min-height: 2.6rem; }
+.adm-icone { display: grid; place-items: center; width: 2.6rem; height: 2.6rem; padding: 0; font-size: 1.25rem; font-weight: 700; color: var(--bleu); background: var(--ciel); border: 0; border-radius: 50%; cursor: pointer; }
+.adm-recherche { display: flex; flex-wrap: nowrap; gap: 0.5rem; align-items: center; margin: 0.4rem 0 0.6rem; }
+.adm-recherche input { flex: 1 1 auto; min-width: 0; }
+.adm-recherche select { flex: 0 1 9.5rem; min-width: 0; }
+/* Fiche d'un utilisateur : informations sur deux colonnes, actions sensibles repliées */
+@media (max-width: 560px) { .usr-infos { grid-template-columns: 1fr 1fr; gap: 0.45rem 0.8rem; } .usr-info dd { overflow-wrap: anywhere; } }
+.usr-autres { margin-top: 0.9rem; padding-top: 0.6rem; border-top: 1px dashed var(--trait); }
+.usr-autres > summary { cursor: pointer; font-weight: 700; color: var(--gris); }
+.usr-autres[open] > summary { margin-bottom: 0.3rem; }
+/* Fiche d'un article : références côte à côte */
+.adm-entete { margin-bottom: 0.3rem; }
+/* Types d'informations : deux lignes par type */
+.type-ligne { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "icone champs" ". bas"; gap: 0.35rem 0.6rem; padding: 0.55rem 0; }
+.type-ligne > .choix-icone { grid-area: icone; }
+.type-ligne > .type-champs { grid-area: champs; }
+.type-ligne > .type-bas { grid-area: bas; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.type-champs input { width: 100%; min-height: 2.6rem; }
+.type-importance-choix { width: auto; min-height: 2.3rem; padding: 0.2rem 0.5rem; font-size: 0.88rem; font-weight: 700; border-radius: 999px; }
+.type-importance-choix.importance-urgente { color: var(--erreur); border-color: #F3B8B2; background: #FDECEA; }
+.type-importance-choix.importance-importante { color: #8A4B05; border-color: #F2C893; background: #FDF0E1; }
+.type-importance-choix.importance-normale { color: var(--bleu); background: var(--ciel); }
+.type-bas .type-boutons { margin-left: auto; }
+.types-enregistrer { position: sticky; bottom: 0; padding: 0.5rem 0 max(0.5rem, env(safe-area-inset-bottom)); background: #fff; }
+@media (min-width: 760px) {
+  .type-ligne { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "icone champs bas"; align-items: center; }
+}
+.type-ligne > .type-bas { flex-wrap: nowrap; }
+.type-bas .type-boutons { gap: 0.25rem; }
+.type-bas .info-bouton { min-width: 2.2rem; min-height: 2.3rem; padding: 0 0.5rem; font-size: 0.85rem; }
+.mat-entete .mat-nouveau { flex: none; }

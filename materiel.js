@@ -51,6 +51,7 @@ const Materiel = (() => {
   let donnees = null; // dernière réponse du serveur
   let chargementEnCours = false;
   let filtre = { texte: '', type: '', statut: 'actifs', alerte: '' };
+  let filtresOuverts = false; // panneau « Filtres » déplié (type, statut, traceur)
   const selection = new Set();
   let erreur = '';
 
@@ -438,10 +439,10 @@ const Materiel = (() => {
 
     const entete = el('div', { classe: 'mat-entete' },
       el('h1', { texte: 'Suivi du matériel' }),
-      el('div', { classe: 'mat-boutons' },
-        'NDEFReader' in window ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Lire une puce NFC', surclick: lireNfc }) : null,
-        el('button', { type: 'button', classe: 'cfg-bouton', texte: `Matériels types (${modeles().filter((m) => !m.archive).length})`, surclick: ouvrirModeles }),
-        estAdmin() ? el('button', { type: 'button', classe: 'principal mat-nouveau', texte: '+ Nouveau matériel', surclick: () => ouvrirFiche(null, true) }) : null));
+      estAdmin() ? el('button', { type: 'button', classe: 'principal mat-nouveau', texte: '+ Nouveau', title: 'Nouveau matériel', surclick: () => ouvrirFiche(null, true) }) : null,
+      el('div', { classe: 'mat-boutons mat-boutons-secondaires' },
+        el('button', { type: 'button', classe: 'cfg-mini', texte: `Matériels types (${modeles().filter((m) => !m.archive).length})`, surclick: ouvrirModeles }),
+        'NDEFReader' in window ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Lire une puce NFC', surclick: lireNfc }) : null));
 
     const compteurs = el('div', { classe: 'mat-compteurs' },
       compteurBouton(actives.length, 'appareils en service', 'total', () => { filtre = { texte: '', type: '', statut: 'actifs', alerte: '' }; rendre(); }, !filtre.alerte && !filtre.type && !filtre.texte),
@@ -460,9 +461,16 @@ const Materiel = (() => {
     const choixStatut = el('select', { 'aria-label': 'Statut', surchange: (e) => { filtre.statut = e.target.value; rendre(); } },
       [['actifs', 'En service, panne, maintenance'], ['tous', 'Tout le matériel'], ...statuts().map((s) => [s, s]), ['archives', 'Réformés et archivés']]
         .map(([v, t]) => el('option', { value: v, texte: t, selected: filtre.statut === v })));
+    // Recherche toujours visible ; type, statut et traceur repliés derrière « Filtres » (nombre de filtres actifs).
+    const nbFiltres = [filtre.type, filtre.statut && filtre.statut !== 'actifs', filtre.alerte === 'traceur'].filter(Boolean).length;
+    const panneauFiltres = el('div', { classe: 'mat-filtres-panneau', id: 'mat-filtres-panneau', hidden: !filtresOuverts },
+      choixType, choixStatut,
+      el('button', { type: 'button', classe: `cfg-bouton${filtre.alerte === 'traceur' ? ' inv-actif' : ''}`, texte: 'Avec traceur', 'aria-pressed': String(filtre.alerte === 'traceur'), surclick: bascule('alerte', 'traceur') }),
+      nbFiltres ? el('button', { type: 'button', classe: 'lien', texte: 'Effacer les filtres', surclick: () => { filtre = { ...filtre, type: '', statut: 'actifs', alerte: filtre.alerte === 'traceur' ? '' : filtre.alerte }; rendre(); } }) : null);
     const filtres = el('div', { classe: 'mat-filtres' },
-      el('label', { for: idRecherche, classe: 'invisible', texte: 'Rechercher' }), recherche, choixType, choixStatut,
-      el('button', { type: 'button', classe: `cfg-bouton${filtre.alerte === 'traceur' ? ' inv-actif' : ''}`, texte: 'Avec traceur', 'aria-pressed': String(filtre.alerte === 'traceur'), surclick: bascule('alerte', 'traceur') }));
+      el('label', { for: idRecherche, classe: 'invisible', texte: 'Rechercher' }), recherche,
+      el('button', { type: 'button', classe: `cfg-bouton mat-bouton-filtres${filtresOuverts || nbFiltres ? ' inv-actif' : ''}`, 'aria-expanded': String(filtresOuverts), 'aria-controls': 'mat-filtres-panneau',
+        texte: nbFiltres ? `Filtres (${nbFiltres})` : 'Filtres', surclick: () => { filtresOuverts = !filtresOuverts; rendre(); } }));
 
     const barreSelection = estAdmin() && selection.size ? el('div', { classe: 'mat-selection', role: 'region', 'aria-label': 'Sélection' },
       el('span', { texte: `${selection.size} appareil${selection.size > 1 ? 's' : ''} sélectionné${selection.size > 1 ? 's' : ''}` }),
@@ -476,7 +484,7 @@ const Materiel = (() => {
     if (!donnees && chargementEnCours) avis.push(el('p', { classe: 'message', texte: 'Chargement du matériel…' }));
     if (attente.size) avis.push(el('p', { classe: 'message mat-attente-avis', texte: `${attente.size} appareil(s) modifié(s) sur cet appareil, en attente d'envoi au serveur.` }));
 
-    zone.replaceChildren(entete, compteurs, filtres, ...avis, barreSelection, liste);
+    zone.replaceChildren(...[entete, compteurs, filtres, panneauFiltres, ...avis, barreSelection, liste].filter(Boolean));
     rendreListe();
   }
 

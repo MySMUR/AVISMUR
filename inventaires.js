@@ -44,6 +44,7 @@ const Inventaires = (() => {
   let ongletDemande = ''; // gestion : onglet à ouvrir sur le prochain contenant affiché (sinon « Contenu »)
   let baseOuverte = ''; // fiche dépliée dans la base des articles ('nouvelle' : création)
   let baseFiltre = { texte: '', categorie: '', archives: false, sansPhoto: false };
+  let baseFiltresOuverts = false; // base des articles : panneau « Filtres » déplié
   const brouillonsBase = new Map(); // tableau de la base (ordinateur) : fiches modifiées, pas encore enregistrées
   let edition = false;
   let gestion = false;
@@ -4039,7 +4040,7 @@ const Inventaires = (() => {
     const filtres = el('div', { classe: 'puces inv-filtres', role: 'radiogroup', 'aria-label': 'Catégorie' });
     ['', ...CATEGORIES].forEach((cat) => {
       const i = idChamp();
-      filtres.append(el('input', { type: 'radio', name: 'inv-filtre-cat', id: i, checked: baseFiltre.categorie === cat, surchange: () => { baseFiltre.categorie = cat; remplir(); } }),
+      filtres.append(el('input', { type: 'radio', name: 'inv-filtre-cat', id: i, checked: baseFiltre.categorie === cat, surchange: () => { baseFiltre.categorie = cat; rendre({ garderPosition: true }); } }),
         el('label', { for: i, texte: cat || 'Toutes' }));
     });
     const caseArchives = idChamp();
@@ -4053,22 +4054,29 @@ const Inventaires = (() => {
         utiliser: (f) => { baseOuverte = f.id; baseFiltre.texte = f.denomination; rendre({ garderPosition: true }); },
       }));
     }
+    // Recherche toujours visible ; catégorie, archivés et « sans photo » repliés derrière « Filtres ».
+    const nbFiltres = [baseFiltre.categorie, baseFiltre.archives, baseFiltre.sansPhoto].filter(Boolean).length;
+    const panneauFiltres = el('div', { classe: 'inv-base-filtres', id: 'inv-base-filtres', hidden: !baseFiltresOuverts },
+      el('span', { classe: 'inv-libelle', texte: 'Catégorie' }), filtres,
+      el('label', { classe: 'cfg-case', for: caseArchives }, el('input', { type: 'checkbox', id: caseArchives, checked: baseFiltre.archives, surchange: (e) => { baseFiltre.archives = e.target.checked; rendre({ garderPosition: true }); } }), 'Afficher les articles archivés'),
+      el('label', { classe: 'cfg-case', for: caseSansPhoto }, el('input', { type: 'checkbox', id: caseSansPhoto, checked: baseFiltre.sansPhoto, surchange: (e) => { baseFiltre.sansPhoto = e.target.checked; rendre({ garderPosition: true }); } }), 'Seulement les articles sans photo'),
+      nbFiltres ? el('button', { type: 'button', classe: 'lien', texte: 'Effacer les filtres', surclick: () => { baseFiltre = { ...baseFiltre, categorie: '', archives: false, sansPhoto: false }; rendre({ garderPosition: true }); } }) : null);
     return [
-      barreHaut({ titre: 'Inventaires', h1: false, bande: false, retour: () => aller('') }),
-      el('div', { classe: 'inv-entete' }, el('h1', { tabindex: '-1', texte: 'Base des articles' }),
-        admin && baseOuverte !== 'nouvelle' ? el('div', { classe: 'inv-entete-actions' },
-          el('button', { type: 'button', classe: 'cfg-bouton', title: 'Caméra ouverte : les articles défilent en bas, une photo après l\'autre', surclick: rafalePhotos }, iconeAppareil(), ' Photos en série'),
-          el('button', { type: 'button', classe: 'cfg-bouton', texte: '＋ Nouvel article', surclick: () => { baseOuverte = 'nouvelle'; rendre({ garderPosition: true, focus: '.inv-fiche input' }); } })) : null),
+      barreHaut({ titre: gestion ? 'Gestion des inventaires' : 'Inventaires', h1: false, bande: false, retour: () => aller('') }),
+      el('div', { classe: 'inv-entete inv-entete-racine' }, el('h1', { tabindex: '-1', texte: 'Base des articles' }),
+        admin && baseOuverte !== 'nouvelle' ? el('span', { classe: 'inv-entete-outils' },
+          el('button', { type: 'button', classe: 'inv-loupe', 'aria-label': 'Photos en série', title: 'Photos en série : caméra ouverte, les articles défilent en bas, une photo après l\'autre', surclick: rafalePhotos }, iconeAppareil()),
+          el('button', { type: 'button', classe: 'inv-loupe inv-plus-racine', 'aria-label': 'Nouvel article', title: 'Nouvel article', texte: '+', surclick: () => { baseOuverte = 'nouvelle'; rendre({ garderPosition: true, focus: '.inv-fiche input' }); } })) : null),
       ligneSynchro(), ligneAvis(),
-      el('p', { classe: 'consigne', texte: 'Chaque article des inventaires est décrit ici une seule fois. Une modification de fiche s\'applique à tous les inventaires qui l\'utilisent.' }),
+      el('p', { classe: 'aide-question', texte: 'Chaque article est décrit ici une seule fois : une modification de fiche s\'applique à tous les inventaires qui l\'utilisent.' }),
       nouvelle,
-      el('div', { classe: 'champ' }, el('label', { for: champ, texte: 'Rechercher (nom ou référence)' }),
-        el('input', { id: champ, type: 'search', autocomplete: 'off', valeur: baseFiltre.texte, surinput: (e) => { baseFiltre.texte = e.target.value; remplir(); } })),
-      filtres,
-      el('label', { classe: 'cfg-case', for: caseArchives }, el('input', { type: 'checkbox', id: caseArchives, checked: baseFiltre.archives, surchange: (e) => { baseFiltre.archives = e.target.checked; remplir(); } }), 'Afficher les articles archivés'),
-      el('label', { classe: 'cfg-case', for: caseSansPhoto }, el('input', { type: 'checkbox', id: caseSansPhoto, checked: baseFiltre.sansPhoto, surchange: (e) => { baseFiltre.sansPhoto = e.target.checked; remplir(); } }), 'Seulement les articles sans photo'),
+      el('div', { classe: 'inv-base-recherche' },
+        el('label', { for: champ, classe: 'invisible', texte: 'Rechercher (nom ou référence)' }),
+        el('input', { id: champ, type: 'search', autocomplete: 'off', placeholder: 'Nom ou référence', valeur: baseFiltre.texte, surinput: (e) => { baseFiltre.texte = e.target.value; remplir(); } }),
+        el('button', { type: 'button', classe: `cfg-bouton${baseFiltresOuverts || nbFiltres ? ' inv-actif' : ''}`, 'aria-expanded': String(baseFiltresOuverts), 'aria-controls': 'inv-base-filtres',
+          texte: nbFiltres ? `Filtres (${nbFiltres})` : 'Filtres', surclick: () => { baseFiltresOuverts = !baseFiltresOuverts; rendre({ garderPosition: true }); } })),
+      panneauFiltres,
       compte, liste, tableau,
-      el('div', { classe: 'inv-pied' }, el('a', { classe: 'lien', href: lien(''), texte: '← Tous les inventaires' })),
     ];
   }
 

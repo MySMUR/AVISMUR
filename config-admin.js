@@ -63,38 +63,53 @@ const ConfigAdmin = (() => {
   }
 
   // ---------- Véhicules ----------
+  // Une ligne par véhicule (indicatif, modèle, ordre) ; le détail se déplie au besoin.
+  const vehiculesOuverts = new Set();
+  const ACTIONS_VEHICULE = [['sansGarage', 'Garage', 'passage au garage'], ['sansPlein', 'Plein', 'plein de carburant'], ['sansExterieur', 'Extérieur', 'vérification extérieure'], ['sansNettoyage', 'Nettoyage', 'nettoyage']];
   function rendreVehicules() {
     const table = el('div', { classe: 'cfg-vehicules' });
     brouillon.vehicules.forEach((v, i) => {
-      const modele = el('select', { 'aria-label': `Modèle de ${v.id}`, surchange: (e) => { v.modele = e.target.value; } },
+      const ouvert = vehiculesOuverts.has(v);
+      const modele = el('select', { 'aria-label': `Modèle de ${v.id}`, surchange: (e) => { v.modele = e.target.value; rendre(); } },
         ...Object.keys(brouillon.modeles).map((m) => el('option', { value: m, texte: brouillon.modeles[m].titre || m, selected: m === v.modele })));
       const idActif = id();
-      table.append(el('div', { classe: `cfg-ligne${v.inactif ? ' cfg-inactif' : ''}` },
-        el('label', { classe: 'cfg-actif', for: idActif, title: 'Décocher pour ne plus afficher ce véhicule' },
-          el('input', { type: 'checkbox', id: idActif, checked: !v.inactif,
-            surchange: (e) => { if (e.target.checked) delete v.inactif; else v.inactif = true; rendre(); } }),
-          el('span', { texte: 'Actif' })),
-        ...[['sansGarage', 'Garage', 'passage au garage'], ['sansPlein', 'Plein', 'plein de carburant'], ['sansExterieur', 'Extérieur', 'vérification extérieure'], ['sansNettoyage', 'Nettoyage', 'nettoyage']]
-          .map(([cle, texte, aide]) => el('label', { classe: 'cfg-actif', title: `Décocher si ce véhicule n'a pas de ${aide} (ex. couveuse)` },
-            el('input', { type: 'checkbox', checked: !v[cle], surchange: (e) => { if (e.target.checked) delete v[cle]; else v[cle] = true; } }),
-            el('span', { texte }))),
-        el('input', { classe: 'cfg-indicatif', valeur: v.id, 'aria-label': 'Indicatif', placeholder: 'F27',
-          surinput: (e) => { v.id = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12); e.target.value = v.id; } }),
-        modele,
-        el('input', { valeur: v.nom || '', 'aria-label': 'Nom affiché', placeholder: 'Nom affiché (facultatif)',
-          surinput: (e) => { if (e.target.value) v.nom = e.target.value; else delete v.nom; } }),
-        el('input', { classe: 'cfg-icone', valeur: v.icone || '', 'aria-label': 'Icône', placeholder: '🚑',
-          surinput: (e) => { if (e.target.value) v.icone = e.target.value; else delete v.icone; } }),
+      const sans = ACTIONS_VEHICULE.filter(([cle]) => v[cle]).map(([, t]) => t);
+      const resume = el('div', { classe: 'cfg-veh-resume' },
+        el('span', { classe: 'cfg-veh-icone', 'aria-hidden': 'true', texte: v.icone || '🚑' }),
+        el('button', { type: 'button', classe: 'cfg-veh-nom', 'aria-expanded': String(ouvert),
+          surclick: () => { if (ouvert) vehiculesOuverts.delete(v); else vehiculesOuverts.add(v); rendre(); } },
+          el('strong', { texte: v.id || 'Nouveau véhicule' }),
+          el('small', { texte: [v.nom, brouillon.modeles[v.modele] ? brouillon.modeles[v.modele].titre || v.modele : v.modele, v.inactif ? 'désactivé' : '', sans.length ? `sans ${sans.join(', ').toLowerCase()}` : ''].filter(Boolean).join(' · ') }),
+          el('span', { classe: 'cfg-veh-chevron', 'aria-hidden': 'true', texte: ouvert ? '▴' : '▾' })),
         bouton('↑', () => deplacer(brouillon.vehicules, i, -1), 'cfg-mini'),
-        bouton('↓', () => deplacer(brouillon.vehicules, i, 1), 'cfg-mini'),
-        bouton('Supprimer', () => { brouillon.vehicules.splice(i, 1); rendre(); }, 'cfg-mini danger')));
+        bouton('↓', () => deplacer(brouillon.vehicules, i, 1), 'cfg-mini'));
+      const detail = ouvert ? el('div', { classe: 'cfg-veh-detail' },
+        el('div', { classe: 'cfg-veh-champs' },
+          el('label', {}, el('span', { texte: 'Indicatif' }), el('input', { classe: 'cfg-indicatif', valeur: v.id, placeholder: 'F27',
+            surinput: (e) => { v.id = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12); e.target.value = v.id; } })),
+          el('label', {}, el('span', { texte: 'Check-list' }), modele),
+          el('label', {}, el('span', { texte: 'Nom affiché (facultatif)' }), el('input', { valeur: v.nom || '', placeholder: 'ex. Couveuse',
+            surinput: (e) => { if (e.target.value) v.nom = e.target.value; else delete v.nom; } })),
+          el('label', {}, el('span', { texte: 'Icône' }), el('input', { classe: 'cfg-icone', valeur: v.icone || '', placeholder: '🚑',
+            surinput: (e) => { if (e.target.value) v.icone = e.target.value; else delete v.icone; } }))),
+        el('div', { classe: 'cfg-veh-cases' },
+          el('label', { classe: 'cfg-actif', for: idActif, title: 'Décocher pour ne plus afficher ce véhicule (sa configuration est gardée)' },
+            el('input', { type: 'checkbox', id: idActif, checked: !v.inactif,
+              surchange: (e) => { if (e.target.checked) delete v.inactif; else v.inactif = true; rendre(); } }),
+            el('span', { texte: 'Actif' })),
+          ...ACTIONS_VEHICULE.map(([cle, texte, aide]) => el('label', { classe: 'cfg-actif', title: `Décocher si ce véhicule n'a pas de ${aide} (ex. couveuse)` },
+            el('input', { type: 'checkbox', checked: !v[cle], surchange: (e) => { if (e.target.checked) delete v[cle]; else v[cle] = true; rendre(); } }),
+            el('span', { texte })))),
+        el('div', { classe: 'cfg-zone-danger' }, bouton('Supprimer ce véhicule', () => { brouillon.vehicules.splice(i, 1); rendre(); }, 'cfg-mini danger'))) : null;
+      table.append(el('div', { classe: `cfg-veh${v.inactif ? ' cfg-inactif' : ''}${ouvert ? ' ouvert' : ''}` }, resume, detail));
     });
     return el('section', { classe: 'cfg-section' },
-      el('h2', { texte: 'Véhicules' }),
-      el('p', { classe: 'aide-question', texte: 'Indicatif, modèle de check-list, nom affiché et icône (facultatifs). L\'ordre est celui des cases dans l\'appli. Un véhicule décoché (« Actif ») n\'apparaît plus, sans perdre sa configuration. « Garage », « Plein », « Extérieur » décochés : ces actions ne sont pas proposées pour ce véhicule.' }),
+      el('p', { classe: 'aide-question', texte: 'L\'ordre est celui des cases dans l\'appli. Touchez un véhicule pour le modifier : indicatif, check-list, nom, icône, actions proposées (garage, plein…). Décoché « Actif », il n\'apparaît plus, sans perdre sa configuration.' }),
       table,
       bouton('+ Ajouter un véhicule', () => {
-        brouillon.vehicules.push({ id: '', modele: Object.keys(brouillon.modeles)[0] });
+        const v = { id: '', modele: Object.keys(brouillon.modeles)[0] };
+        brouillon.vehicules.push(v);
+        vehiculesOuverts.add(v);
         rendre();
         const champs = zone.querySelectorAll('.cfg-indicatif');
         champs[champs.length - 1].focus();
@@ -132,7 +147,6 @@ const ConfigAdmin = (() => {
     const vehicules = brouillon.vehicules.filter((v) => v.id);
     if (!vehicules.some((v) => v.id === vehiculeOuvert)) vehiculeOuvert = vehicules.length ? vehicules[0].id : null;
     const section = el('section', { classe: 'cfg-section' },
-      el('h2', { texte: 'Par véhicule' }),
       el('p', { classe: 'aide-question', texte: 'Cochez les questions et les éléments vérifiés sur ce véhicule. Décocher ne change rien pour les autres véhicules du même modèle.' }));
     if (!vehiculeOuvert) return section;
     const v = brouillon.vehicules.find((x) => x.id === vehiculeOuvert);
@@ -146,7 +160,7 @@ const ConfigAdmin = (() => {
     const partages = brouillon.vehicules.filter((x) => x.modele === v.modele).map((x) => x.id);
     section.append(el('p', { classe: 'aide-question', texte: partages.length > 1
       ? `Check-list « ${m.titre || v.modele} », partagée avec ${partages.filter((x) => x !== v.id).join(', ')}. Pour modifier les libellés ou ajouter des questions à ce seul véhicule, créez-lui sa propre check-list.`
-      : `Check-list « ${m.titre || v.modele} », propre à ce véhicule : modifiable dans « Check-lists » ci-dessous.` }));
+      : `Check-list « ${m.titre || v.modele} », propre à ce véhicule : modifiable dans l'onglet « Check-lists ».` }));
 
     m.questions.forEach((q) => {
       if (!TYPES[q.type] || q.basculeF00) return;
@@ -175,6 +189,7 @@ const ConfigAdmin = (() => {
         brouillon.modeles[nom] = copieModele;
         v.modele = nom;
         modeleOuvert = nom;
+        onglet = 'checklists';
         rendre();
       })));
     }
@@ -182,20 +197,30 @@ const ConfigAdmin = (() => {
   }
 
   // ---------- Questions d'un modèle ----------
+  // Une ligne par question (numéro, libellé, type) ; ses champs se déplient au toucher.
+  const questionsOuvertes = new Set();
   function rendreQuestion(q, i, questions) {
-    const carte = el('div', { classe: 'cfg-question' });
-    const entete = el('div', { classe: 'cfg-ligne' },
-      el('strong', { classe: 'cfg-num', texte: `${i + 1}.` }),
-      el('span', { classe: 'cfg-type', texte: TYPES[q.type] || 'Question automatique' }),
+    const ouvert = questionsOuvertes.has(q);
+    const carte = el('div', { classe: `cfg-question cfg-question-repliable${ouvert ? ' ouvert' : ''}` });
+    const nom = q.type === 'groupe' ? q.titre : q.libelle;
+    const restreinte = q.seulementPour || q.exclusPour;
+    const entete = el('div', { classe: 'cfg-question-entete' },
+      el('button', { type: 'button', classe: 'cfg-question-titre', 'aria-expanded': String(ouvert),
+        surclick: () => { if (ouvert) questionsOuvertes.delete(q); else questionsOuvertes.add(q); rendre(); } },
+        el('strong', { classe: 'cfg-num', texte: `${i + 1}.` }),
+        el('span', { classe: 'cfg-question-nom' }, el('span', { texte: nom || '(sans libellé)' }),
+          el('small', { texte: [TYPES[q.type] || 'Question automatique', q.type === 'groupe' ? `${q.items.length} élément${q.items.length > 1 ? 's' : ''}` : '', q.requis ? 'obligatoire' : '', restreinte ? 'certains véhicules' : ''].filter(Boolean).join(' · ') })),
+        el('span', { classe: 'cfg-veh-chevron', 'aria-hidden': 'true', texte: ouvert ? '▴' : '▾' })),
       bouton('↑', () => deplacer(questions, i, -1), 'cfg-mini'),
-      bouton('↓', () => deplacer(questions, i, 1), 'cfg-mini'),
-      bouton('Supprimer', () => { questions.splice(i, 1); rendre(); }, 'cfg-mini danger'));
+      bouton('↓', () => deplacer(questions, i, 1), 'cfg-mini'));
     carte.append(entete);
+    if (!ouvert) return carte;
 
     if (!TYPES[q.type] || q.basculeF00) {
       carte.append(el('p', { classe: 'aide-question', texte: q.basculeF00
         ? `« ${q.libelle} » : question de l'appli (UMH en DZ), non modifiable ici.`
-        : `« ${q.libelle} » : réponse automatique selon le véhicule, non modifiable ici.` }));
+        : `« ${q.libelle} » : réponse automatique selon le véhicule, non modifiable ici.` }),
+      el('div', { classe: 'cfg-zone-danger' }, bouton('Supprimer cette question', () => { questions.splice(i, 1); rendre(); }, 'cfg-mini danger')));
       return carte;
     }
 
@@ -232,7 +257,8 @@ const ConfigAdmin = (() => {
       champ('Réponse enregistrée pour les véhicules exclus', q.sinon || '', (v) => {
         if (v) q.sinon = v; else delete q.sinon;
       }, { exemple: 'Véhicule non concerné' }));
-    carte.append(details);
+    carte.append(details,
+      el('div', { classe: 'cfg-zone-danger' }, bouton('Supprimer cette question', () => { questions.splice(i, 1); rendre(); }, 'cfg-mini danger')));
     return carte;
   }
 
@@ -255,8 +281,8 @@ const ConfigAdmin = (() => {
 
     const utilise = brouillon.vehicules.some((v) => v.modele === modeleOuvert);
     const section = el('section', { classe: 'cfg-section' },
-      el('h2', { texte: 'Check-lists' }),
-      el('div', { classe: 'champ' }, el('label', { for: 'cfg-modele', texte: 'Modèle' }), choix),
+      el('p', { classe: 'note-parc', texte: 'Le libellé d\'une question sert aussi de nom de colonne dans l\'ancien Sheet « Check-list journalière ». Le renommer coupe la copie de cette réponse vers l\'onglet du jour.' }),
+      el('div', { classe: 'champ' }, el('label', { for: 'cfg-modele', texte: 'Modèle de check-list' }), choix),
       el('div', { classe: 'cfg-ligne' },
         bouton('+ Nouveau modèle', () => { nouveau.hidden = false; nomNouveau.focus(); }),
         utilise ? null : bouton('Supprimer ce modèle', () => { delete brouillon.modeles[modeleOuvert]; modeleOuvert = null; rendre(); }, 'cfg-bouton danger')),
@@ -268,7 +294,9 @@ const ConfigAdmin = (() => {
     section.append(...m.questions.map((q, i) => rendreQuestion(q, i, m.questions)),
       el('div', { classe: 'cfg-ligne cfg-ajout' }, typeAjout, bouton('+ Ajouter la question', () => {
         const t = typeAjout.value;
-        m.questions.push(t === 'groupe' ? { type: t, titre: 'Nouvelle rubrique', items: [] } : { type: t, libelle: TYPES[t] });
+        const q = t === 'groupe' ? { type: t, titre: 'Nouvelle rubrique', items: [] } : { type: t, libelle: TYPES[t] };
+        m.questions.push(q);
+        questionsOuvertes.add(q);
         rendre();
       })));
     return section;
@@ -281,21 +309,40 @@ const ConfigAdmin = (() => {
     p.className = `message cfg-message ${classe}`.trim();
   };
 
+  // Onglets : Véhicules / Par véhicule / Check-lists. Barre d'enregistrement collée en bas de l'écran.
+  const ONGLETS = [['vehicules', 'Véhicules'], ['parvehicule', 'Par véhicule'], ['checklists', 'Check-lists']];
+  let onglet = 'vehicules';
+  let reference = ''; // configuration en vigueur (JSON), pour savoir s'il y a des modifications
+  const modifie = () => Boolean(brouillon) && JSON.stringify(brouillon) !== reference;
+  function majBarre() {
+    const barre = zone && zone.querySelector('.barre-enregistrer');
+    if (!barre) return;
+    const m = modifie();
+    barre.classList.toggle('modifiee', m);
+    barre.querySelector('.barre-enregistrer-etat').textContent = m ? 'Modifications non enregistrées' : 'Aucune modification';
+    barre.querySelectorAll('button').forEach((b) => { b.disabled = !m; });
+  }
+
   function rendre() {
     const defilement = window.scrollY;
     zone.innerHTML = '';
+    const contenu = onglet === 'parvehicule' ? rendreParVehicule() : (onglet === 'checklists' ? rendreModele() : rendreVehicules());
     zone.append(
       el('h1', { texte: 'Gestion des véhicules' }),
-      el('p', { classe: 'consigne', texte: 'Véhicules et questions de la check-list ambulancier. Les modifications s\'appliquent à tous les appareils après « Enregistrer ».' }),
-      el('p', { classe: 'note-parc', texte: 'Le libellé d\'une question sert aussi de nom de colonne dans l\'ancien Sheet « Check-list journalière ». Le renommer coupe la copie de cette réponse vers l\'onglet du jour.' }),
-      rendreVehicules(),
-      rendreParVehicule(),
-      rendreModele(),
-      el('div', { classe: 'cfg-actions' },
-        bouton('Enregistrer la configuration', enregistrer, 'principal'),
-        bouton('Annuler les modifications', () => { ouvrir(); message('Modifications annulées.'); }),
+      el('p', { classe: 'consigne', texte: 'Véhicules et questions de la check-list ambulancier. Les modifications s\'appliquent à tous les appareils une fois enregistrées.' }),
+      el('div', { classe: 'onglets-page', role: 'tablist', 'aria-label': 'Sections de la configuration' },
+        ...ONGLETS.map(([cle, nom]) => el('button', { type: 'button', role: 'tab', classe: 'onglet-page', 'aria-selected': String(onglet === cle), texte: nom,
+          surclick: () => { if (onglet !== cle) { onglet = cle; rendre(); window.scrollTo(0, 0); } } }))),
+      contenu,
+      el('p', { classe: 'message cfg-message', role: 'status' }),
+      el('details', { classe: 'cfg-avance' }, el('summary', { texte: 'Avancé' }),
+        el('p', { classe: 'aide-question', texte: 'Revenir à la configuration livrée avec l\'appli (checklists.js). La configuration actuelle reste dans l\'historique de l\'onglet Configuration du Sheet.' }),
         bouton('Revenir à la configuration d\'origine', reinitialiser, 'cfg-bouton danger')),
-      el('p', { classe: 'message cfg-message', role: 'status' }));
+      el('div', { classe: 'barre-enregistrer' },
+        el('span', { classe: 'barre-enregistrer-etat', role: 'status' }),
+        bouton('Annuler', () => { ouvrir(); message('Modifications annulées.'); }, 'cfg-bouton'),
+        bouton('Enregistrer', enregistrer, 'principal')));
+    majBarre();
     window.scrollTo(0, defilement);
   }
 
@@ -324,6 +371,8 @@ const ConfigAdmin = (() => {
       const rep = await appelerServeur('enregistrerConfig', { configuration: brouillon });
       if (!rep.ok) { message(rep.erreur || 'Refusé par le serveur.', 'erreur'); return; }
       surEnregistrement(copie(brouillon));
+      reference = JSON.stringify(brouillon);
+      majBarre();
       message('Configuration enregistrée. Elle s\'applique à tous les appareils.', 'succes');
     } catch (err) {
       message('Le serveur ne répond pas : configuration non enregistrée. Réessayez avec du réseau.', 'erreur');
@@ -352,12 +401,21 @@ const ConfigAdmin = (() => {
   /** Ouvre l'éditeur sur la configuration en vigueur. */
   function ouvrir() {
     brouillon = copie({ vehicules: VEHICULES, modeles: MODELES });
+    // Éléments de rubrique en objets (comme le fait l'onglet « Par véhicule ») : sinon ce changement
+    // de forme passerait pour une modification à enregistrer.
+    Object.values(brouillon.modeles).forEach((m) => (m.questions || []).forEach((q) => {
+      if (q.type === 'groupe' && Array.isArray(q.items)) q.items = q.items.map((it) => (typeof it === 'string' ? { libelle: it } : it));
+    }));
+    reference = JSON.stringify(brouillon);
     confirmation = false;
     rendre();
   }
 
   function initialiser(options) {
     zone = document.getElementById('zone-config');
+    // Toute saisie met à jour la barre d'enregistrement (modifications en attente ou non).
+    zone.addEventListener('input', () => majBarre());
+    zone.addEventListener('change', () => setTimeout(majBarre));
     appelerServeur = options.appeler;
     surEnregistrement = options.surEnregistrement;
   }
