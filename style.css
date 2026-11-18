@@ -1458,7 +1458,7 @@ h1 .inv-tag-scellable { font-size: 0.8rem; vertical-align: 0.35em; }
 .inv-edition-separation { flex-wrap: nowrap; }
 .inv-edition-separation .inv-nom-article { flex: 1 1 auto !important; min-width: 0; }
 /* Sous-inventaires : poignée à gauche de la carte */
-.inv-liste-triable > li.inv-ligne-triable { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 0.2rem; }
+.inv-liste-triable > li.inv-ligne-triable { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 0.2rem; }
 .inv-liste-triable > li.inv-ligne-triable > .inv-outils { grid-column: 2; }
 .inv-liste-triable > li.inv-ligne-triable > .inv-reglages-rapides { grid-column: 2; }
 /* Réglages rapides d'un sous-inventaire : Immobile / Mobile, scellable */
@@ -2858,3 +2858,75 @@ dialog.appareil:not([open]) { display: none; }
 .inv-vrac-liens { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.3rem 1rem; padding: 0.3rem 0.8rem 0; }
 .inv-vrac-liens .cible-nfc-lien { margin: 0; min-height: 2.2rem; padding: 0.2rem 0.7rem; font-size: 0.82rem; }
 .inv-vrac-reprise { margin: 0; font-size: 0.85rem; color: #A9C6F2; }
+
+/* ---------- Gestion des inventaires : page d'un contenant rangée en onglets ---------- */
+.inv-bandeau-gestion { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.2rem 0.8rem; padding: 0.35rem 0.8rem; }
+.inv-vers-checklist { font-size: 0.92rem; font-weight: 700; color: #4A2A73; }
+.inv-pastilles-etat { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.25rem 0 0.45rem; }
+.inv-pastille-etat {
+  display: inline-flex; align-items: center; padding: 0.1rem 0.55rem; font-size: 0.78rem; font-weight: 700;
+  color: var(--gris); background: var(--ciel); border: 1px solid var(--trait); border-radius: 999px; white-space: nowrap;
+}
+.inv-pastille-etat.primaire { color: #fff; background: var(--bleu); border-color: var(--bleu); }
+.inv-pastille-etat.immobile { color: #0F5E57; background: #E3F4F2; border-color: #A9DCD6; }
+.inv-pastille-etat.mobile { color: #8A4B05; background: #FDF0E1; border-color: #F2C893; }
+.inv-pastille-etat.type, .inv-pastille-etat.exemplaire { color: #5B3796; background: #F1EAFB; border-color: #D3C1EE; }
+.inv-pastille-etat.emplacement { border-style: dashed; }
+.inv-pastille-etat.alerte { color: var(--erreur); background: #FDECEA; border-color: #F3B8B2; }
+.inv-onglets-gestion { display: flex; gap: 0; margin: 0 -0.3rem; overflow-x: auto; scrollbar-width: none; }
+.inv-onglets-gestion::-webkit-scrollbar { display: none; }
+.inv-onglet-gestion {
+  flex: 1 0 auto; min-height: 2.5rem; padding: 0.35rem 0.3rem; font: inherit; font-size: 0.88rem; white-space: nowrap; font-weight: 700;
+  color: var(--gris); background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: 0; cursor: pointer;
+}
+.inv-onglet-gestion:hover { color: var(--bleu); }
+.inv-onglet-gestion[aria-selected="true"] { color: var(--bleu); border-bottom-color: var(--bleu); }
+.inv-barre-haut:has(.inv-onglets-gestion) { padding-bottom: 0; }
+.inv-panneau-gestion { display: flex; flex-direction: column; gap: 0.2rem; }
+.inv-groupe-reglages { margin: 0 0 1rem; padding: 0.8rem 0.9rem 0.9rem; background: #fff; border: 1px solid #E1E8F2; border-radius: var(--rayon); }
+.inv-groupe-reglages > h2 { margin: 0 0 0.6rem; font-size: 1.02rem; }
+.inv-groupe-reglages .inv-case-fiche { margin: 0.35rem 0; }
+.inv-groupe-reglages .champ:last-child, .inv-groupe-reglages .cfg-actions:last-child { margin-bottom: 0; }
+.inv-zone-danger { margin-top: 0.8rem; padding-top: 0.7rem; border-top: 1px dashed var(--trait); }
+.inv-details-reglages { margin: 0.6rem 0; }
+.inv-details-reglages > summary { cursor: pointer; font-weight: 700; color: var(--bleu); padding: 0.3rem 0; }
+.inv-details-reglages[open] > summary { margin-bottom: 0.4rem; }
+/* Sous-inventaires en gestion : options repliées */
+.inv-options-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.8rem; margin: 0.35rem 0 0; }
+.inv-liste-triable > li.inv-ligne-triable > .inv-options-ligne, .inv-liste-triable > li.inv-ligne-triable > .inv-options { grid-column: 2; }
+.inv-options-bouton { font-size: 0.9rem; }
+.inv-options { margin: 0.3rem 0 0.2rem; padding: 0.5rem 0.6rem; background: var(--ciel); border-radius: 10px; }
+.inv-options .inv-reglages-rapides, .inv-options .inv-outils { margin-left: 0; }
+/* Page d'accueil de la gestion */
+.inv-plus-racine { font-size: 1.6rem; font-weight: 700; line-height: 1; }
+.inv-ajout-racine { margin: 0 0 1rem; padding: 0.7rem 0.8rem; background: #fff; border: 1px solid #E1E8F2; border-radius: var(--rayon); }
+.inv-outils-gestion { margin-top: 1.4rem; }
+.inv-outils-gestion .cfg-actions { margin-bottom: 0.8rem; }
+details.inv-dev > summary { cursor: pointer; font-weight: 700; color: var(--gris); }
+details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
+
+.inv-options[hidden] { display: none; }
+/* En gestion, « Scellable » est déjà dans les pastilles sous le nom. */
+.inv-barre-haut:has(.inv-onglets-gestion) .inv-tag-scellable { display: none; }
+@media (max-width: 480px) { .inv-bandeau-detail { display: none; } }
+.inv-options .cfg-ligne, .inv-options .inv-texte-gommette { flex-wrap: wrap; }
+.inv-liste-triable > li.inv-ligne-triable > * { min-width: 0; }
+/* Articles en gestion : nom sur toute la largeur, puis quantité / facultatif dessous (téléphone) ; une ligne sur grand écran. */
+.inv-edition-fiche {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "poignee nom retirer" ". outils outils";
+  align-items: center; gap: 0.2rem 0.5rem;
+}
+.inv-edition-fiche > .inv-poignee { grid-area: poignee; }
+.inv-edition-fiche > .inv-edition-nom { grid-area: nom; min-width: 0; }
+.inv-edition-fiche > .inv-edition-outils { grid-area: outils; flex-wrap: wrap; gap: 0.4rem 0.9rem; }
+.inv-edition-fiche > .danger { grid-area: retirer; align-self: start; }
+.inv-edition-fiche .inv-commentaire-saisie { width: 100%; box-sizing: border-box; margin-top: 0.25rem; }
+@media (min-width: 760px) {
+  .inv-edition-fiche { grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "poignee nom outils retirer"; }
+  .inv-edition-fiche > .inv-edition-outils { flex-wrap: nowrap; }
+  .inv-edition-fiche > .danger { align-self: center; }
+}
+.inv-ajout-commentaire { display: block; margin-top: 0.15rem; font-size: 0.82rem; font-weight: 600; color: var(--gris); text-decoration: none; }
+.inv-ajout-commentaire:hover { color: var(--bleu); text-decoration: underline; }
+.inv-ajout-commentaire { width: auto; margin-left: 0; margin-right: auto; text-align: left; padding: 0; min-height: 0; }
+@media (min-width: 760px) { .inv-onglet-gestion { flex: 0 0 auto; min-width: 7.5rem; padding-inline: 0.9rem; } }

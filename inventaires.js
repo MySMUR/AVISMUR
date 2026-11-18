@@ -38,6 +38,10 @@ const Inventaires = (() => {
   let toutAfficherAjout = false; // tous les résultats de cette recherche affichés, sans limite
   let creation = null; // fiche en cours de création ({ denomination, … }) depuis « Ajouter un article »
   let ajoutSousOuvert = false; // formulaire « Ajouter un sous-inventaire » déplié (mode Modifier)
+  let ajoutRacineOuvert = false; // gestion : formulaire « Nouveau contenant » de la page d'accueil déplié
+  let ongletGestion = 'contenu'; // gestion d'un contenant : onglet affiché (contenu, reglages, etiquette, exemplaires)
+  const optionsOuvertes = new Set(); // gestion : sous-inventaires dont les options sont dépliées
+  let ongletDemande = ''; // gestion : onglet à ouvrir sur le prochain contenant affiché (sinon « Contenu »)
   let baseOuverte = ''; // fiche dépliée dans la base des articles ('nouvelle' : création)
   let baseFiltre = { texte: '', categorie: '', archives: false, sansPhoto: false };
   const brouillonsBase = new Map(); // tableau de la base (ordinateur) : fiches modifiées, pas encore enregistrées
@@ -1321,16 +1325,20 @@ const Inventaires = (() => {
    * Gestion des inventaires). On reste dans ce mode en naviguant ; pour réaliser un inventaire,
    * on repasse par le menu (Inventaires).
    */
-  function boutonEdition() { return null; }
-  function bandeauGestion() {
+  function bandeauGestion(c = null) {
     if (!gestion) return null;
     const ancien = versionServeur !== null && versionServeur < VERSION_SERVEUR
       ? el('p', { classe: 'message erreur inv-serveur-ancien', role: 'alert' },
         el('strong', { texte: 'Serveur pas à jour : certaines modifications ne seront pas enregistrées' }),
         ' (catégorie des contenants, vues, inventaires types…). Recopiez Inventaires.gs, Catalogue.gs, Code.gs et Installation.gs du dépôt AVISMUR-backend dans Apps Script, puis Déployer › Gérer les déploiements › nouvelle version.')
       : null;
-    return el('div', {}, ancien, el('p', { classe: 'inv-bandeau-gestion' }, el('strong', { texte: 'Administration · Gestion des inventaires' }),
-      ' — les modifications sont enregistrées au fur et à mesure. Pour réaliser un inventaire : menu › Inventaires.'));
+    // Une ligne : on est en gestion (tout est enregistré au fur et à mesure) ; passer en check-list sur le même contenant.
+    const verifiable = c && !dansUnModele(c.id) && !c.emplacement;
+    return el('div', {}, ancien, el('p', { classe: 'inv-bandeau-gestion' },
+      el('span', { title: 'Les modifications sont enregistrées au fur et à mesure (sur l\'appareil puis sur le serveur).' }, el('strong', { texte: 'Mode gestion' }), el('small', { classe: 'inv-bandeau-detail', texte: ' · enregistré au fur et à mesure' })),
+      typeof ouvrirVue === 'function' ? el('button', { type: 'button', classe: 'lien inv-vers-checklist',
+        texte: verifiable ? 'Vérifier ce contenant ›' : (c ? 'Check-list ›' : 'Faire les inventaires ›'),
+        surclick: () => { if (c && !verifiable) aller(''); ouvrirVue('inventaires'); } }) : null));
   }
 
   function ligneSynchro() {
@@ -1359,11 +1367,13 @@ const Inventaires = (() => {
         const c = normaliser({ id: nouvelId(), parent: parent ? parent.id : '', nom, ordre: fratrie.length ? fratrie[fratrie.length - 1].ordre + 1 : 0 });
         structure.contenants[c.id] = c;
         marquer(c.id);
+        // Nouveau contenant de premier niveau : on l'ouvre sur ses réglages (catégorie à choisir).
+        if (!parent) { ajoutRacineOuvert = false; ongletDemande = 'reglages'; aller(c.id); return; }
         // Avec une photo, on enchaîne : toucher l'endroit où se trouve ce sous-inventaire.
         if (parent && vueCourante(parent).photo) { placement = c.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); }
         else rendre({ garderPosition: true, focus: '.inv-ajout input' });
       },
-    }, el('label', { for: champ, texte: parent ? 'Ajouter un sous-inventaire' : 'Ajouter un inventaire' }),
+    }, el('label', { for: champ, texte: parent ? 'Ajouter un sous-inventaire' : 'Nouveau contenant (véhicule, réserve, sac type…)' }),
     el('div', { classe: 'cfg-ligne' }, saisie, el('button', { type: 'submit', classe: 'cfg-bouton', texte: 'Ajouter' })));
   }
 
@@ -1588,11 +1598,19 @@ const Inventaires = (() => {
         rendre({ garderPosition: true, focus: rechercheOuverte ? '.inv-recherche-champ' : '.inv-loupe' });
       },
     }, picto(rechercheOuverte ? 'fermer' : 'loupe'));
+    // Gestion : « + » à côté de la loupe déplie la création d'un contenant de premier niveau.
+    const ajout = edition ? formulaireAjout(null) : null;
+    if (ajout) { ajout.hidden = !ajoutRacineOuvert; ajout.classList.add('inv-ajout-racine'); }
+    const plus = edition ? el('button', {
+      type: 'button', classe: `inv-loupe inv-plus-racine${ajoutRacineOuvert ? ' ouverte' : ''}`, 'aria-expanded': String(ajoutRacineOuvert),
+      'aria-label': 'Nouveau contenant (véhicule, réserve, inventaire type…)', title: 'Nouveau contenant', texte: ajoutRacineOuvert ? '−' : '+',
+      surclick: () => { ajoutRacineOuvert = !ajoutRacineOuvert; rendre({ garderPosition: true, focus: ajoutRacineOuvert ? '.inv-ajout-racine input' : '.inv-plus-racine' }); },
+    }) : null;
     const noeuds = [
       bandeauGestion(),
       el('div', { classe: 'inv-entete inv-entete-racine' }, el('h1', { tabindex: '-1', texte: gestion ? 'Gestion des inventaires' : 'Inventaires' }),
-        el('span', { classe: 'inv-entete-outils' }, ...(gestion ? [] : boutonsScanIcones().map((b) => { b.classList.add('inv-scan-ecran-large'); return b; })), loupe)),
-      panneau,
+        el('span', { classe: 'inv-entete-outils' }, ...(gestion ? [] : boutonsScanIcones().map((b) => { b.classList.add('inv-scan-ecran-large'); return b; })), loupe, plus)),
+      panneau, ajout,
       ligneSynchro(), ligneAvis(),
     ];
     noeuds.push(encadreARetrouver());
@@ -1627,50 +1645,51 @@ const Inventaires = (() => {
     noeuds.push(primaires.length
       ? el('ul', { classe: 'inv-liste' }, ...primaires.map((c) => el('li', {}, carte(c))))
       : el('p', { classe: 'aide-question', texte: estAdmin() ? (gestion ? 'Aucun contenant primaire : ouvrez un inventaire et choisissez la catégorie « Primaire ».' : 'Aucun contenant primaire : menu > Administration > Gestion des inventaires.') : 'Aucun contenant primaire pour l\'instant : utilisez la loupe ci-dessus.' }));
+    // Inventaires types : visibles des administrateurs seulement.
+    const modeles = racines.filter((c) => c.modele);
+    if (gestion) {
+      noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Inventaires types' }),
+        el('p', { classe: 'aide-question', texte: 'Structures des contenants identiques (sacs, ampouliers…) : on modifie le type, puis on répercute sur ses exemplaires. Ils ne se vérifient pas.' }),
+        modeles.length ? el('ul', { classe: 'inv-liste' }, ...modeles.map((c) => el('li', {}, carte(c))))
+          : el('p', { classe: 'aide-question', texte: 'Aucun pour l\'instant : créez un contenant (+), puis Réglages › « Inventaire type ».' }));
+    }
     // Administrateurs : inventaires de premier niveau pas encore classés.
     const aClasser = racines.filter((c) => !c.modele && !c.categorie);
     if (aClasser.length && gestion) {
-      noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'À classer' }),
-        el('p', { classe: 'aide-question', texte: 'Sans catégorie : visibles des administrateurs seulement. Ouvrez-les (Administration > Gestion des inventaires) et choisissez Primaire, Immobile ou Mobile.' }),
+      noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: `À classer (${aClasser.length})` }),
+        el('p', { classe: 'aide-question', texte: 'Sans catégorie, ils ne sont visibles que des administrateurs. Ouvrez-les, puis Réglages › Catégorie.' }),
         el('ul', { classe: 'inv-liste' }, ...aClasser.map((c) => el('li', {}, carte(c)))));
     }
-    // Inventaires types : visibles des administrateurs seulement.
-    const modeles = racines.filter((c) => c.modele);
-    if (modeles.length && gestion) {
-      noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Inventaires types' }),
-        el('p', { classe: 'aide-question', texte: 'Ils servent de structure à leurs exemplaires et ne se vérifient pas.' }),
-        el('ul', { classe: 'inv-liste' }, ...modeles.map((c) => el('li', {}, carte(c)))));
-    }
-
-    if (gestion) noeuds.push(blocReinitialisationDev());
 
     if (edition) {
       const champ = idChamp();
-      noeuds.push(formulaireAjout(null),
-        el('div', { classe: 'cfg-section' },
-          el('h2', { texte: 'Réglages' }),
-          el('div', { classe: 'champ' }, el('label', { for: champ, texte: 'Alerte de péremption (jours avant la date)' }),
-            el('input', {
-              id: champ, type: 'number', min: '1', max: '365', inputmode: 'numeric', classe: 'inv-court', valeur: structure.reglages.alerteJours,
-              surchange: (e) => {
-                const n = Math.round(Number(e.target.value));
-                if (!(n >= 1 && n <= 365)) { e.target.value = structure.reglages.alerteJours; return; }
-                structure.reglages.alerteJours = n;
-                modifs.reglages = true;
-                sauverStructure(); sauverModifs(); programmerEnvoi();
-                rendre({ garderPosition: true });
-              },
-            })),
-          tous.length ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer des étiquettes QR…', surclick: () => imprimerEtiquettes() }) : null));
+      noeuds.push(el('section', { classe: 'inv-groupe-reglages inv-outils-gestion' },
+        el('h2', { texte: 'Outils' }),
+        el('div', { classe: 'cfg-actions' },
+          tous.length ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer des étiquettes QR…', surclick: () => imprimerEtiquettes() }) : null,
+          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Base des articles', surclick: () => aller(BASE) })),
+        el('div', { classe: 'champ' }, el('label', { for: champ, texte: 'Alerte de péremption (jours avant la date)' }),
+          el('input', {
+            id: champ, type: 'number', min: '1', max: '365', inputmode: 'numeric', classe: 'inv-court', valeur: structure.reglages.alerteJours,
+            surchange: (e) => {
+              const n = Math.round(Number(e.target.value));
+              if (!(n >= 1 && n <= 365)) { e.target.value = structure.reglages.alerteJours; return; }
+              structure.reglages.alerteJours = n;
+              modifs.reglages = true;
+              sauverStructure(); sauverModifs(); programmerEnvoi();
+              rendre({ garderPosition: true });
+            },
+          }))));
     }
+    if (gestion) noeuds.push(blocReinitialisationDev());
     return noeuds;
   }
 
   // ----- Développement : réinitialiser les inventaires du jour pour rejouer des tests -----
   function blocReinitialisationDev() {
     const enAttente = confirmer === 'reinit-jour';
-    return el('div', { classe: 'cfg-section inv-dev' },
-      el('h2', { texte: 'Développement' }),
+    return el('details', { classe: 'cfg-section inv-dev', open: enAttente },
+      el('summary', { texte: 'Développement' }),
       el('p', { classe: 'aide-question', texte: 'Efface les vérifications d\'aujourd\'hui (tous agents, tous appareils) et les contenants mobiles pointés, pour rejouer les tests. Les péremptions saisies et les contenants désaffectés ne sont pas annulés. Les lignes retirées sont rangées dans l\'onglet InventairesVerifsAnnulees.' }),
       el('button', {
         type: 'button', classe: `cfg-bouton${enAttente ? ' danger' : ''}`,
@@ -2122,8 +2141,22 @@ const Inventaires = (() => {
             title: 'Fermé par un scellé (plomb) une fois vérifié', texte: `${f.scellable ? '🔒' : '🔓'} Scellable`,
             surclick: () => regler(() => { f.scellable = !f.scellable; }),
           }));
-        li.append(reglages);
-        li.append(el('div', { classe: 'cfg-ligne inv-outils' },
+        // Options repliées par défaut : la liste reste lisible. Seul « Placer sur la photo » reste visible
+        // tant que le sous-inventaire n'a pas de gommette (c'est l'étape suivante logique).
+        const ouvert = optionsOuvertes.has(f.id) || placement === f.id;
+        const idOptions = idChamp();
+        li.append(el('div', { classe: 'inv-options-ligne' },
+          vc.photo && !point && !ailleurs.length && !ouvert ? el('button', {
+            type: 'button', classe: 'cfg-mini inv-actif', texte: `📍 Placer sur ${vuesDe(c).length > 1 ? `« ${vc.nom} »` : 'la photo'}`,
+            surclick: () => { placement = f.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); },
+          }) : null,
+          el('button', { type: 'button', classe: 'lien inv-options-bouton', 'aria-expanded': String(ouvert), 'aria-controls': idOptions,
+            texte: ouvert ? 'Masquer les options ▴' : 'Options ▾',
+            surclick: () => { if (ouvert) { optionsOuvertes.delete(f.id); if (placement === f.id) placement = ''; } else optionsOuvertes.add(f.id); rendre({ garderPosition: true }); } })));
+        const options = el('div', { classe: 'inv-options', id: idOptions, hidden: !ouvert });
+        li.append(options);
+        options.append(reglages);
+        options.append(el('div', { classe: 'cfg-ligne inv-outils' },
           vc.photo ? el('button', {
             type: 'button', classe: `cfg-mini${placement === f.id ? ' inv-actif' : ''}`, texte: point ? 'Déplacer le point' : `Placer sur ${vuesDe(c).length > 1 ? `« ${vc.nom} »` : 'la photo'}`,
             surclick: () => { placement = f.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); },
@@ -3309,7 +3342,13 @@ const Inventaires = (() => {
       } }), ' Facultatif');
   }
   /** Champ « Commentaire » de l'édition : texte libre affiché à tous sous l'article en check-list. */
+  const commentairesOuverts = new Set(); // gestion : articles sans commentaire dont on a ouvert le champ
   function champCommentaire(c, a) {
+    // Sans commentaire : un simple lien, pour ne pas alourdir la liste d'un champ vide par article.
+    if (!a.commentaire && !commentairesOuverts.has(a.id)) {
+      return el('button', { type: 'button', classe: 'lien inv-ajout-commentaire', texte: '💬 Ajouter un commentaire',
+        surclick: () => { commentairesOuverts.add(a.id); rendre({ garderPosition: true, focus: `[data-cle="${a.id}"] .inv-commentaire-saisie` }); } });
+    }
     return el('input', {
       classe: 'inv-commentaire-saisie', maxlength: '300', placeholder: '💬 Commentaire (visible de tous)', valeur: a.commentaire || '',
       'aria-label': `Commentaire visible de tous (${nomArticle(a)})`,
@@ -3394,7 +3433,7 @@ const Inventaires = (() => {
             if (e.target.value === 'min') a.quantiteMin = true; else delete a.quantiteMin;
             marquer(c.id);
           } }, el('option', { value: 'exact', selected: !estMinimum(a), texte: '=' }), el('option', { value: 'min', selected: estMinimum(a), texte: '≥' })),
-          qte), caseFacultatif(c, a), ...fleches)));
+          qte), caseFacultatif(c, a)), retirer));
     });
 
     triable(liste, (cles) => {
@@ -4006,7 +4045,7 @@ const Inventaires = (() => {
   }
 
   /** QR code, lien, puce NFC, copie et suppression (administrateurs). */
-  function blocAcces(c) {
+  function blocEtiquette(c) {
     const url = adresse(c.id);
     const etatNfc = el('p', { classe: 'message', role: 'status' });
     const nfc = 'NDEFReader' in window
@@ -4044,10 +4083,22 @@ const Inventaires = (() => {
           c.etiquette = normaliser({ etiquette: { ...reglageEtiquette(c), largeur: l, hauteur: h } }).etiquette;
           marquer(c.id); rendre({ garderPosition: true });
         } }))),
-      el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Aperçu taille réelle', surclick: () => apercuTailleReelle(c) }),
       c.modele ? el('p', { classe: 'aide-question', texte: 'Format répercuté sur les exemplaires avec les autres modifications de l\'inventaire type.' }) : null);
+    return el('section', { classe: 'inv-groupe-reglages' }, el('h2', { texte: 'Étiquette QR et puce NFC' }),
+      el('p', { classe: 'aide-question', texte: 'Le QR code et la puce NFC ouvrent directement ce contenant. Ils restent valables s\'il est renommé.' }),
+      el('div', { classe: 'inv-acces' }, apercu,
+        el('div', { classe: 'inv-acces-actions' },
+          el('div', { classe: 'cfg-actions' },
+            el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: 'Imprimer l\'étiquette QR…', surclick: () => imprimerEtiquettes([c]) }),
+            el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Aperçu taille réelle', surclick: () => apercuTailleReelle(c) })),
+          nfc, etatNfc, CibleNfc.lien(),
+          el('details', { classe: 'inv-details-reglages' }, el('summary', { texte: 'Format, couleur et texte de l\'étiquette' }), reglages),
+          el('p', { classe: 'inv-url', texte: url }))));
+  }
+  /** Actions sur le contenant (onglet Réglages) : dupliquer, liste papier, supprimer. */
+  function blocActions(c) {
     const supprimer = el('button', {
-      type: 'button', classe: 'cfg-bouton danger', texte: 'Supprimer cet inventaire',
+      type: 'button', classe: 'cfg-bouton danger', texte: c.emplacement ? 'Supprimer cet emplacement' : 'Supprimer ce contenant',
       surclick: () => {
         const tout = descendants(c.id);
         if (confirmer !== `supprimer-${c.id}`) {
@@ -4062,18 +4113,11 @@ const Inventaires = (() => {
         aller(c.parent);
       },
     });
-    return el('section', { classe: 'cfg-section' }, el('h2', { texte: 'Accès rapide' }),
-      el('p', { classe: 'aide-question', texte: 'Ce QR code et la puce NFC ouvrent directement cet inventaire. Ils restent valables si l\'inventaire est renommé.' }),
-      el('div', { classe: 'inv-acces' }, apercu,
-        el('div', { classe: 'inv-acces-actions' },
-          el('p', { classe: 'inv-url', texte: url }),
-          reglages,
-          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer l\'étiquette QR…', surclick: () => imprimerEtiquettes([c]) }),
-          nfc, etatNfc, CibleNfc.lien())),
-      el('h2', { texte: 'Autres actions' }),
+    return el('section', { classe: 'inv-groupe-reglages' }, el('h2', { texte: 'Actions' }),
       el('div', { classe: 'cfg-actions' },
-        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Dupliquer (avec son contenu)', surclick: () => dupliquer(c) }),
-        supprimer));
+        c.emplacement ? null : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Dupliquer (avec son contenu)', surclick: () => dupliquer(c) }),
+        c.emplacement ? null : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer la liste papier', surclick: () => imprimerListe(c) })),
+      el('div', { classe: 'inv-zone-danger' }, supprimer));
   }
 
   // ---------- Inventaires types (modèles) et exemplaires ----------
@@ -5290,65 +5334,139 @@ const Inventaires = (() => {
         : 'Une image qui désigne ce contenant (ex. photo du véhicule). Sans vignette, la liste affiche la photo d\'inventaire.' }));
   }
 
-  function vueContenant(c) {
-    const fils = enfants(c.id);
-    const b = bilan(c.id);
-    const v = verifDuJour(c.id);
-    // Le nom est dans la barre du haut ; en administration, il se modifie juste en dessous.
-    const titre = edition
-      ? el('div', { classe: 'champ inv-champ-nom' }, el('label', { for: 'inv-nom', texte: 'Nom' }),
-        el('input', { id: 'inv-nom', maxlength: '80', valeur: c.nom, surchange: (e) => { const t = e.target.value.trim(); if (t) { c.nom = t; marquer(c.id); } else e.target.value = c.nom; } }))
-      : null;
-    // Ouvert depuis une recherche par le nom, sans dire où l'on est : consultation seule.
-    const consultation = !edition && enConsultation(c);
-    // Check-list d'un contenant scellable pas encore vérifié aujourd'hui : on demande d'abord s'il est scellé.
-    const questionScelle = !edition && !consultation && !dansUnModele(c.id) && c.scellable && !b.complet && !reponsesScelle.has(c.id);
-    const caseScellable = idChamp();
-    const caseModele = idChamp();
+  // ---------- Gestion d'un contenant (administrateurs) : onglets Contenu / Réglages / Étiquette / Exemplaires ----------
+  /*
+   * Avant, la page d'un contenant en gestion empilait tout (nom, catégorie, cases à cocher, photo,
+   * sous-inventaires, articles, étiquette, suppression) sur plusieurs écrans. Elle est rangée en onglets,
+   * dans la barre collée en haut : ce qu'on fait le plus souvent (photo, sous-inventaires, articles)
+   * est dans « Contenu », ouvert par défaut ; le paramétrage du contenant dans « Réglages ».
+   */
+  function ongletsGestion(c) {
+    const m = racineModele(c.id);
+    const liste = [['contenu', 'Contenu'], ['reglages', 'Réglages']];
+    if (!c.emplacement) liste.push(['etiquette', 'Étiquette']);
+    if (m) liste.push(['exemplaires', `Exemplaires ${exemplairesDe(m.id).length}`]);
+    return liste;
+  }
+  /** Pastilles d'état sous le nom : ce qu'est ce contenant, d'un coup d'œil, quel que soit l'onglet. */
+  function pastillesGestion(c) {
+    const p = (texte, classe = '', titre = '') => el('span', { classe: `inv-pastille-etat ${classe}`, texte, title: titre || texte });
+    const r = racineExemplaire(c.id);
+    const veh = c.categorie === 'primaire' && !dansUnModele(c.id) ? vehiculeDuPrimaire(c) : null;
+    return el('div', { classe: 'inv-pastilles-etat' },
+      c.emplacement ? p('Emplacement', 'emplacement', 'Place attendant un contenant mobile')
+        : (c.categorie ? p(CATEGORIES_CONTENANT[c.categorie].nom, c.categorie, CATEGORIES_CONTENANT[c.categorie].aide) : p('Sans catégorie', 'alerte', 'Choisissez une catégorie dans Réglages')),
+      c.modele ? p('Inventaire type', 'type') : (dansUnModele(c.id) ? p('Dans un inventaire type', 'type') : null),
+      r ? p('Exemplaire', 'exemplaire', 'Copie d\'un inventaire type') : null,
+      c.scellable ? p('🔒 Scellable') : null,
+      estVrac(c) ? p('Scan en vrac') : null,
+      c.clAmbulancier ? p('Vérifié par l\'ambulancier') : null,
+      c.traceur ? p(`Traceur ${c.traceur}`) : null,
+      veh ? p(`Véhicule ${veh.nom || veh.id}`) : null);
+  }
+  /** Case à cocher d'un réglage, avec son explication en dessous. */
+  function caseReglage(libelle, aide, coche, surChange) {
+    const i = idChamp();
+    return el('label', { classe: 'cfg-case inv-case-fiche', for: i },
+      el('input', { type: 'checkbox', id: i, checked: coche, surchange: (e) => surChange(e.target.checked) }),
+      el('span', {}, libelle, el('small', { texte: aide })));
+  }
+  function groupeReglages(titre, ...contenu) {
+    const enfantsUtiles = contenu.flat().filter(Boolean);
+    if (!enfantsUtiles.length) return null;
+    return el('section', { classe: 'inv-groupe-reglages' }, el('h2', { texte: titre }), ...enfantsUtiles);
+  }
+  function ongletReglages(c) {
+    const modele = dansUnModele(c.id);
     const groupeCategorie = idChamp();
-    const choixCategorie = edition ? el('div', { classe: 'champ inv-choix-categorie' },
-      el('span', { classe: 'inv-libelle', id: groupeCategorie, texte: 'Catégorie du contenant' }),
+    const choixCategorie = c.emplacement ? null : el('div', { classe: 'champ inv-choix-categorie' },
+      el('span', { classe: 'inv-libelle', id: groupeCategorie, texte: 'Catégorie' }),
       el('div', { classe: 'puces', role: 'radiogroup', 'aria-labelledby': groupeCategorie },
         ...Object.entries(CATEGORIES_CONTENANT).flatMap(([cle, v]) => {
           const i = idChamp();
           return [el('input', { type: 'radio', name: groupeCategorie, id: i, checked: c.categorie === cle, surchange: () => { c.categorie = cle; marquer(c.id); rendre({ garderPosition: true }); } }),
             el('label', { for: i, title: v.aide, texte: v.nom })];
         })),
-      el('p', { classe: 'aide-question', texte: c.categorie ? `${CATEGORIES_CONTENANT[c.categorie].nom} : ${CATEGORIES_CONTENANT[c.categorie].aide}.${c.categorie === 'primaire' ? ' Affiché sur la page des inventaires.' : ' S\'ouvre par recherche, QR code ou NFC, ou depuis son contenant.'}` : 'Seuls les contenants primaires sont affichés sur la page des inventaires.' })) : null;
+      el('p', { classe: 'aide-question', texte: c.categorie ? `${CATEGORIES_CONTENANT[c.categorie].aide.replace(/^./, (x) => x.toUpperCase())}.${c.categorie === 'primaire' ? ' Affiché sur la page des inventaires.' : ' S\'ouvre depuis son contenant, par QR code, NFC ou recherche.'}` : 'Seuls les contenants primaires sont affichés sur la page des inventaires.' }));
+    return [
+      groupeReglages('Identité',
+        el('div', { classe: 'champ inv-champ-nom' }, el('label', { for: 'inv-nom', texte: 'Nom' }),
+          el('input', { id: 'inv-nom', maxlength: '80', valeur: c.nom, surchange: (e) => { const t = e.target.value.trim(); if (t) { c.nom = t; marquer(c.id); rendre({ garderPosition: true }); } else e.target.value = c.nom; } })),
+        choixCategorie,
+        c.categorie === 'primaire' && !modele ? blocVehicule(c) : null,
+        c.categorie === 'primaire' ? blocVignette(c) : null),
+      c.emplacement ? null : groupeReglages('Vérification',
+        caseReglage('Contenant scellable', 'fermé par un scellé (plomb) une fois vérifié : en check-list, « Est-il scellé ? » évite de refaire l\'inventaire', c.scellable,
+          (v) => { c.scellable = v; marquer(c.id); rendre({ garderPosition: true }); }),
+        !modele ? caseReglage('Inventaire libre (scan en vrac)', 'pas de liste attendue : l\'agent scanne à la volée le matériel présent, compté ensuite par type', c.vrac === true,
+          (v) => { if (v) c.vrac = true; else delete c.vrac; marquer(c.id); rendre({ garderPosition: true }); }) : null,
+        c.parent ? blocChoixAmbulancier(c) : null,
+        c.categorie === 'mobile' && !modele && typeof Traceurs !== 'undefined' ? blocTraceur(c) : null),
+      !c.parent && !racineExemplaire(c.id) && !c.emplacement ? groupeReglages('Série de contenants identiques',
+        caseReglage('Inventaire type', 'sert de structure à des exemplaires identiques (ex. les 7 sacs d\'intervention) ; il ne se vérifie pas. L\'onglet « Exemplaires » apparaît une fois coché.', c.modele === true,
+          (v) => { if (v) c.modele = true; else delete c.modele; marquer(c.id); rendre({ garderPosition: true }); })) : null,
+      blocActions(c),
+    ];
+  }
+  function vueGestion(c) {
+    const fils = enfants(c.id);
+    const onglets = ongletsGestion(c);
+    if (!onglets.some(([cle]) => cle === ongletGestion)) ongletGestion = 'contenu';
+    const barre = barreContenant(c, { h1: true });
+    // Onglets dans la barre collée en haut : on change d'onglet sans remonter la page.
+    barre.append(pastillesGestion(c), el('div', { classe: 'inv-onglets-gestion', role: 'tablist', 'aria-label': 'Sections du contenant' },
+      ...onglets.map(([cle, nom]) => el('button', {
+        type: 'button', role: 'tab', classe: 'inv-onglet-gestion', 'aria-selected': String(ongletGestion === cle), 'aria-controls': 'inv-panneau-gestion',
+        texte: nom, surclick: () => { if (ongletGestion === cle) return; ongletGestion = cle; rendre({ garderPosition: true }); window.scrollTo(0, 0); },
+      }))));
+    let panneau;
+    if (ongletGestion === 'reglages') panneau = ongletReglages(c);
+    else if (ongletGestion === 'etiquette') panneau = [blocEtiquette(c)];
+    else if (ongletGestion === 'exemplaires') panneau = [blocModele(c)];
+    else {
+      panneau = [
+        blocExemplaire(c),
+        c.emplacement ? blocTypesEmplacement(c) : null,
+        // Inventaire libre : pas de liste, on le rappelle plutôt que d'afficher un bloc d'articles inutile.
+        estVrac(c) ? el('p', { classe: 'note-parc', texte: 'Inventaire libre : en check-list, l\'agent scanne le matériel présent (pas de liste attendue). Réglage dans l\'onglet « Réglages ».' }) : null,
+        c.clAmbulancier ? el('p', { classe: 'note-parc', texte: 'Vérifié par la check-list ambulancier du véhicule (réglage dans « Réglages »).' }) : null,
+        blocPhoto(c, fils),
+        ...[].concat(blocEnfants(c, fils)),
+        c.emplacement ? null : blocArticles(c),
+      ];
+    }
+    return [
+      barre,
+      bandeauGestion(c),
+      ligneSynchro(), ligneAvis(),
+      c.desaffecte && !c.parent ? el('p', { classe: 'note-parc anomalie' }, el('strong', { texte: 'Désaffecté — à retrouver. ' }),
+        `Était dans ${c.desaffecte.deNom || '?'}. `,
+        el('button', { type: 'button', classe: 'lien', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) })) : null,
+      el('div', { id: 'inv-panneau-gestion', role: 'tabpanel', classe: 'inv-panneau-gestion' }, ...panneau.flat().filter(Boolean)),
+      el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
+    ];
+  }
+
+  function vueContenant(c) {
+    if (edition) return vueGestion(c);
+    const fils = enfants(c.id);
+    const b = bilan(c.id);
+    const v = verifDuJour(c.id);
+    // Ouvert depuis une recherche par le nom, sans dire où l'on est : consultation seule.
+    const consultation = enConsultation(c);
+    // Check-list d'un contenant scellable pas encore vérifié aujourd'hui : on demande d'abord s'il est scellé.
+    const questionScelle = !consultation && !dansUnModele(c.id) && c.scellable && !b.complet && !reponsesScelle.has(c.id);
     const modele = dansUnModele(c.id);
-    const verification = c.emplacement || questionScelle || edition || modele || (c.clAmbulancier && !aCocher(c).length) ? null
+    const verification = c.emplacement || questionScelle || modele || (c.clAmbulancier && !aCocher(c).length) ? null
       : (consultation ? (estVrac(c) ? blocVrac(c, true) : blocConsultation(c)) : (estVrac(c) ? blocVrac(c) : blocVerification(c)));
     const listeAvant = Boolean(verification) && !consultation && !v && vuesDe(c).some((x) => x.photo);
     return [
       // Contenant primaire : son nom est déjà dans le bandeau « Vous vérifiez actuellement … ».
-      barreContenant(c, { h1: !edition && !(c.categorie === 'primaire' && !gestion) }),
-      bandeauGestion(),
-      titre ? el('div', { classe: 'inv-entete' }, titre, boutonEdition()) : null,
-      choixCategorie,
-      edition && c.categorie === 'primaire' && !modele ? blocVehicule(c) : null,
-      edition && c.categorie === 'primaire' ? blocVignette(c) : null,
-      edition ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseScellable },
-        el('input', { type: 'checkbox', id: caseScellable, checked: c.scellable, surchange: (e) => { c.scellable = e.target.checked; marquer(c.id); } }),
-        el('span', {}, 'Contenant scellable', el('small', { texte: 'fermé par un scellé (plomb) une fois vérifié' }))) : null,
-      edition && !c.emplacement && !modele ? (() => {
-        const i = idChamp();
-        return el('label', { classe: 'cfg-case inv-case-fiche', for: i },
-          el('input', { type: 'checkbox', id: i, checked: c.vrac === true, surchange: (e) => { if (e.target.checked) c.vrac = true; else delete c.vrac; marquer(c.id); rendre({ garderPosition: true }); } }),
-          el('span', {}, 'Inventaire libre (scan en vrac)', el('small', { texte: 'pas de liste attendue : l\'agent scanne à la volée tout le matériel présent (QR, code-barres biomed, douchette, NFC ou liste), compté ensuite par type. Remplace la liste à cocher en check-list.' })));
-      })() : null,
-      edition && c.parent ? blocChoixAmbulancier(c) : null,
-      edition && c.categorie === 'mobile' && !c.emplacement && !modele && typeof Traceurs !== 'undefined' ? blocTraceur(c) : null,
-      edition && !c.parent && !racineExemplaire(c.id) ? el('label', { classe: 'cfg-case inv-case-fiche', for: caseModele },
-        el('input', { type: 'checkbox', id: caseModele, checked: c.modele === true, surchange: (e) => {
-          if (e.target.checked) c.modele = true; else delete c.modele;
-          marquer(c.id);
-          rendre({ garderPosition: true });
-        } }),
-        el('span', {}, 'Inventaire type', el('small', { texte: 'sert de structure à des exemplaires identiques (ex. les sacs d\'intervention) ; il ne se vérifie pas' }))) : null,
+      barreContenant(c, { h1: !(c.categorie === 'primaire' && !gestion) }),
+      bandeauGestion(c),
       ligneSynchro(), ligneAvis(),
-      blocModele(c), blocExemplaire(c),
-      c.emplacement && edition ? blocTypesEmplacement(c) : null,
-      c.emplacement && !edition ? (() => {
+      blocModele(c),
+      c.emplacement ? (() => {
         const type = contenant(c.emplacement.modele);
         const occ = enfants(c.id)[0];
         const autres = modelesEmplacement(c).slice(1).map(contenant).filter(Boolean);
@@ -5366,10 +5484,10 @@ const Inventaires = (() => {
         c.desaffecte.ignore ? el('small', { classe: 'inv-trace', texte: `Alerte ignorée${c.desaffecte.ignore.par ? ` par ${c.desaffecte.ignore.par}` : ''}${c.desaffecte.ignore.le ? ` le ${new Date(c.desaffecte.ignore.le).toLocaleDateString('fr-FR')}` : ''}. ` }) : null,
         el('button', { type: 'button', classe: 'lien', texte: 'Publier une alerte sur le mur', surclick: () => publierARetrouver(c) })) : null,
       ...(questionScelle ? [blocQuestionScelle(c)] : []),
-      !edition && !consultation && !modele && !questionScelle && !gestion ? blocScellesGroupes(c) : null,
-      c.clAmbulancier && !edition && !modele ? blocNiveauxOxygene(c) : null,
+      !consultation && !modele && !questionScelle && !gestion ? blocScellesGroupes(c) : null,
+      c.clAmbulancier && !modele ? blocNiveauxOxygene(c) : null,
       // Check-list : pas de récapitulatif (place laissée à la photo ; l'état se lit sur les gommettes).
-      edition || modele || !gestion ? null : el('p', { classe: `inv-statut ${b.classe}` },
+      modele || !gestion ? null : el('p', { classe: `inv-statut ${b.classe}` },
         el('strong', { texte: `${b.complet ? '✓ ' : ''}${b.texte}` }),
         el('span', { classe: 'inv-badges' }, ...badges(b))),
       // Photo de navigation ET éléments à cocher : la liste passe avant la photo tant que
@@ -5377,14 +5495,10 @@ const Inventaires = (() => {
       ...(listeAvant ? [].concat(verification) : []),
       questionScelle ? null : blocPhoto(c, fils),
       ...(questionScelle ? [] : [].concat(blocEnfants(c, fils))),
-      c.emplacement || questionScelle ? null : (edition ? blocArticles(c) : (modele ? blocContenuModele(c) : null)),
+      c.emplacement || questionScelle || !modele ? null : blocContenuModele(c),
       ...(verification && !listeAvant ? [].concat(verification) : []),
-      !edition && !aCocher(c).length && !fils.length && !estVrac(c) ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : menu > Administration > Gestion des inventaires pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
-      !edition && ((!aCocher(c).length && !(estVrac(c) && verification)) || consultation) ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
-      edition ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
-      edition ? blocAcces(c) : null,
-      // La liste papier reste possible depuis l'administration.
-      edition ? el('div', { classe: 'inv-pied' }, el('button', { type: 'button', classe: 'lien', texte: 'Imprimer la liste', surclick: () => imprimerListe(c) })) : null,
+      !aCocher(c).length && !fils.length && !estVrac(c) ? el('p', { classe: 'consigne', texte: estAdmin() ? 'Inventaire vide : menu > Administration > Gestion des inventaires pour ajouter une photo, des sous-inventaires ou des articles.' : 'Cet inventaire est vide pour l\'instant.' }) : null,
+      (!aCocher(c).length && !(estVrac(c) && verification)) || consultation ? el('p', { classe: 'message inv-message', role: 'alert', hidden: true }) : null,
     ];
   }
 
@@ -5484,6 +5598,8 @@ const Inventaires = (() => {
       rechercheAjout = '';
       creation = null;
       ajoutSousOuvert = false;
+      ongletGestion = ongletDemande || 'contenu';
+      ongletDemande = '';
     }
     if (identifierEmplacement) identification = identifierEmplacement;
     if (aIdentifier) { identification = aIdentifier; aIdentifier = ''; }
