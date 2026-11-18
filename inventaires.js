@@ -1448,7 +1448,7 @@ const Inventaires = (() => {
   }
   /**
    * Gestion : appui long sur une pastille → elle se décolle (vibration), suit le doigt,
-   * et se pose là où on relâche. Un appui court garde le comportement habituel.
+   * et se pose là où on relâche. Un appui court ouvre le sous-inventaire (navigation par les gommettes).
    */
   function glisserPastille(pastille, img, c, vc, cible) {
     let minuterie = null;
@@ -1953,7 +1953,8 @@ const Inventaires = (() => {
           'aria-label': `${fils[rang].nom} : ${b.texte}`, title: fils[rang].nom,
         };
         const pastille = edition
-          ? el('button', { type: 'button', ...commun, texte: affiche, surclick: () => { placement = placement === p.cible ? '' : p.cible; rendre({ garderPosition: true }); } })
+          // Gestion : un appui ouvre le sous-inventaire (en gestion) ; appui long + glisser pour déplacer la gommette.
+          ? el('button', { type: 'button', ...commun, 'aria-label': `${fils[rang].nom} : ouvrir. Appui long puis glisser pour déplacer`, title: `${fils[rang].nom} — appui long et glisser pour déplacer`, texte: affiche, surclick: () => aller(p.cible) })
           : fils[rang].clAmbulancier && vehiculeAmbulancier(fils[rang])
             // Bouteilles d'oxygène (check-list ambulancier) : niveaux en fenêtre, sans quitter la photo.
             ? el('button', { type: 'button', ...commun, 'aria-haspopup': 'dialog', texte: affiche, surclick: () => voirOxygene(fils[rang]) })
@@ -1995,6 +1996,7 @@ const Inventaires = (() => {
         const tailles = vc.points.map(tailleGommette);
         const tMin = Math.min(...tailles); const tMax = Math.max(...tailles);
         const regler = (sens) => { changerTaille(c, vc, sens); marquer(c.id); rendre({ garderPosition: true }); };
+        bloc.append(el('p', { classe: 'aide-question inv-aide-gommettes', texte: 'Touchez une gommette pour ouvrir son inventaire. Pour la déplacer : appui long, glissez, relâchez.' }));
         bloc.append(el('div', { classe: 'cfg-ligne inv-taille-gommettes' },
           el('span', { texte: 'Taille des gommettes de la photo' }),
           el('button', { type: 'button', classe: 'cfg-mini', texte: 'A−', title: 'Réduire toutes les gommettes de cette photo', 'aria-label': 'Réduire toutes les gommettes', disabled: tMax <= TAILLES_GOMMETTE[0] || undefined, surclick: () => regler(-1) }),
