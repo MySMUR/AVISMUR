@@ -110,7 +110,8 @@ const Materiel = (() => {
   };
   const statuts = () => (donnees && donnees.statuts) || STATUTS_DEFAUT;
   const typesIntervention = () => ((donnees && donnees.typesIntervention) || INTERVENTIONS_DEFAUT).filter((t) => t !== 'Évènement');
-  const nomAppareil = (f) => `${f.type || 'Matériel'}${f.numInterne ? ` n° ${f.numInterne}` : ''}`;
+  /** « Scope Corpuls3 n° 2 » : type, modèle puis n° interne SMUR. */
+  const nomAppareil = (f) => [f.type || 'Matériel', f.modele, f.numInterne && `n° ${f.numInterne}`].filter(Boolean).join(' ');
 
   // ---------- Photos ----------
   // Gardées sur l'appareil (IndexedDB) pour l'affichage hors ligne ; téléchargées une fois depuis le serveur.
@@ -561,7 +562,7 @@ const Materiel = (() => {
         el('span', { classe: 'mat-num', texte: f.numInterne || '?' }),
         (f.photo || f.photoDonnees || (!f.modeleType && aPhoto(f))) ? vignette({ ...f, photoModele: '', photoModeleDonnees: '' }, 'mat-vignette') : null,
         el('span', { classe: 'mat-corps' },
-          el('span', { classe: 'mat-nom' }, el('strong', { texte: nomAppareil(f) }), f.modele ? el('span', { texte: ` · ${f.modele}` }) : null,
+          el('span', { classe: 'mat-nom' }, el('strong', { texte: nomAppareil(f) }),
             f.traceur ? el('span', { classe: 'mat-traceur', title: `Traceur GeoTraceSMUR${f.nomTraceur ? ` : ${f.nomTraceur}` : ''}`, texte: '📡' }) : null),
           el('span', { classe: 'mat-ids', texte: [f.numBiomed && `Biomed ${f.numBiomed}`, f.numSerie && `S/N ${f.numSerie}`].filter(Boolean).join(' · ') || 'N° biomed et série non renseignés' }),
           f.emplacement ? el('span', { classe: 'mat-emplacement', texte: `📍 ${texteEmplacement(f)}` }) : null,
@@ -611,7 +612,7 @@ const Materiel = (() => {
         el('div', { classe: 'mat-boutons' }, evts.map((v) => el('button', { type: 'button', classe: 'cfg-bouton', texte: v.libelle, surclick: () => { d.close(); ouvrirEvenement(f, v, false); } })))) : null,
       el('fieldset', { classe: 'mat-cadre' }, el('legend', { texte: 'Signaler' }),
         el('div', { classe: 'mat-boutons' }, ['Casse', 'Panne', 'Problème', 'Note'].map((n) => el('button', { type: 'button', classe: 'cfg-bouton', texte: n, surclick: () => { d.close(); ouvrirNote(f, n); } })))));
-    d = fenetre(nomAppareil(f) + (f.modele ? ` · ${f.modele}` : ''), contenu);
+    d = fenetre(nomAppareil(f), contenu);
   }
 
   /** Note datée dans la main courante ; casse / panne peuvent passer l'appareil « En panne ». */
@@ -733,7 +734,7 @@ const Materiel = (() => {
             ouvrirFiche(f.id);
           },
         }) : null))) : el('p', { classe: 'mat-vide', texte: 'Aucune entrée pour le moment.' }));
-    d = fenetre(`${nomAppareil(f)}${f.modele ? ` · ${f.modele}` : ''}`, contenu, { large: true });
+    d = fenetre(nomAppareil(f), contenu, { large: true });
   }
 
   /** Formulaire de création / modification. `modele` : fiche dont on part pour « Dupliquer ». */
@@ -917,7 +918,7 @@ const Materiel = (() => {
     for (const x of final.values()) {
       if (x.archive) continue;
       const cles = [];
-      if (x.numInterne) cles.push([`i|${normaliser(x.type)}|${normaliser(x.numInterne)}`, `${x.type} n° ${x.numInterne} existe déjà.`]);
+      if (x.numInterne) cles.push([`i|${normaliser(x.type)}|${normaliser(x.numInterne)}`, `${nomAppareil(x)} existe déjà.`]);
       if (x.numSerie) cles.push([`s|${normaliser(x.numSerie)}`, `Le n° de série ${x.numSerie} est déjà attribué.`]);
       if (x.numBiomed) cles.push([`b|${normaliser(x.numBiomed)}`, `Le n° biomed ${x.numBiomed} est déjà attribué.`]);
       for (const [cle, texte] of cles) {
@@ -946,7 +947,7 @@ const Materiel = (() => {
           el('button', { type: 'button', classe: 'cfg-mini', texte: 'Tout décocher', surclick: (ev) => { ev.target.closest('fieldset').querySelectorAll('input[data-id]').forEach((c) => { c.checked = false; cibles.delete(c.dataset.id); }); } })),
         autres.sort(tri).map((x) => el('label', { classe: 'mat-case-libelle' },
           el('input', { type: 'checkbox', 'data-id': x.id, coche: cibles.has(x.id), surchange: (ev) => (ev.target.checked ? cibles.add(x.id) : cibles.delete(x.id)) }),
-          el('span', { texte: `${nomAppareil(x)}${x.modele ? ` · ${x.modele}` : ''}` })))),
+          el('span', { texte: nomAppareil(x) })))),
       el('div', { classe: 'mat-boutons' },
         el('button', {
           type: 'button', classe: 'principal', texte: 'Enregistrer et répercuter',
@@ -1099,7 +1100,7 @@ const Materiel = (() => {
     el('optgroup', { label: 'Tout un matériel type' }, modeles().filter((m) => toutes.some((x) => x.modeleType === m.id)).map((m) => el('option', { value: `mtype:${m.id}`, texte: `Tous les ${nomModele(m)}` }))),
     el('optgroup', { label: 'Tout un modèle' }, [...new Set(toutes.map((x) => x.modele).filter(Boolean))].map((m) => el('option', { value: `modele:${m}`, texte: `Tous les ${m}` }))),
     el('optgroup', { label: 'Tout un type' }, [...new Set(toutes.map((x) => x.type))].map((t) => el('option', { value: `type:${t}`, texte: `Tous les ${t}` }))),
-    el('optgroup', { label: 'Un appareil' }, toutes.slice().sort(tri).map((x) => el('option', { value: x.id, texte: `${nomAppareil(x)}${x.modele ? ` · ${x.modele}` : ''}` }))));
+    el('optgroup', { label: 'Un appareil' }, toutes.slice().sort(tri).map((x) => el('option', { value: x.id, texte: nomAppareil(x) }))));
     rendreCibles();
     majPlans();
     if (options.plan && [...e.plan.options].some((o) => o.value === options.plan)) e.plan.value = options.plan;
@@ -1338,7 +1339,7 @@ const Materiel = (() => {
       const proposes = toutes.filter((x) => coches.has(x.id) || dejaLies.has(x.id) || (!x.modeleType && (voirTous || x.type === type))).sort(tri);
       cases.replaceChildren(...(proposes.length ? proposes.map((x) => el('label', { classe: 'mat-case-libelle' },
         el('input', { type: 'checkbox', coche: coches.has(x.id), disabled: !admin, surchange: (ev) => { if (ev.target.checked) coches.add(x.id); else coches.delete(x.id); } }),
-        el('span', { texte: `${nomAppareil(x)}${x.modele ? ` · ${x.modele}` : ''}${x.modeleType && x.modeleType !== base.id ? ` (rattaché à ${nomModele(modeleDe(x.modeleType))})` : ''}` }))) : [el('p', { classe: 'mat-vide', texte: 'Aucun appareil de ce type.' })]));
+        el('span', { texte: `${nomAppareil(x)}${x.modeleType && x.modeleType !== base.id ? ` (rattaché à ${nomModele(modeleDe(x.modeleType))})` : ''}` }))) : [el('p', { classe: 'mat-vide', texte: 'Aucun appareil de ce type.' })]));
     }
     let voirTous = false;
     e.type.select.addEventListener('change', rendreCases);
@@ -1408,7 +1409,7 @@ const Materiel = (() => {
   const COURTS = { type: '', modele: '', numInterne: 'n°', numBiomed: 'Biomed ', numSerie: 'S/N ' };
   function texteFiche(f, champs) {
     const a = (k) => (champs.includes(k) && f[k] ? `${COURTS[k]}${f[k]}` : '');
-    return ['SMUR Avignon', [a('type'), a('numInterne'), a('modele')].filter(Boolean).join(' '), a('numBiomed'), a('numSerie')]
+    return ['SMUR Avignon', [a('type'), a('modele'), a('numInterne')].filter(Boolean).join(' '), a('numBiomed'), a('numSerie')]
       .filter(Boolean).join('\n');
   }
   /** Taille approximative du message NDEF (en-têtes compris), à comparer à la capacité de la puce. */

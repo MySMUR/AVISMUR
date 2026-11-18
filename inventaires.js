@@ -449,6 +449,8 @@ const Inventaires = (() => {
   const appareilsConnus = () => (typeof Materiel !== 'undefined' && Materiel.appareils ? Materiel.appareils() : []);
   /** Appareils proposés pour un matériel attendu : ceux du type demandé (tous si aucun type). */
   const appareilsPour = (a) => appareilsConnus().filter((x) => !a.typeMateriel || cle(x.type) === cle(a.typeMateriel));
+  /** « Scope Corpuls3 n° 2 » : type, modèle puis n° interne SMUR. */
+  const libelleAppareil = (x, num = x.numInterne) => [x.type || 'Appareil', x.modele, num && `n° ${num}`].filter(Boolean).join(' ');
   /** Appareil de la base correspondant à la valeur relevée (n° interne SMUR, sinon n° de série). */
   function appareilDe(a, v) {
     const t = cle(String(v || ''));
@@ -476,7 +478,7 @@ const Inventaires = (() => {
   /** Valeur affichée (avec unité). */
   function texteValeur(a, v) {
     if (v === '' || v === undefined) return 'non renseigné';
-    if (a.controle === 'materiel') { const x = appareilDe(a, v); return x ? `${x.type} n° ${x.numInterne || v}${x.modele ? ` (${x.modele})` : ''}` : `n° ${v}`; }
+    if (a.controle === 'materiel') { const x = appareilDe(a, v); return x ? libelleAppareil(x, x.numInterne || v) : `n° ${v}`; }
     if (a.controle === 'temperature') return `${v} °C`;
     if (a.controle === 'batterie') return a.echelle === '4' ? `${v}/4` : `${v} %`;
     if (a.controle === 'valeur' && a.unite) return `${v} ${a.unite}`;
@@ -2290,7 +2292,7 @@ const Inventaires = (() => {
       const v = (appareil && appareil.numInterne ? appareil.numInterne : brut).slice(0, 120);
       fermer();
       surLu(v);
-      if (appareil && appareil.numInterne) messageVue(`${appareil.type} n° ${appareil.numInterne}${appareil.modele ? ` (${appareil.modele})` : ''} reconnu.`);
+      if (appareil && appareil.numInterne) messageVue(`${libelleAppareil(appareil)} reconnu.`);
     };
     const ecran = el('div', { classe: 'camera', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Lire un code' },
       el('div', { classe: `camera-vue${qr ? '' : ' inv-nfc-seul'}` }, qr ? video : el('div', { classe: 'inv-attente-nfc', 'aria-hidden': 'true' }, logoNfc()),
@@ -4559,7 +4561,7 @@ const Inventaires = (() => {
   }
   /** Valeur gardée pour un appareil reconnu : la plus lisible de celles qui l'identifient sans ambiguïté. */
   const valeurAppareil = (x) => String(x.numBiomed || x.numSerie || x.id);
-  const libelleAppareil = (x) => `${x.type || 'Appareil'}${x.numInterne ? ` n° ${x.numInterne}` : ''}${x.modele ? ` (${x.modele})` : ''}`;
+  
   const avecAppareil = (code) => ({ code, appareil: appareilParCode(code) });
   const cleItem = (x) => (x.appareil ? `a:${x.appareil.id}` : `c:${cleCode(x.code)}`);
   /** Regroupe par type d'appareil (les non identifiés en dernier), triés par n° interne. */
@@ -4580,8 +4582,8 @@ const Inventaires = (() => {
     const a = x.appareil;
     return el('li', { classe: `inv-vrac-item${a ? '' : ' inconnu'}`, 'data-item': x.id || null },
       el('span', { classe: 'inv-vrac-nom' },
-        el('strong', { texte: a ? `${a.type || 'Appareil'}${a.numInterne ? ` n° ${a.numInterne}` : ''}` : NON_IDENTIFIE }),
-        el('small', { texte: a ? [a.modele, a.numBiomed ? `biomed ${a.numBiomed}` : '', !a.numBiomed && a.numSerie ? `S/N ${a.numSerie}` : ''].filter(Boolean).join(' · ') : x.code })),
+        el('strong', { texte: a ? libelleAppareil(a) : NON_IDENTIFIE }),
+        el('small', { texte: a ? [a.numBiomed ? `biomed ${a.numBiomed}` : '', !a.numBiomed && a.numSerie ? `S/N ${a.numSerie}` : ''].filter(Boolean).join(' · ') : x.code })),
       retirer ? el('button', { type: 'button', classe: 'inv-vrac-retirer', 'aria-label': `Retirer ${a ? libelleAppareil(a) : x.code}`, texte: '✕', surclick: retirer }) : null);
   }
   /** Comptes par type : une ligne par type, dépliable pour voir les appareils. */
@@ -4853,7 +4855,7 @@ const Inventaires = (() => {
             const i = idChamp();
             return el('label', { for: i, classe: 'inv-vrac-option' },
               el('input', { type: 'checkbox', id: i, checked: coches.has(x.id), surchange: (e) => { if (e.target.checked) coches.add(x.id); else coches.delete(x.id); majAjout(); } }),
-              el('span', {}, el('strong', { texte: x.numInterne ? `n° ${x.numInterne}` : '—' }), x.modele ? ` ${x.modele}` : '', x.numSerie ? el('small', { texte: ` S/N ${x.numSerie}` }) : null));
+              el('span', {}, el('strong', { texte: [x.modele, x.numInterne && `n° ${x.numInterne}`].filter(Boolean).join(' ') || '—' }), x.numSerie ? el('small', { texte: ` S/N ${x.numSerie}` }) : null));
           })))
           : [el('p', { classe: 'consigne', texte: tous.length ? 'Aucun appareil ne correspond.' : 'Aucun autre appareil dans le suivi du matériel (ou base pas encore chargée sur ce téléphone).' })]));
       };
