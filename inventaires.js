@@ -2901,7 +2901,7 @@ const Inventaires = (() => {
       return el('button', { type: 'button', role: 'radio', 'aria-checked': String(typeChoisi === t.id), classe: `inv-type${typeChoisi === t.id ? ' choisi' : ''}`,
         surclick: () => {
           // Un seul exemplaire de ce modèle : pas besoin de l'identifier, il est pris d'office.
-          const ex = typeChoisi === t.id ? [] : exemplairesDe(t.id).filter((x) => x.categorie === 'mobile' && !dansUnModele(x.id));
+          const ex = exemplairesDe(t.id).filter((x) => x.categorie === 'mobile' && !dansUnModele(x.id));
           if (ex.length === 1) { typeChoisi = t.id; choisir(ex[0].id); return; }
           typeChoisi = typeChoisi === t.id ? '' : t.id; rendre({ garderPosition: true });
         } },
