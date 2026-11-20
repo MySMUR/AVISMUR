@@ -944,6 +944,12 @@ const Inventaires = (() => {
           if (x.photo === locale) { x.photo = distante; change = true; }
           if (x.vignette === locale) { x.vignette = distante; change = true; }
           x.vues.forEach((v) => { if (v.photo === locale) { v.photo = distante; change = true; } });
+          // État du type gardé par un exemplaire : même traduction, sinon la photo passerait pour une personnalisation.
+          if (x.base) {
+            if (x.base.photo === locale) { x.base.photo = distante; change = true; }
+            if (x.base.vignette === locale) { x.base.vignette = distante; change = true; }
+            (x.base.vues || []).forEach((v) => { if (v.photo === locale) { v.photo = distante; change = true; } });
+          }
           if (change) modifs.ids[x.id] = (modifs.ids[x.id] || 0) + 1;
         });
         await Photos.supprimer(locale);
@@ -4192,7 +4198,7 @@ const Inventaires = (() => {
   /** Instantané d'un contenant du modèle : ce que ses exemplaires doivent reproduire. */
   function instantane(m) {
     return {
-      nom: m.nom, ordre: m.ordre, photo: m.photo, scellable: m.scellable, categorie: m.categorie, etiquette: m.etiquette,
+      nom: m.nom, ordre: m.ordre, photo: m.photo, vignette: m.vignette || '', scellable: m.scellable, categorie: m.categorie, etiquette: m.etiquette,
       clAmbulancier: m.clAmbulancier, clElements: m.clElements,
       points: [...m.points.map(sigPoint), ...(m.fleches || []).map(sigFleche)],
       nomVue: m.nomVue,
@@ -4205,7 +4211,7 @@ const Inventaires = (() => {
   function vueExemplaire(e) {
     const versModele = (id) => (contenant(id) || {}).source || id;
     return {
-      nom: e.nom, ordre: e.ordre, photo: e.photo, scellable: e.scellable, categorie: e.categorie, etiquette: e.etiquette,
+      nom: e.nom, ordre: e.ordre, photo: e.photo, vignette: e.vignette || '', scellable: e.scellable, categorie: e.categorie, etiquette: e.etiquette,
       clAmbulancier: e.clAmbulancier, clElements: e.clElements,
       points: [...e.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })), ...(e.fleches || []).map(sigFleche)],
       nomVue: e.nomVue,
@@ -4215,7 +4221,7 @@ const Inventaires = (() => {
     };
   }
   const sansNoms = (articles) => (articles || []).map(({ refNom, ...a }) => a);
-  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', nomVue: 'nom de la vue', vues: 'vues', scellable: 'scellable', categorie: 'catégorie', etiquette: 'format d\'étiquette', clAmbulancier: 'check-list ambulancier', clElements: 'éléments vérifiés par l\'ambulancier', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
+  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', vignette: 'vignette', nomVue: 'nom de la vue', vues: 'vues', scellable: 'scellable', categorie: 'catégorie', etiquette: 'format d\'étiquette', clAmbulancier: 'check-list ambulancier', clElements: 'éléments vérifiés par l\'ambulancier', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
   /** Champs d'un contenant d'exemplaire modifiés localement depuis la dernière répercussion. */
   function personnalisations(e) {
     if (!e.base) return [];
@@ -4223,6 +4229,8 @@ const Inventaires = (() => {
     const racine = !contenant(e.parent) || !contenant(e.parent).source;
     return Object.keys(CHAMPS_LIBELLES).filter((k) => !(racine && (k === 'nom' || k === 'ordre')))
       .filter((k) => !(k === 'etiquette' && !v.etiquette))
+      // Base antérieure à la répercussion des vignettes : sans vignette propre, le contenant suit le type.
+      .filter((k) => !(k === 'vignette' && e.base.vignette === undefined && !v.vignette))
       .filter((k) => !egal(k === 'articles' ? v.articles : v[k], k === 'articles' ? sansNoms(e.base.articles) : e.base[k]));
   }
   const estPersonnalise = (e) => personnalisations(e).length > 0;
@@ -4241,6 +4249,7 @@ const Inventaires = (() => {
       if (k === 'nom') lignes.push(`Nom : « ${b.nom} » → « ${e.nom} »`);
       else if (k === 'ordre') lignes.push('Place changée parmi les sous-inventaires');
       else if (k === 'photo') lignes.push(!e.photo ? 'Photo retirée' : (!b.photo ? 'Photo ajoutée' : 'Photo remplacée'));
+      else if (k === 'vignette') lignes.push(!e.vignette ? 'Vignette retirée' : (!b.vignette ? 'Vignette propre' : 'Vignette remplacée'));
       else if (k === 'nomVue') lignes.push(`Nom de la vue : « ${b.nomVue || '—'} » → « ${e.nomVue || '—'} »`);
       else if (k === 'vues') lignes.push(`Vues supplémentaires modifiées (${pluriel((b.vues || []).length, 'vue')} dans le type, ${(v.vues || []).length} ici)`);
       else if (k === 'scellable') lignes.push(`Scellable : ${oui(b.scellable)} → ${oui(e.scellable)}`);
@@ -4360,21 +4369,23 @@ const Inventaires = (() => {
    * `forcer` : « Revenir au modèle » (ce contenant seulement : ses sous-inventaires gardent leurs personnalisations).
    * Renvoie { modifies, conserves }.
    */
-  const LIBELLES_CONFLIT = { nom: 'Nom', ordre: 'Place parmi les sous-inventaires', photo: 'Photo', nomVue: 'Nom de la vue', scellable: 'Scellable', categorie: 'Catégorie', etiquette: 'Format d\'étiquette QR', clAmbulancier: 'Check-list ambulancier', clElements: 'Éléments vérifiés par l\'ambulancier' };
+  const LIBELLES_CONFLIT = { nom: 'Nom', ordre: 'Place parmi les sous-inventaires', photo: 'Photo', vignette: 'Vignette', nomVue: 'Nom de la vue', scellable: 'Scellable', categorie: 'Catégorie', etiquette: 'Format d\'étiquette QR', clAmbulancier: 'Check-list ambulancier', clElements: 'Éléments vérifiés par l\'ambulancier' };
   function repercuter(e, m, forcer = false, racine = false, decider = () => false) {
     const bilanR = { modifies: 0, conserves: 0 };
     const base = e.base || instantane(m); // exemplaire ancien sans base : tout est considéré comme non modifié
     const v = vueExemplaire(e);
     const nm = instantane(m);
     const avant = canonique(e);
-    ['nom', 'ordre', 'photo', 'nomVue', 'scellable', 'categorie', 'etiquette', 'clAmbulancier', 'clElements'].forEach((k) => {
+    ['nom', 'ordre', 'photo', 'vignette', 'nomVue', 'scellable', 'categorie', 'etiquette', 'clAmbulancier', 'clElements'].forEach((k) => {
       if (racine && (k === 'nom' || k === 'ordre')) return; // le sac garde son nom et sa place
       // Étiquette : un exemplaire sans format propre suit toujours le modèle (formats effacés par un ancien serveur).
-      const suit = k === 'etiquette' && !v.etiquette;
-      if (forcer || suit || egal(v[k], base[k])) e[k] = copieProfonde(m[k]);
+      // Vignette : avant sa répercussion, la base n'en gardait pas ; sans vignette propre, l'exemplaire suit le type.
+      const suit = (k === 'etiquette' && !v.etiquette) || (k === 'vignette' && base.vignette === undefined && !v.vignette);
+      if (forcer || suit || egal(v[k], base[k])) e[k] = k === 'vignette' ? (m.vignette || '') : copieProfonde(m[k]);
       else if (!egal(v[k], nm[k])) {
         const val = (x) => (k === 'photo' ? (x ? 'photo' : 'aucune') : k === 'scellable' ? (x ? 'oui' : 'non') : k === 'etiquette' ? (x ? `${x.largeur}×${x.hauteur} mm` : '—') : (x === undefined || x === '' ? '—' : String(x)));
         const libelle = k === 'photo' ? (e[k] ? (m[k] ? 'Photo remplacée ici' : 'Photo ajoutée ici') : 'Photo retirée ici')
+          : k === 'vignette' ? (e[k] ? (m[k] ? 'Vignette différente ici' : 'Vignette propre ici (aucune dans le type)') : 'Vignette retirée ici')
           : `${LIBELLES_CONFLIT[k]} : « ${val(e[k])} » ici, « ${val(m[k])} » dans le type`;
         if (decider(e, k, libelle)) e[k] = copieProfonde(m[k]); else bilanR.conserves += 1;
       }
@@ -5329,8 +5340,9 @@ const Inventaires = (() => {
 
   /**
    * Vignette d'un contenant primaire sur la page des inventaires : une image qui le désigne (photo du
-   * véhicule, porte de la réserve…) plutôt que la photo d'inventaire. Propre à chaque contenant (non répercutée
-   * depuis un inventaire type). Sans vignette, la photo principale est utilisée.
+   * véhicule, porte de la réserve…) plutôt que la photo d'inventaire. Celle d'un inventaire type se répercute sur
+   * ses exemplaires comme la photo ; un exemplaire peut en avoir une propre (personnalisation). Sans vignette,
+   * la photo principale est utilisée.
    */
   function blocVignette(c) {
     const prendre = idChamp();
@@ -5367,9 +5379,10 @@ const Inventaires = (() => {
           el('label', { for: choisir, classe: 'bouton-photo', texte: 'Choisir une image' }),
           el('input', { type: 'file', id: choisir, accept: 'image/*', classe: 'invisible', surchange: recevoir }),
           c.vignette ? el('button', { type: 'button', classe: 'lien danger', texte: 'Retirer', surclick: () => remplacer('') }) : null)),
-      el('p', { classe: 'aide-question', texte: c.vignette
-        ? 'Image affichée dans la liste des contenants primaires (cadre carré).'
-        : 'Une image qui désigne ce contenant (ex. photo du véhicule). Sans vignette, la liste affiche la photo d\'inventaire.' }));
+      el('p', { classe: 'aide-question', texte: (c.vignette
+        ? 'Image affichée dans la liste des contenants (cadre carré).'
+        : 'Une image qui désigne ce contenant (ex. photo du véhicule). Sans vignette, la liste affiche la photo d\'inventaire.')
+        + (c.modele ? ' Elle se répercute sur les exemplaires avec le reste du type.' : '') }));
   }
 
   // ---------- Gestion d'un contenant (administrateurs) : onglets Contenu / Réglages / Étiquette / Exemplaires ----------
@@ -5432,7 +5445,7 @@ const Inventaires = (() => {
           el('input', { id: 'inv-nom', maxlength: '80', valeur: c.nom, surchange: (e) => { const t = e.target.value.trim(); if (t) { c.nom = t; marquer(c.id); rendre({ garderPosition: true }); } else e.target.value = c.nom; } })),
         choixCategorie,
         c.categorie === 'primaire' && !modele ? blocVehicule(c) : null,
-        c.categorie === 'primaire' ? blocVignette(c) : null),
+        c.categorie === 'primaire' || c.modele || (contenant(c.source) || {}).modele ? blocVignette(c) : null),
       c.emplacement ? null : groupeReglages('Vérification',
         caseReglage('Contenant scellable', 'fermé par un scellé (plomb) une fois vérifié : en check-list, « Est-il scellé ? » évite de refaire l\'inventaire', c.scellable,
           (v) => { c.scellable = v; marquer(c.id); rendre({ garderPosition: true }); }),
