@@ -25,10 +25,13 @@ Pour chaque configuration, photographier l'ensemble Pro + LS monté :
 
 ### Tempus LS seul (housse du LS)
 
+Le LS des configurations **US** et **UK** est dans la même housse
+« attachable » (elle se fixe au Tempus Pro par les clips).
+
 | Configuration | Photo LS |
 |---------------|:--------:|
-| US            | ☐ |
-| UK            | ☐ |
+| US            | ✅ `img/scopes/tempus-ls-attachable.jpg` (housse attachable) |
+| UK            | ✅ `img/scopes/tempus-ls-attachable.jpg` (housse attachable) |
 | Standard      | ✅ `img/scopes/tempus-ls-standard.jpg` |
 | Hélico        | ✅ `img/scopes/tempus-ls-helico.jpg` |
 
