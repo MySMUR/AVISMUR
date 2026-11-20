@@ -30,7 +30,7 @@ Pour chaque configuration, photographier l'ensemble Pro + LS monté :
 | US            | ☐ |
 | UK            | ☐ |
 | Standard      | ✅ `img/scopes/tempus-ls-standard.jpg` |
-| Hélico        | ☐ |
+| Hélico        | ✅ `img/scopes/tempus-ls-helico.jpg` |
 
 ## Optionnel
 
