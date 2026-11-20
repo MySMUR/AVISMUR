@@ -586,7 +586,8 @@ const Materiel = (() => {
       }) : null,
       el('button', { type: 'button', classe: 'mat-ouvrir', surclick: () => ouvrirFiche(f.id) },
         el('span', { classe: 'mat-num', texte: f.numInterne || '?' }),
-        (f.photo || f.photoDonnees || (!f.modeleType && aPhoto(f))) ? vignette({ ...f, photoModele: '', photoModeleDonnees: '' }, 'mat-vignette') : null,
+        // Photo propre à l'appareil, sinon celle de son matériel type (répercutée sur tous les appareils liés).
+        aPhoto(f) ? vignette(f, 'mat-vignette') : null,
         el('span', { classe: 'mat-corps' },
           el('span', { classe: 'mat-nom' }, el('strong', { texte: nomAppareil(f) }),
             f.traceur ? el('span', { classe: 'mat-traceur', title: `Traceur GeoTraceSMUR${f.nomTraceur ? ` : ${f.nomTraceur}` : ''}`, texte: '📡' }) : null),
