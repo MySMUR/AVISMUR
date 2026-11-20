@@ -3063,3 +3063,49 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 .type-bas .type-boutons { gap: 0.25rem; }
 .type-bas .info-bouton { min-width: 2.2rem; min-height: 2.3rem; padding: 0 0.5rem; font-size: 0.85rem; }
 .mat-entete .mat-nouveau { flex: none; }
+
+/* Matériel de prêt (materiel.js, onglet « Matériel de prêt ») */
+.tiroir-sous-lien { padding-left: 1.6rem; }
+.mat-onglets { display: flex; gap: 0.3rem; border-bottom: 2px solid var(--trait); overflow-x: auto; }
+.mat-onglet {
+  flex: 0 0 auto; min-height: 2.75rem; padding: 0.5rem 1rem; margin-bottom: -2px;
+  border: 0; border-bottom: 3px solid transparent; background: none; color: var(--gris); font: inherit; font-weight: 700; cursor: pointer;
+}
+.mat-onglet.actif { color: var(--bleu); border-bottom-color: var(--bleu); }
+.mat-onglet:focus-visible { outline: 3px solid var(--orange); outline-offset: -3px; }
+.pret-aide { margin: 0; color: var(--gris); }
+.pret-compteur { cursor: default; }
+.pret-compteur.libre strong { color: var(--rhone); }
+.pret-compteur.retard strong { color: var(--erreur); }
+.pret-grille { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.7rem; }
+.pret-carte {
+  display: flex; flex-direction: column; gap: 0.5rem; padding: 0.7rem 0.85rem;
+  border: 2px solid var(--trait); border-radius: var(--rayon); background: #fff;
+}
+.pret-carte.libre { border-style: dashed; background: #F8FAFD; }
+.pret-carte.occupee { border-color: var(--bleu); }
+.pret-carte.retard { border-color: var(--erreur); }
+.pret-carte.attente { box-shadow: 0 0 0 2px #E0B04A inset; }
+.pret-carte-tete { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.pret-ref { font-size: 1.15rem; letter-spacing: 0.02em; }
+.pret-libre { background: #E3F4F1; color: #145F58; }
+.pret-occupe { background: var(--bleu); color: #fff; }
+.pret-affecter { align-self: flex-start; }
+.pret-ouvrir {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; width: 100%; padding: 0;
+  border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.pret-nom { font-weight: 700; }
+.pret-ids, .pret-ligne { font-size: 0.85rem; color: var(--gris); }
+.pret-raison { font-size: 0.9rem; font-style: italic; }
+.pret-carte .mat-pastille { white-space: normal; }
+.pret-rendre { font-weight: 700; }
+.pret-bloc-historique summary { cursor: pointer; }
+.pret-historique { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.pret-historique li { padding: 0.55rem 0.2rem; border-top: 1px solid var(--ciel); }
+.pret-dates { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.6rem; }
+.pret-detail { margin: 0; display: grid; gap: 0.35rem; }
+.pret-detail-ligne { display: grid; grid-template-columns: 9.5rem 1fr; gap: 0.5rem; }
+.pret-detail dt { color: var(--gris); }
+.pret-detail dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+@media (max-width: 30rem) { .pret-detail-ligne { grid-template-columns: 1fr; gap: 0; } }

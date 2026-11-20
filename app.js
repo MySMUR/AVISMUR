@@ -666,7 +666,7 @@ function enregistrerAmbulancier() {
 // Véhicules : « checklist-ambulancier » (tableau de bord du parc sur ordinateur, cases sinon),
 //   « carburant », « carrosserie », « mecanique » (mêmes cases ; toucher un véhicule ouvre directement l'écran voulu).
 // « profil » : Mon compte (profil.js) ; « annuaire » : annuaire du personnel (annuaire.js). Pour tous les agents.
-// Inventaires : « inventaires » (inventaires.js). Administration : « utilisateurs », « configuration », « base-articles ».
+// Inventaires : « inventaires » (inventaires.js), « suivi-materiel » et « materiel-prets » (materiel.js). Administration : « utilisateurs », « configuration », « base-articles ».
 let roleCourant = '';
 let vueCourante = 'accueil';
 let cibleInfo = ''; // information à mettre en évidence à l'ouverture du mur (lien d'une notification)
@@ -729,7 +729,7 @@ const vueDuLien = () => (location.hash === '#inv-base' ? 'base-articles' : (gest
 function vueAutorisee(vue) {
   if (VUES_VEHICULES[vue] && !accesVehicules()) return 'aujourdhui';
   if (vue === 'base-articles' && !accesInventaires() && !aDroit('ARTICLES')) return 'aujourdhui';
-  if (vue === 'suivi-materiel' && !accesInventaires() && !aDroit('MATERIEL')) return 'aujourdhui';
+  if ((vue === 'suivi-materiel' || vue === 'materiel-prets') && !accesInventaires() && !aDroit('MATERIEL')) return 'aujourdhui';
   if (vue === 'inventaires' && !accesInventaires()) return 'aujourdhui';
   if (DROITS_VUES[vue] && !aUnDroit(...DROITS_VUES[vue])) return 'accueil';
   return vue;
@@ -762,8 +762,9 @@ function ouvrirVue(demandee) {
     if (/^#inv\b/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
   }
 
-  const materiel = vue === 'suivi-materiel';
-  if (materiel) Materiel.afficher();
+  // Suivi du matériel : onglets « Appareils » (suivi-materiel) et « Matériel de prêt » (materiel-prets).
+  const materiel = vue === 'suivi-materiel' || vue === 'materiel-prets';
+  if (materiel) Materiel.afficher(vue === 'materiel-prets' ? 'prets' : 'appareils');
   else Materiel.masquer();
 
   const config = vue === 'configuration';
@@ -953,6 +954,9 @@ Profil.initialiser({
 });
 Materiel.demarrer({
   appeler, mettreEnFile, retirerDeFile, lireFile: () => fileAttente.lire(), estAdmin: () => aDroit('MATERIEL'),
+  // Matériel de prêt : tous ceux qui ont accès au suivi du matériel, sauf les étudiants (comme MaterielPrets.gs).
+  peutPreter: () => aDroit('MATERIEL') || (accesInventaires() && !estEtudiant()),
+  ouvrirVue: (vue) => ouvrirVue(vue),
 });
 
 $('enregistrer').addEventListener('click', enregistrerAmbulancier);

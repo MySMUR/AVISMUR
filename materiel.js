@@ -19,10 +19,13 @@
  * Hors ligne : la dernière liste reçue est gardée sur l'appareil ; les modifications passent par la
  * file d'attente commune (app.js) et s'affichent tout de suite, marquées « en attente d'envoi ».
  * Backend : Materiel.gs (onglets Materiel et MaterielInterventions).
+ *
+ * Onglet « Matériel de prêt » (vue materiel-prets) : pool de 10 références qui accueillent chacune un matériel
+ * prêté au SMUR ; backend MaterielPrets.gs.
  */
 const Materiel = (() => {
   const CLE_CACHE = 'avismur_materiel';
-  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel'];
+  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret'];
   const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle'];
   const STATUTS_DEFAUT = ['En service', 'En maintenance', 'En panne', 'Prêté', 'Réformé'];
   const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Note', 'Autre'];
@@ -51,6 +54,7 @@ const Materiel = (() => {
   let donnees = null; // dernière réponse du serveur
   let chargementEnCours = false;
   let filtre = { texte: '', type: '', statut: 'actifs', alerte: '' };
+  let onglet = 'appareils'; // « appareils » (base du matériel) ou « prets » (matériel de prêt)
   let filtresOuverts = false; // panneau « Filtres » déplié (type, statut, traceur)
   const selection = new Set();
   let erreur = '';
@@ -440,6 +444,7 @@ const Materiel = (() => {
 
   function rendre() {
     if (!zone) return;
+    if (onglet === 'prets') { rendrePrets(); return; }
     const { fiches: toutes, attente } = etat();
     const actives = toutes.filter((f) => !f.archive && f.statut !== 'Réformé');
     const nbRetard = actives.filter((f) => etatRevision(f).retard).length;
@@ -502,7 +507,7 @@ const Materiel = (() => {
     if (!donnees && chargementEnCours) avis.push(el('p', { classe: 'message', texte: 'Chargement du matériel…' }));
     if (attente.size) avis.push(el('p', { classe: 'message mat-attente-avis', texte: `${attente.size} appareil(s) modifié(s) sur cet appareil, en attente d'envoi au serveur.` }));
 
-    zone.replaceChildren(...[entete, compteurs, filtres, panneauFiltres, ...avis, barreSelection, liste].filter(Boolean));
+    zone.replaceChildren(...[ongletsMateriel(), entete, compteurs, filtres, panneauFiltres, ...avis, barreSelection, liste].filter(Boolean));
     rendreListe();
   }
 
@@ -1552,6 +1557,251 @@ const Materiel = (() => {
     }
   }
 
+  // ---------- Matériel de prêt ----------
+  // Pool de 10 références (« PRÊT 01 » à « PRÊT 10 ») : chacune accueille un matériel prêté au SMUR,
+  // avec ou sans n° biomed. Matériel rendu : la référence redevient disponible, le prêt passe dans l'historique.
+  // Backend : MaterielPrets.gs (onglet MaterielPrets). Hors ligne : même file d'attente que le reste du matériel.
+  const REFERENCES_DEFAUT = Array.from({ length: 10 }, (_, i) => `PRÊT ${String(i + 1).padStart(2, '0')}`);
+  const RAISONS_PRET = ['Remplacement d\'un appareil en réparation', 'Remplacement pendant une révision', 'Essai / démonstration', 'Besoin ponctuel (renfort)'];
+  let rechercheHistorique = '';
+  const references = () => (donnees && donnees.referencesPret) || REFERENCES_DEFAUT;
+  const peutPreter = () => Boolean(outils.peutPreter ? outils.peutPreter() : estAdmin());
+  const nomPret = (p) => [p.type || 'Matériel', p.modele].filter(Boolean).join(' ');
+  const joursDepuis = (iso) => Math.round((new Date(aujourdhui()) - new Date(iso)) / 86400000);
+
+  /** Prêts affichés = serveur + saisies pas encore envoyées. */
+  function etatPrets() {
+    const parId = new Map(((donnees && donnees.prets) || []).map((p) => [p.id, { ...p }]));
+    enAttente().forEach((e) => {
+      const d = e.donnees || {};
+      if (e.action === 'enregistrerPret' && d.pret) {
+        parId.set(d.pret.id, { ...parId.get(d.pret.id), ...d.pret, attente: true });
+      } else if (e.action === 'rendrePret' && parId.has(d.id)) {
+        parId.set(d.id, { ...parId.get(d.id), renduLe: d.date, remarqueRetour: d.remarque || '', renduPar: 'vous', attente: true });
+      }
+    });
+    const tous = [...parId.values()];
+    const ouverts = new Map();
+    tous.filter((p) => !p.renduLe).forEach((p) => { if (!ouverts.has(p.reference)) ouverts.set(p.reference, p); });
+    const clos = tous.filter((p) => p.renduLe).sort((a, b) => String(b.renduLe).localeCompare(String(a.renduLe)));
+    return { ouverts, clos };
+  }
+
+  /** Onglets du suivi du matériel : Appareils | Matériel de prêt. */
+  function ongletsMateriel() {
+    const { ouverts } = etatPrets();
+    const bouton = (cle, texte) => el('button', {
+      type: 'button', role: 'tab', classe: `mat-onglet${onglet === cle ? ' actif' : ''}`, 'aria-selected': String(onglet === cle), texte,
+      surclick: () => {
+        if (onglet === cle) return;
+        if (outils.ouvrirVue) outils.ouvrirVue(cle === 'prets' ? 'materiel-prets' : 'suivi-materiel');
+        else { onglet = cle; rendre(); }
+      },
+    });
+    return el('div', { classe: 'mat-onglets', role: 'tablist', 'aria-label': 'Gestion du matériel' },
+      bouton('appareils', 'Appareils'),
+      bouton('prets', `Matériel de prêt (${ouverts.size}/${references().length})`));
+  }
+
+  function etatRetour(p) {
+    if (!p.retourPrevu) return null;
+    const jours = Math.round((new Date(p.retourPrevu) - new Date(aujourdhui())) / 86400000);
+    if (jours < 0) return { classe: 'retard', texte: `Retour dépassé (prévu le ${dateFr(p.retourPrevu)})`, retard: true };
+    if (jours <= 3) return { classe: 'bientot', texte: `Retour le ${dateFr(p.retourPrevu)}${jours ? ` (J-${jours})` : ' (aujourd\'hui)'}` };
+    return { classe: 'ok', texte: `Retour prévu le ${dateFr(p.retourPrevu)}` };
+  }
+
+  function rendrePrets() {
+    const { ouverts, clos } = etatPrets();
+    const refs = references();
+    const nbRetard = [...ouverts.values()].filter((p) => (etatRetour(p) || {}).retard).length;
+    const nbAttente = [...ouverts.values(), ...clos].filter((p) => p.attente).length;
+
+    const entete = el('div', { classe: 'mat-entete' }, el('h1', { texte: 'Matériel de prêt' }));
+    const aide = el('p', { classe: 'aide-question pret-aide', texte: `${refs.length} références pour le matériel prêté au SMUR. Une fois le matériel rendu, la référence redevient disponible et le prêt reste dans l'historique.` });
+    const compteur = (nombre, libelle, classe) => el('div', { classe: `mat-compteur pret-compteur ${classe}` }, el('strong', { texte: String(nombre) }), el('span', { texte: libelle }));
+    const compteurs = el('div', { classe: 'mat-compteurs' },
+      compteur(ouverts.size, `prêt${ouverts.size > 1 ? 's' : ''} en cours`, 'total'),
+      compteur(refs.length - [...ouverts.keys()].filter((r) => refs.includes(r)).length, 'références disponibles', 'libre'),
+      compteur(nbRetard, 'retours dépassés', 'retard'));
+    const avis = [];
+    if (erreur) avis.push(el('p', { classe: 'message erreur', texte: erreur }));
+    if (!donnees && chargementEnCours) avis.push(el('p', { classe: 'message', texte: 'Chargement…' }));
+    if (nbAttente) avis.push(el('p', { classe: 'message mat-attente-avis', texte: `${nbAttente} prêt(s) modifié(s) sur cet appareil, en attente d'envoi au serveur.` }));
+
+    const grille = el('ul', { classe: 'pret-grille' }, refs.map((ref) => carteReference(ref, ouverts.get(ref))));
+    // Prêt en cours sur une référence retirée du pool (Sheet modifié à la main) : affiché quand même.
+    const orphelins = [...ouverts.values()].filter((p) => !refs.includes(p.reference));
+    orphelins.forEach((p) => grille.append(carteReference(p.reference || '?', p)));
+
+    zone.replaceChildren(...[ongletsMateriel(), entete, aide, compteurs, ...avis, grille, blocHistorique(clos)].filter(Boolean));
+  }
+
+  function carteReference(ref, p) {
+    if (!p) {
+      return el('li', { classe: 'pret-carte libre' },
+        el('div', { classe: 'pret-carte-tete' }, el('strong', { classe: 'pret-ref', texte: ref }), el('span', { classe: 'mat-pastille pret-libre', texte: 'Disponible' })),
+        peutPreter() ? el('button', { type: 'button', classe: 'cfg-bouton pret-affecter', texte: '+ Affecter un prêt', surclick: () => ouvrirPret(ref, null) }) : null);
+    }
+    const retour = etatRetour(p);
+    const jours = p.debut ? joursDepuis(p.debut) : null;
+    return el('li', { classe: `pret-carte occupee${retour && retour.retard ? ' retard' : ''}${p.attente ? ' attente' : ''}` },
+      el('div', { classe: 'pret-carte-tete' },
+        el('strong', { classe: 'pret-ref', texte: ref }),
+        el('span', { classe: 'mat-pastille pret-occupe', texte: p.attente ? 'En attente d\'envoi' : 'En prêt' })),
+      el('button', { type: 'button', classe: 'pret-ouvrir', surclick: () => ouvrirDetailPret(p) },
+        el('span', { classe: 'pret-nom', texte: nomPret(p) }),
+        el('span', { classe: 'pret-ids', texte: [p.biomed === false ? 'Sans n° biomed' : (p.numBiomed ? `Biomed ${p.numBiomed}` : 'N° biomed non renseigné'), p.numSerie && `S/N ${p.numSerie}`].filter(Boolean).join(' · ') }),
+        el('span', { classe: 'pret-ligne', texte: `Propriétaire : ${p.proprietaire || '—'}` }),
+        el('span', { classe: 'pret-ligne', texte: p.debut ? `Depuis le ${dateFr(p.debut)}${jours > 0 ? ` (${jours} j)` : ''}` : '' }),
+        p.raison ? el('span', { classe: 'pret-raison', texte: p.raison }) : null,
+        retour ? el('span', { classe: `mat-pastille rev-${retour.classe}`, texte: retour.texte }) : null),
+      peutPreter() ? el('div', { classe: 'mat-boutons' },
+        el('button', { type: 'button', classe: 'cfg-mini', texte: 'Modifier', surclick: () => ouvrirPret(ref, p) }),
+        el('button', { type: 'button', classe: 'cfg-mini pret-rendre', texte: 'Matériel rendu', surclick: () => ouvrirRetour(p) })) : null);
+  }
+
+  /** Historique des prêts terminés, replié, avec recherche. */
+  function blocHistorique(clos) {
+    if (!clos.length) return null;
+    const liste = el('ul', { classe: 'pret-historique' });
+    const remplir = () => {
+      const t = normaliser(rechercheHistorique);
+      const visibles = clos.filter((p) => !t || t.split(/\s+/).every((mot) => normaliser([p.reference, p.type, p.modele, p.numBiomed, p.numSerie, p.proprietaire, p.raison, p.remarques].join(' ')).includes(mot)));
+      liste.replaceChildren(...(visibles.length ? visibles.map((p) => el('li', {},
+        el('button', { type: 'button', classe: 'pret-ouvrir', surclick: () => ouvrirDetailPret(p) },
+          el('span', { classe: 'pret-nom', texte: `${p.reference} · ${nomPret(p)}` }),
+          el('span', { classe: 'pret-ids', texte: `${p.proprietaire || '—'} · du ${dateFr(p.debut)} au ${dateFr(p.renduLe)}${p.attente ? ' · en attente d\'envoi' : ''}` }),
+          p.raison ? el('span', { classe: 'pret-raison', texte: p.raison }) : null))) : [el('li', { classe: 'mat-vide', texte: 'Aucun prêt ne correspond.' })]));
+    };
+    const recherche = el('input', { type: 'search', valeur: rechercheHistorique, placeholder: 'Référence, matériel, propriétaire…', 'aria-label': 'Rechercher dans l\'historique des prêts', surinput: (e) => { rechercheHistorique = e.target.value; remplir(); } });
+    remplir();
+    return el('details', { classe: 'mat-groupe pret-bloc-historique' },
+      el('summary', { classe: 'mat-groupe-titre' }, el('span', { texte: 'Prêts terminés' }), el('small', { texte: String(clos.length) })),
+      el('div', { classe: 'mat-filtres' }, recherche), liste);
+  }
+
+  function detailPret(p) {
+    const ligneDetail = (libelle, valeur) => (valeur ? el('div', { classe: 'pret-detail-ligne' }, el('dt', { texte: libelle }), el('dd', { texte: valeur })) : null);
+    return el('dl', { classe: 'pret-detail' },
+      ligneDetail('Référence', p.reference),
+      ligneDetail('Matériel', nomPret(p)),
+      ligneDetail('N° biomed', p.biomed === false ? 'Sans n° biomed' : (p.numBiomed || '—')),
+      ligneDetail('N° de série', p.numSerie),
+      ligneDetail('Propriétaire', p.proprietaire),
+      ligneDetail('Contact', p.contact),
+      ligneDetail('Raison du prêt', p.raison),
+      ligneDetail('Début du prêt', dateFr(p.debut)),
+      ligneDetail('Retour prévu', p.retourPrevu ? dateFr(p.retourPrevu) : ''),
+      ligneDetail('Remarques', p.remarques),
+      ligneDetail('Saisi par', p.saisiPar),
+      ligneDetail('Modifié par', p.modifiePar),
+      ligneDetail('Rendu le', p.renduLe ? dateFr(p.renduLe) : ''),
+      ligneDetail('Rendu noté par', p.renduPar),
+      ligneDetail('Remarque au retour', p.remarqueRetour));
+  }
+
+  function ouvrirDetailPret(p) {
+    let d;
+    const boutons = !p.renduLe && peutPreter() ? el('div', { classe: 'mat-boutons' },
+      el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Modifier', surclick: () => { d.close(); ouvrirPret(p.reference, p); } }),
+      el('button', { type: 'button', classe: 'principal', texte: 'Matériel rendu', surclick: () => { d.close(); ouvrirRetour(p); } })) : null;
+    d = fenetre(`${p.reference} · ${nomPret(p)}`, el('div', { classe: 'mat-form' }, detailPret(p), boutons));
+  }
+
+  /** Nouveau prêt sur une référence libre (p null), ou modification d'un prêt en cours. */
+  function ouvrirPret(ref, p) {
+    const { ouverts, clos } = etatPrets();
+    const tous = [...ouverts.values(), ...clos];
+    const libres = references().filter((r) => r === ref || !ouverts.has(r));
+    const choixRef = el('select', {}, libres.map((r) => el('option', { value: r, texte: r, selected: r === ref })));
+    const type = champType(p ? p.type : '');
+    const idListeModeles = nouvelId();
+    const suggestionsModeles = [...new Set([...nomsModelesConnus(), ...tous.map((x) => x.modele)].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
+    const modele = el('input', { valeur: p ? p.modele : '', list: idListeModeles, placeholder: 'Ex. Monnal T60', autocomplete: 'off' });
+    const sansBiomed = el('input', { type: 'checkbox', coche: p ? p.biomed === false : false });
+    const numBiomed = el('input', { valeur: p ? p.numBiomed : '', inputmode: 'text', autocomplete: 'off' });
+    const numSerie = el('input', { valeur: p ? p.numSerie : '', autocomplete: 'off' });
+    const idListeProprio = nouvelId();
+    const proprietaire = el('input', { valeur: p ? p.proprietaire : '', list: idListeProprio, placeholder: 'Service, établissement ou fournisseur', autocomplete: 'off' });
+    const contact = el('input', { valeur: p ? p.contact : '', placeholder: 'Facultatif : interlocuteur, poste…', autocomplete: 'off' });
+    const idListeRaisons = nouvelId();
+    const raison = el('input', { valeur: p ? p.raison : '', list: idListeRaisons, placeholder: 'Pourquoi ce prêt ?', autocomplete: 'off' });
+    const debut = el('input', { type: 'date', valeur: p ? p.debut : aujourdhui() });
+    const retourPrevu = el('input', { type: 'date', valeur: p ? p.retourPrevu : '' });
+    const remarques = el('textarea', { rows: '2', placeholder: 'Facultatif : accessoires fournis, état à l\'arrivée…' });
+    remarques.value = p ? p.remarques || '' : '';
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
+    const champBiomed = champ('N° biomed', numBiomed);
+    const majBiomed = () => { champBiomed.hidden = sansBiomed.checked; };
+    sansBiomed.addEventListener('change', majBiomed);
+    majBiomed();
+    champAvecScan(numBiomed, 'Scanner l\'étiquette biomed', (v) => { numBiomed.value = v; });
+
+    let d;
+    const contenu = el('form', {
+      classe: 'mat-form', novalidate: true,
+      sursubmit: (ev) => {
+        ev.preventDefault();
+        const t = type.valeur();
+        const manque = [!t && 'le type', !proprietaire.value.trim() && 'le propriétaire', !raison.value.trim() && 'la raison du prêt', !debut.value && 'la date de début'].filter(Boolean);
+        if (manque.length) { message.textContent = `À renseigner : ${manque.join(', ')}.`; return; }
+        if (retourPrevu.value && retourPrevu.value < debut.value) { message.textContent = 'Le retour prévu est avant le début du prêt.'; return; }
+        if (etatPrets().ouverts.has(choixRef.value) && (!p || etatPrets().ouverts.get(choixRef.value).id !== p.id)) { message.textContent = `La référence ${choixRef.value} vient d'être occupée : choisissez-en une autre.`; return; }
+        d.close();
+        enfiler('enregistrerPret', {
+          pret: {
+            id: p ? p.id : idFiche(), reference: choixRef.value, type: t, modele: modele.value.trim(),
+            biomed: !sansBiomed.checked, numBiomed: sansBiomed.checked ? '' : numBiomed.value.trim(), numSerie: numSerie.value.trim(),
+            proprietaire: proprietaire.value.trim(), contact: contact.value.trim(), raison: raison.value.trim(),
+            debut: debut.value, retourPrevu: retourPrevu.value, remarques: remarques.value.trim(),
+          },
+        });
+      },
+    },
+    champ('Référence', choixRef),
+    champ('Type de matériel', type.select), type.bloc,
+    champ('Modèle', modele),
+    el('datalist', { id: idListeModeles }, suggestionsModeles.map((m) => el('option', { value: m }))),
+    el('label', { classe: 'mat-case-libelle' }, sansBiomed, el('span', { texte: 'Sans n° biomed' })),
+    champBiomed,
+    champ('N° de série', numSerie),
+    champ('Propriétaire', proprietaire),
+    el('datalist', { id: idListeProprio }, [...new Set(tous.map((x) => x.proprietaire).filter(Boolean))].map((v) => el('option', { value: v }))),
+    champ('Contact chez le propriétaire', contact),
+    champ('Raison du prêt', raison),
+    el('datalist', { id: idListeRaisons }, [...new Set([...RAISONS_PRET, ...tous.map((x) => x.raison).filter(Boolean)])].map((v) => el('option', { value: v }))),
+    el('div', { classe: 'pret-dates' }, champ('Début du prêt', debut), champ('Retour prévu', retourPrevu)),
+    champ('Remarques', remarques),
+    message,
+    el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: p ? 'Enregistrer' : 'Affecter le prêt' })));
+    d = fenetre(p ? `Modifier le prêt · ${p.reference}` : `Nouveau prêt · ${ref}`, contenu);
+  }
+
+  /** Matériel rendu : la référence est libérée, le prêt passe dans l'historique. */
+  function ouvrirRetour(p) {
+    const date = el('input', { type: 'date', valeur: aujourdhui(), min: p.debut || undefined, max: aujourdhui() });
+    const remarque = el('textarea', { rows: '2', placeholder: 'Facultatif : rendu à qui, état, accessoires manquants…' });
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
+    let d;
+    const contenu = el('form', {
+      classe: 'mat-form', novalidate: true,
+      sursubmit: (ev) => {
+        ev.preventDefault();
+        if (!date.value) { message.textContent = 'Date de retour manquante.'; return; }
+        if (p.debut && date.value < p.debut) { message.textContent = 'La date de retour est avant le début du prêt.'; return; }
+        d.close();
+        enfiler('rendrePret', { id: p.id, date: date.value, remarque: remarque.value.trim() });
+      },
+    },
+    el('p', { texte: `${nomPret(p)} (${p.proprietaire || 'propriétaire non renseigné'}). La référence ${p.reference} redeviendra disponible ; le prêt restera consultable dans l'historique.` }),
+    champ('Date de retour', date), champ('Remarque', remarque), message,
+    el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Confirmer le retour' })));
+    d = fenetre(`Matériel rendu · ${p.reference}`, contenu);
+  }
+  /** Modèles connus dans la base du matériel (suggestions). */
+  const nomsModelesConnus = () => [...fiches().map((f) => f.modele), ...modeles().map((m) => m.modele)];
+
   // ---------- Interface publique ----------
   return {
     demarrer(o) {
@@ -1559,8 +1809,10 @@ const Materiel = (() => {
       zone = document.getElementById('zone-materiel');
       donnees = lireCache();
     },
-    afficher() {
+    /** Vue « suivi-materiel » (onglet Appareils) ou « materiel-prets » (onglet Matériel de prêt). */
+    afficher(choix) {
       if (!zone) return;
+      if (choix === 'prets' || choix === 'appareils') onglet = choix;
       zone.hidden = false;
       rendre();
       charger();
