@@ -175,7 +175,11 @@ En gestion des inventaires, dans un contenant (souvent un inventaire type de sac
 
 En check-list, l'emplacement affiche l'exemplaire qui l'occupe (« ↳ Ampoulier A n°3 ») ou « à identifier » (compté dans l'avancement du sac). Le toucher demande « Quel « Ampoulier A » se trouve ici ? » : seuls les exemplaires de ce type sont proposés et acceptés (QR code, NFC ou liste). L'exemplaire identifié est rangé dans l'emplacement et son inventaire s'ouvre. Si un autre exemplaire occupait l'emplacement, il est désaffecté (à retrouver), comme pour tout contenant mobile.
 
-Emplacement acceptant plusieurs inventaires types (ex. scope : Tempus Pro US, UK, hélico, LP15, Schiller T7) : l'agent touche d'abord, sur photo, le modèle présent. La photo affichée est la vignette de l'inventaire type, à défaut sa photo d'inventaire. Un inventaire type sans aucun exemplaire (configuration pas utilisée en ce moment, ex. Tempus Pro standard) n'est pas proposé ; il réapparaît dès qu'un exemplaire lui est rattaché.
+Emplacement acceptant plusieurs inventaires types (ex. scope/défibrillateur) : l'agent touche d'abord, sur photo, le modèle présent. La photo affichée est la vignette de l'inventaire type, à défaut sa photo d'inventaire. Un inventaire type sans aucun exemplaire (configuration pas utilisée en ce moment, ex. Tempus Pro standard) n'est pas proposé ; il réapparaît dès qu'un exemplaire lui est rattaché.
+
+**Familles et configurations.** Les inventaires types dont les noms commencent par les mêmes mots sont regroupés : « Tempus Pro US », « Tempus Pro UK », « Tempus Pro hélico » forment la famille « Tempus Pro ». L'écran montre d'abord LP15, Schiller T7 et Tempus Pro, puis, si l'on touche Tempus Pro, ses configurations. Il suffit donc de bien nommer les inventaires types.
+
+**Tempus LS proposé.** Dans chaque inventaire type de Tempus Pro, un emplacement « Tempus LS » accepte les LS possibles ; le **premier** de la liste est proposé (présélectionné), l'agent peut en toucher un autre. Réglage prévu : Pro US et UK → LS attachable (proposé) puis LS standard ; Pro hélico → LS hélico seul (toujours ensemble, aucune question).
 
 ### Arborescence (ordinateur)
 

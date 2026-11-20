@@ -52,6 +52,8 @@ const Inventaires = (() => {
   // 'dans:<id>' (« un contenant mobile se trouve ici »), 'emp:<id>' (emplacement attendant un type de contenant).
   let identification = '';
   let typeChoisi = ''; // emplacement à plusieurs inventaires types : modèle choisi sur photo
+  let familleChoisie = ''; // famille de modèles ouverte (ex. « Tempus Pro ») : on choisit ensuite la configuration
+  let typePropose = ''; // emplacement dont le premier modèle a déjà été proposé (pour ne pas le reproposer)
   let placement = ''; // sous-inventaire dont on place le point sur la photo
   let avis = ''; // message affiché une fois en haut de la vue
   let confirmer = ''; // action en attente d'une deuxième pression (valider avec manquants, supprimer)
@@ -2855,23 +2857,71 @@ const Inventaires = (() => {
     return x;
   }
   /** Emplacement à plusieurs inventaires types : une photo par modèle, l'agent touche celui qu'il a sous les yeux. */
-  function choixTypeEnPhotos(types) {
+  /**
+   * Familles de modèles d'après leur nom : les modèles qui commencent par les mêmes mots sont regroupés
+   * (« Tempus Pro US », « Tempus Pro UK », « Tempus Pro hélico » → famille « Tempus Pro »). Un modèle sans
+   * voisin (« LP15 », « Schiller T7 ») forme sa propre famille. L'ordre des modèles est conservé.
+   */
+  function famillesDe(types) {
+    const mots = (t) => String(t.nom || '').trim().split(/\s+/);
+    const commun = (a, b) => { let k = 0; while (k < a.length && k < b.length && cle(a[k]) === cle(b[k])) k += 1; return k; };
+    const groupes = new Map();
+    types.forEach((t) => {
+      const m = mots(t);
+      const k = Math.max(0, ...types.filter((u) => u.id !== t.id).map((u) => commun(m, mots(u))));
+      const nom = k ? m.slice(0, k).join(' ') : t.nom;
+      const id = k ? `f:${cle(nom)}` : `t:${t.id}`;
+      if (!groupes.has(id)) groupes.set(id, { cle: id, nom, types: [] });
+      groupes.get(id).types.push(t);
+    });
+    return [...groupes.values()];
+  }
+  /** Photo d'un modèle : sa vignette (ex. scope dans sa housse, de face), sinon sa photo d'inventaire. */
+  function photoModele(t) {
+    const image = el('span', { classe: 'inv-type-photo', 'aria-hidden': 'true' });
+    const imageType = t.vignette || t.photo;
+    if (imageType) {
+      const mettre = (d) => { if (d) image.append(el('img', { src: d, alt: '' })); };
+      if (Photos.enMemoire(imageType)) mettre(Photos.enMemoire(imageType)); else obtenirPhoto(imageType).then(mettre);
+    } else image.textContent = 'Pas de photo';
+    return image;
+  }
+  /**
+   * Choix sur photo du modèle présent. Si des modèles sont regroupés en famille (Tempus Pro), on touche
+   * d'abord la famille puis sa configuration. Une seule famille (ex. les LS acceptés dans un Tempus Pro) :
+   * ses configurations s'affichent directement, la première étant proposée.
+   */
+  function choixTypeEnPhotos(types, groupes) {
+    const seule = groupes.length === 1;
+    const famille = seule ? groupes[0]
+      : groupes.find((g) => g.types.length > 1 && (g.cle === familleChoisie || g.types.some((t) => t.id === typeChoisi))) || null;
+    const boutonType = (t, libelle) => {
+      const n = exemplairesDe(t.id).length;
+      return el('button', { type: 'button', role: 'radio', 'aria-checked': String(typeChoisi === t.id), classe: `inv-type${typeChoisi === t.id ? ' choisi' : ''}`,
+        surclick: () => { typeChoisi = typeChoisi === t.id ? '' : t.id; rendre({ garderPosition: true }); } },
+        photoModele(t), el('strong', { texte: libelle }), el('small', { texte: pluriel(n, 'exemplaire') }));
+    };
+    const suiteNom = (t) => (famille && !seule ? t.nom.trim().split(/\s+/).slice(famille.nom.split(/\s+/).length).join(' ') : '') || t.nom;
+    const etape = famille && !seule ? 3 : 2;
+    const aide = typeChoisi ? `${etape}. Identifiez maintenant l'exemplaire : QR code, NFC ou liste.`
+      : 'Vous pouvez aussi scanner directement l\'étiquette : le modèle sera reconnu.';
+    if (famille) {
+      return el('section', { classe: 'inv-choix-types', 'aria-label': 'Configuration présente' },
+        seule ? null : el('button', { type: 'button', classe: 'inv-type-retour', surclick: () => { familleChoisie = ''; typeChoisi = ''; rendre({ garderPosition: true }); } }, `‹ ${famille.nom} : autre modèle`),
+        el('p', { classe: 'inv-libelle-recherche', texte: seule ? '1. Touchez la configuration présente :' : `2. ${famille.nom} : touchez la configuration présente :` }),
+        el('div', { classe: 'inv-types-grille', role: 'radiogroup' }, ...famille.types.map((t) => boutonType(t, suiteNom(t)))),
+        seule && typeChoisi === famille.types[0].id ? el('p', { classe: 'aide-question', texte: 'Configuration proposée : touchez une autre photo si ce n\'est pas celle-ci.' }) : null,
+        el('p', { classe: 'aide-question', texte: aide }));
+    }
     return el('section', { classe: 'inv-choix-types', 'aria-label': 'Modèle présent' },
       el('p', { classe: 'inv-libelle-recherche', texte: '1. Touchez le modèle présent :' }),
-      el('div', { classe: 'inv-types-grille', role: 'radiogroup' }, ...types.map((t) => {
-        const image = el('span', { classe: 'inv-type-photo', 'aria-hidden': 'true' });
-        // Vignette du modèle (ex. photo du scope dans sa housse), sinon sa photo d'inventaire.
-        const imageType = t.vignette || t.photo;
-        if (imageType) {
-          const mettre = (d) => { if (d) image.append(el('img', { src: d, alt: '' })); };
-          if (Photos.enMemoire(imageType)) mettre(Photos.enMemoire(imageType)); else obtenirPhoto(imageType).then(mettre);
-        } else image.textContent = 'Pas de photo';
-        const n = exemplairesDe(t.id).length;
-        return el('button', { type: 'button', role: 'radio', 'aria-checked': String(typeChoisi === t.id), classe: `inv-type${typeChoisi === t.id ? ' choisi' : ''}`,
-          surclick: () => { typeChoisi = typeChoisi === t.id ? '' : t.id; rendre({ garderPosition: true }); } },
-          image, el('strong', { texte: t.nom }), el('small', { texte: pluriel(n, 'exemplaire') }));
+      el('div', { classe: 'inv-types-grille', role: 'radiogroup' }, ...groupes.map((g) => {
+        if (g.types.length === 1) return boutonType(g.types[0], g.types[0].nom);
+        return el('button', { type: 'button', classe: 'inv-type inv-type-famille', 'aria-label': `${g.nom} : choisir la configuration`,
+          surclick: () => { familleChoisie = g.cle; typeChoisi = ''; rendre({ garderPosition: true }); } },
+          photoModele(g.types[0]), el('strong', { texte: g.nom }), el('small', { texte: `${g.types.length} configurations ›` }));
       })),
-      el('p', { classe: 'aide-question', texte: typeChoisi ? '2. Identifiez maintenant l\'exemplaire : QR code, NFC ou liste.' : 'Vous pouvez aussi scanner directement l\'étiquette : le modèle sera reconnu.' }));
+      el('p', { classe: 'aide-question', texte: aide }));
   }
   /** Écran « Quel … se trouve ici ? » : QR code, NFC ou saisie, avant l'inventaire d'un contenant mobile. */
   function vueIdentification(y, dans = '') {
@@ -2890,8 +2940,13 @@ const Inventaires = (() => {
     const typesAcceptes = typesUtilises.length ? typesUtilises : typesTous;
     if (typeChoisi && !typesAcceptes.some((t) => t.id === typeChoisi)) typeChoisi = '';
     const plusieurs = typesAcceptes.length > 1;
+    const groupes = famillesDe(typesAcceptes);
+    if (familleChoisie && !groupes.some((g) => g.cle === familleChoisie)) familleChoisie = '';
+    // Une seule famille (ex. LS attendu dans un Tempus Pro) : la première configuration est proposée, une fois.
+    if (plusieurs && groupes.length === 1 && emp && typePropose !== emp.id) { typePropose = emp.id; if (!typeChoisi) typeChoisi = typesAcceptes[0].id; }
     const typeAttendu = plusieurs ? (typeChoisi ? contenant(typeChoisi) : null) : (typesAcceptes[0] || null);
-    const filtreTypes = typeAttendu ? [typeAttendu.id] : typesAcceptes.map((t) => t.id);
+    const familleOuverte = groupes.find((g) => g.cle === familleChoisie);
+    const filtreTypes = typeAttendu ? [typeAttendu.id] : (familleOuverte || { types: typesAcceptes }).types.map((t) => t.id);
     const mobiles = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'mobile' && !dansUnModele(c.id)
       && (!emp || filtreTypes.includes(c.source)));
     // Même type d'abord : exemplaires du même contenant d'inventaire type, puis noms proches.
@@ -2915,7 +2970,7 @@ const Inventaires = (() => {
     return [
       parent ? barreContenant(parent, { h1: false, libelleRetour: parent.nom, retour: () => { identification = ''; rendre(); } }) : null,
       el('h1', { tabindex: '-1', texte: typeAttendu ? `Quel « ${typeAttendu.nom} » se trouve ici ?` : (plusieurs ? `Quel « ${emp.nom} » se trouve ici ?` : (y ? `Quel « ${y.nom.replace(/\s*n°\s*\d+$/i, '')} » se trouve ici ?` : 'Quel contenant mobile se trouve ici ?')) }),
-      plusieurs ? choixTypeEnPhotos(typesAcceptes) : null,
+      plusieurs ? choixTypeEnPhotos(typesAcceptes, groupes) : null,
       el('p', { classe: 'consigne' }, `Avant de vérifier son contenu et ses péremptions, identifiez le contenant réellement présent dans « ${parent ? parent.nom : ''} » : scannez son QR code, lisez sa puce NFC ou choisissez-le dans la liste.`),
       el('section', { classe: 'inv-encadre-recherche' },
         el('div', { classe: 'inv-boutons-scan' },
@@ -5651,6 +5706,8 @@ const Inventaires = (() => {
       retourArriere = dejaVu >= 0 && dejaVu < pile.length - 1;
       identification = '';
       typeChoisi = '';
+      familleChoisie = '';
+      typePropose = '';
       placement = '';
       confirmer = '';
       if (retourArriere) pile.length = dejaVu + 1;
