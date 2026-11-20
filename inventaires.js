@@ -5314,10 +5314,15 @@ const Inventaires = (() => {
     };
     return el('section', { classe: 'note-parc inv-note-emplacement inv-types-emplacement' },
       el('strong', { texte: 'Emplacement — inventaires types acceptés' }),
-      el('p', { classe: 'aide-question', texte: 'Avec plusieurs modèles (ex. scopes de marques différentes, ou un même scope avec des pochettes différentes), l\'agent choisit en check-list le modèle présent d\'après sa photo : mettez une photo sur chaque inventaire type.' }),
+      el('p', { classe: 'aide-question', texte: 'Avec plusieurs modèles (ex. scopes de marques différentes, ou un même scope avec des pochettes différentes), l\'agent choisit en check-list le modèle présent d\'après sa photo : mettez une vignette ou une photo sur chaque inventaire type. Des modèles de la même famille (noms qui commencent pareil, ex. « Tempus LS … ») : le premier (★) est proposé.' }),
       el('ul', {}, ...acceptes.map((m) => {
         const t = contenant(m);
-        return el('li', {}, t ? el('a', { href: lien(t.id), texte: t.nom }) : '(supprimé)', t && !t.photo ? el('small', { classe: 'inv-desaffecte', texte: ' sans photo' }) : null,
+        const premier = acceptes[0] === m;
+        return el('li', {}, t ? el('a', { href: lien(t.id), texte: t.nom }) : '(supprimé)', t && !t.photo && !t.vignette ? el('small', { classe: 'inv-desaffecte', texte: ' sans photo' }) : null,
+          acceptes.length > 1 && premier ? el('small', { classe: 'inv-propose', texte: ' ★ proposé en premier' }) : null,
+          // Le premier modèle de la liste est proposé en check-list quand tous sont de la même famille (ex. Tempus LS).
+          acceptes.length > 1 && !premier ? el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': `Proposer ${t ? t.nom : 'ce modèle'} en premier`, title: 'Proposer en premier', texte: '★',
+            surclick: () => fixer([m, ...acceptes.filter((x) => x !== m)]) }) : null,
           acceptes.length > 1 ? el('button', { type: 'button', classe: 'cfg-mini danger', 'aria-label': `Retirer ${t ? t.nom : 'ce modèle'}`, texte: '✕',
             surclick: () => {
               const occ = enfants(c.id)[0];
