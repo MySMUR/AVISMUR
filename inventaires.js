@@ -5318,13 +5318,28 @@ const Inventaires = (() => {
     const idSel = idChamp();
     const sel = el('select', { id: idSel }, el('option', { value: '', texte: autres.length ? 'Choisir un autre inventaire type…' : 'Aucun autre inventaire type' }),
       ...autres.map((t) => el('option', { value: t.id, texte: t.nom })));
+    // Nom générique : l'emplacement prend à sa création le nom du premier modèle (« LP15 ») ; avec plusieurs
+    // modèles, il faut un nom qui les couvre tous (« Scope/défibrillateur »), affiché en check-list.
+    const nomDeModele = (liste) => liste.some((m) => cle((contenant(m) || {}).nom) === cle(c.nom));
+    const renommer = () => {
+      const champNom = document.getElementById('inv-nom');
+      if (champNom) { champNom.scrollIntoView({ block: 'center' }); champNom.focus(); champNom.select(); }
+    };
     const fixer = (liste) => {
+      const avant = acceptes.length;
       c.emplacement = liste.length > 1 ? { modele: liste[0], modeles: liste } : { modele: liste[0] };
       marquer(c.id);
       rendre({ garderPosition: true });
+      if (avant < 2 && liste.length > 1 && nomDeModele(liste)) setTimeout(renommer, 50);
     };
+    const alerteNom = acceptes.length > 1 && nomDeModele(acceptes)
+      ? el('p', { classe: 'inv-alerte-nom' },
+        `Cet emplacement porte le nom d'un des modèles (« ${c.nom} »). Donnez-lui un nom générique, par exemple « Scope/défibrillateur » : c'est ce nom que voit l'agent en check-list. `,
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Renommer', surclick: renommer }))
+      : null;
     return el('section', { classe: 'note-parc inv-note-emplacement inv-types-emplacement' },
       el('strong', { texte: 'Emplacement — inventaires types acceptés' }),
+      alerteNom,
       el('p', { classe: 'aide-question', texte: 'Avec plusieurs modèles (ex. scopes de marques différentes, ou un même scope avec des pochettes différentes), l\'agent choisit en check-list le modèle présent d\'après sa photo : mettez une vignette ou une photo sur chaque inventaire type. Des modèles de la même famille (noms qui commencent pareil, ex. « Tempus LS … ») : le premier (★) est proposé.' }),
       el('ul', {}, ...acceptes.map((m) => {
         const t = contenant(m);

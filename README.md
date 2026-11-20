@@ -177,6 +177,8 @@ En check-list, l'emplacement affiche l'exemplaire qui l'occupe (« ↳ Ampoulier
 
 Emplacement acceptant plusieurs inventaires types (ex. scope/défibrillateur) : l'agent touche d'abord, sur photo, le modèle présent. La photo affichée est la vignette de l'inventaire type, à défaut sa photo d'inventaire. Un inventaire type sans aucun exemplaire (configuration pas utilisée en ce moment, ex. Tempus Pro standard) n'est pas proposé ; il réapparaît dès qu'un exemplaire lui est rattaché.
 
+**Nom de l'emplacement.** À sa création, l'emplacement prend le nom du premier modèle choisi. Dès qu'il en accepte plusieurs, Réglages le signale et propose de le renommer avec un terme générique (ex. « Scope/défibrillateur ») : c'est ce nom que voit l'agent (« Quel « Scope/défibrillateur » se trouve ici ? »). Dans un inventaire type, répercuter ensuite sur les exemplaires.
+
 **Familles et configurations.** Les inventaires types dont les noms commencent par les mêmes mots sont regroupés : « Tempus Pro US », « Tempus Pro UK », « Tempus Pro hélico » forment la famille « Tempus Pro ». L'écran montre d'abord LP15, Schiller T7 et Tempus Pro, puis, si l'on touche Tempus Pro, ses configurations. Il suffit donc de bien nommer les inventaires types.
 
 **Un seul exemplaire, pas de question.** Si le modèle attendu (ou celui touché sur photo) n'a qu'un seul exemplaire, il est pris d'office : l'agent arrive directement dans son inventaire, sans scanner ni choisir dans la liste. Exception : une configuration seulement proposée (★) attend que l'agent la confirme en la touchant.
