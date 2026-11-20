@@ -22,7 +22,7 @@
  */
 const Materiel = (() => {
   const CLE_CACHE = 'avismur_materiel';
-  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention'];
+  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel'];
   const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle'];
   const STATUTS_DEFAUT = ['En service', 'En maintenance', 'En panne', 'Prêté', 'Réformé'];
   const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Note', 'Autre'];
@@ -227,6 +227,11 @@ const Materiel = (() => {
         });
       } else if (e.action === 'supprimerIntervention') {
         interventions = interventions.filter((i) => i.id !== d.intervention);
+      } else if (e.action === 'supprimerMateriel') {
+        // Appareil supprimé : disparaît tout de suite de la liste, même hors ligne.
+        const ids = new Set(d.materiels || []);
+        ids.forEach((id) => { parId.delete(id); attente.delete(id); });
+        interventions = interventions.filter((i) => !ids.has(i.materiel));
       }
     });
     const fichesResolues = [...parId.values()].map((f) => resoudre(f, modeles));
@@ -325,6 +330,18 @@ const Materiel = (() => {
       chargementEnCours = false;
     }
     if (zone && !zone.hidden) rendre();
+  }
+
+  /** Suppression définitive (administrateurs), après confirmation. Renvoie vrai si confirmée. */
+  function supprimerAppareils(liste) {
+    if (!liste.length) return false;
+    const noms = liste.slice(0, 8).map((f) => `• ${nomAppareil(f)}`).join('\n') + (liste.length > 8 ? `\n… et ${liste.length - 8} autre(s)` : '');
+    const question = `Supprimer définitivement ${liste.length > 1 ? `ces ${liste.length} appareils` : 'cet appareil'} ?\n\n${noms}\n\n`
+      + 'La fiche et sa main courante disparaîtront de l\'application. Pour garder l\'historique d\'un appareil réformé, utilisez plutôt « Archiver ».';
+    if (!window.confirm(question)) return false;
+    liste.forEach((f) => { selection.delete(f.id); deplies.delete(f.id); });
+    enfiler('supprimerMateriel', { materiels: liste.map((f) => f.id) });
+    return true;
   }
 
   function enfiler(action, charge) {
@@ -476,6 +493,7 @@ const Materiel = (() => {
       el('span', { texte: `${selection.size} appareil${selection.size > 1 ? 's' : ''} sélectionné${selection.size > 1 ? 's' : ''}` }),
       el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Modifier la sélection', surclick: () => ouvrirModifGroupee([...selection]) }),
       el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter une intervention', surclick: () => ouvrirIntervention([...selection]) }),
+      el('button', { type: 'button', classe: 'cfg-bouton danger', texte: 'Supprimer la sélection', surclick: () => supprimerAppareils(toutes.filter((f) => selection.has(f.id))) }),
       el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Tout désélectionner', surclick: () => { selection.clear(); rendre(); } })) : null;
 
     const liste = el('div', { classe: 'mat-liste', id: 'mat-liste' });
@@ -909,6 +927,11 @@ const Materiel = (() => {
         type: 'button', classe: 'cfg-bouton danger', texte: f.archive ? 'Désarchiver' : 'Archiver',
         title: 'Un appareil archivé disparaît des listes mais garde son historique',
         surclick: () => { if (f.archive || window.confirm(`Archiver ${nomAppareil(f)} ?`)) { d.close(); enfiler('enregistrerMateriel', { fiches: [{ ...f, archive: !f.archive }] }); } },
+      }) : null,
+      f ? el('button', {
+        type: 'button', classe: 'cfg-bouton danger', texte: 'Supprimer',
+        title: 'Efface l\'appareil et sa main courante de l\'application (erreur de saisie, doublon…)',
+        surclick: () => { if (supprimerAppareils([f])) d.close(); },
       }) : null));
     d = fenetre(f ? `Modifier ${nomAppareil(f)}` : 'Nouveau matériel', contenu, { large: true });
     majModele();
