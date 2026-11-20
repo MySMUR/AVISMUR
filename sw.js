@@ -1,5 +1,5 @@
 // À incrémenter à chaque mise à jour, avec les ?v= de index.html.
-const CACHE = 'avismur-v217';
+const CACHE = 'avismur-v218';
 const FICHIERS = [
   './', 'index.html', 'style.css?v=100', 'app.js?v=52', 'config.js?v=6', 'checklists.js?v=13', 'ambulancier.js?v=26', 'actions.js?v=12', 'config-admin.js?v=7', 'utilisateurs.js?v=12', 'parc.js?v=7', 'compteur.js?v=5', 'traceurs.js?v=1', 'inventaires.js?v=75', 'infos.js?v=7', 'materiel.js?v=21', 'profil.js?v=6', 'annuaire.js?v=3', 'meteo.js?v=1', 'lib/qrcode.js?v=1', 'recadrage.js?v=4', 'detourage.js?v=3', 'camera.js?v=1', 'cible-nfc.js?v=1', 
   'manifest.webmanifest',

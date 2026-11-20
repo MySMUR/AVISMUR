@@ -179,6 +179,8 @@ Emplacement acceptant plusieurs inventaires types (ex. scope/défibrillateur) : 
 
 **Familles et configurations.** Les inventaires types dont les noms commencent par les mêmes mots sont regroupés : « Tempus Pro US », « Tempus Pro UK », « Tempus Pro hélico » forment la famille « Tempus Pro ». L'écran montre d'abord LP15, Schiller T7 et Tempus Pro, puis, si l'on touche Tempus Pro, ses configurations. Il suffit donc de bien nommer les inventaires types.
 
+**Un seul exemplaire, pas de question.** Si le modèle attendu (ou celui touché sur photo) n'a qu'un seul exemplaire, il est pris d'office : l'agent arrive directement dans son inventaire, sans scanner ni choisir dans la liste. Exception : une configuration seulement proposée (★) attend que l'agent la confirme en la touchant.
+
 **Tempus LS proposé.** Dans chaque inventaire type de Tempus Pro, un emplacement « Tempus LS » accepte les LS possibles ; le **premier** de la liste est proposé (présélectionné), l'agent peut en toucher un autre. Réglage prévu : Pro US et UK → LS attachable (proposé) puis LS standard ; Pro hélico → LS hélico seul (toujours ensemble, aucune question).
 
 ### Arborescence (ordinateur)

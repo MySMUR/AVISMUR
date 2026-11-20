@@ -53,6 +53,7 @@ const Inventaires = (() => {
   let identification = '';
   let typeChoisi = ''; // emplacement à plusieurs inventaires types : modèle choisi sur photo
   let familleChoisie = ''; // famille de modèles ouverte (ex. « Tempus Pro ») : on choisit ensuite la configuration
+  let autoIdentifie = ''; // emplacement dont l'exemplaire unique a déjà été pris d'office (évite de boucler)
   let typePropose = ''; // emplacement dont le premier modèle a déjà été proposé (pour ne pas le reproposer)
   let placement = ''; // sous-inventaire dont on place le point sur la photo
   let avis = ''; // message affiché une fois en haut de la vue
@@ -2891,14 +2892,19 @@ const Inventaires = (() => {
    * d'abord la famille puis sa configuration. Une seule famille (ex. les LS acceptés dans un Tempus Pro) :
    * ses configurations s'affichent directement, la première étant proposée.
    */
-  function choixTypeEnPhotos(types, groupes) {
+  function choixTypeEnPhotos(types, groupes, choisir) {
     const seule = groupes.length === 1;
     const famille = seule ? groupes[0]
       : groupes.find((g) => g.types.length > 1 && (g.cle === familleChoisie || g.types.some((t) => t.id === typeChoisi))) || null;
     const boutonType = (t, libelle) => {
       const n = exemplairesDe(t.id).length;
       return el('button', { type: 'button', role: 'radio', 'aria-checked': String(typeChoisi === t.id), classe: `inv-type${typeChoisi === t.id ? ' choisi' : ''}`,
-        surclick: () => { typeChoisi = typeChoisi === t.id ? '' : t.id; rendre({ garderPosition: true }); } },
+        surclick: () => {
+          // Un seul exemplaire de ce modèle : pas besoin de l'identifier, il est pris d'office.
+          const ex = typeChoisi === t.id ? [] : exemplairesDe(t.id).filter((x) => x.categorie === 'mobile' && !dansUnModele(x.id));
+          if (ex.length === 1) { typeChoisi = t.id; choisir(ex[0].id); return; }
+          typeChoisi = typeChoisi === t.id ? '' : t.id; rendre({ garderPosition: true });
+        } },
         photoModele(t), el('strong', { texte: libelle }), el('small', { texte: pluriel(n, 'exemplaire') }));
     };
     const suiteNom = (t) => (famille && !seule ? t.nom.trim().split(/\s+/).slice(famille.nom.split(/\s+/).length).join(' ') : '') || t.nom;
@@ -2945,6 +2951,11 @@ const Inventaires = (() => {
     // Une seule famille (ex. LS attendu dans un Tempus Pro) : la première configuration est proposée, une fois.
     if (plusieurs && groupes.length === 1 && emp && typePropose !== emp.id) { typePropose = emp.id; if (!typeChoisi) typeChoisi = typesAcceptes[0].id; }
     const typeAttendu = plusieurs ? (typeChoisi ? contenant(typeChoisi) : null) : (typesAcceptes[0] || null);
+    // Emplacement à un seul modèle, qui n'a qu'un exemplaire : rien à choisir, il est pris d'office.
+    if (emp && !plusieurs && typeAttendu && autoIdentifie !== emp.id) {
+      const ex = exemplairesDe(typeAttendu.id).filter((x) => x.categorie === 'mobile' && !dansUnModele(x.id));
+      if (ex.length === 1) { autoIdentifie = emp.id; queueMicrotask(() => choisir(ex[0].id)); }
+    }
     const familleOuverte = groupes.find((g) => g.cle === familleChoisie);
     const filtreTypes = typeAttendu ? [typeAttendu.id] : (familleOuverte || { types: typesAcceptes }).types.map((t) => t.id);
     const mobiles = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'mobile' && !dansUnModele(c.id)
@@ -2970,7 +2981,7 @@ const Inventaires = (() => {
     return [
       parent ? barreContenant(parent, { h1: false, libelleRetour: parent.nom, retour: () => { identification = ''; rendre(); } }) : null,
       el('h1', { tabindex: '-1', texte: typeAttendu ? `Quel « ${typeAttendu.nom} » se trouve ici ?` : (plusieurs ? `Quel « ${emp.nom} » se trouve ici ?` : (y ? `Quel « ${y.nom.replace(/\s*n°\s*\d+$/i, '')} » se trouve ici ?` : 'Quel contenant mobile se trouve ici ?')) }),
-      plusieurs ? choixTypeEnPhotos(typesAcceptes, groupes) : null,
+      plusieurs ? choixTypeEnPhotos(typesAcceptes, groupes, choisir) : null,
       el('p', { classe: 'consigne' }, `Avant de vérifier son contenu et ses péremptions, identifiez le contenant réellement présent dans « ${parent ? parent.nom : ''} » : scannez son QR code, lisez sa puce NFC ou choisissez-le dans la liste.`),
       el('section', { classe: 'inv-encadre-recherche' },
         el('div', { classe: 'inv-boutons-scan' },
@@ -5713,6 +5724,7 @@ const Inventaires = (() => {
       typeChoisi = '';
       familleChoisie = '';
       typePropose = '';
+      autoIdentifie = '';
       placement = '';
       confirmer = '';
       if (retourArriere) pile.length = dejaVu + 1;
