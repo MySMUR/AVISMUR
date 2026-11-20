@@ -23,6 +23,15 @@ Pour chaque configuration, photographier l'ensemble Pro + LS monté :
 | Standard      | ☐ | ☐ | ☐ |
 | Hélico        | ✅ `img/scopes/tempus-pro-helico.jpg` | ☐ | ☐ |
 
+### Tempus LS seul (housse du LS)
+
+| Configuration | Photo LS |
+|---------------|:--------:|
+| US            | ☐ |
+| UK            | ☐ |
+| Standard      | ✅ `img/scopes/tempus-ls-standard.jpg` |
+| Hélico        | ☐ |
+
 ## Optionnel
 
 | Appareil     | Photo |
