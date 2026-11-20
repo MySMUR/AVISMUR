@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 25;
+  const VERSION_SERVEUR = 26;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -221,7 +221,13 @@ const Inventaires = (() => {
       // `modeles` les liste tous ; `modele` (le premier) reste pour les versions précédentes.
       ...(c.emplacement && c.emplacement.modele ? { emplacement: (() => {
         const modeles = [...new Set([c.emplacement.modele, ...(Array.isArray(c.emplacement.modeles) ? c.emplacement.modeles : [])].filter((x) => ID.test(String(x))))];
-        return modeles.length > 1 ? { modele: modeles[0], modeles } : { modele: modeles[0] };
+        const e = modeles.length > 1 ? { modele: modeles[0], modeles } : { modele: modeles[0] };
+        // Emplacement conditionnel (ex. pochette accessoires Schiller) : attendu seulement si l'emplacement `si.emplacement`
+        // du même contenant primaire est occupé par l'un des modèles `si.modeles` (ex. le scope est un Schiller T7).
+        const si = c.emplacement.si;
+        const siModeles = si && Array.isArray(si.modeles) ? [...new Set(si.modeles.map(String).filter((x) => ID.test(x)))] : [];
+        if (si && ID.test(String(si.emplacement || '')) && siModeles.length) e.si = { emplacement: String(si.emplacement), modeles: siModeles };
+        return e;
       })() } : {}),
       ...(c.source ? { source: c.source } : {}), // exemplaire : contenant du modèle dont il est la copie
       ...(c.base ? { base: c.base } : {}), // exemplaire : état du modèle lors de la dernière répercussion
@@ -530,9 +536,36 @@ const Inventaires = (() => {
     return c && !c.supprime ? c : null;
   };
   function enfants(idParent) {
-    return Object.values(structure.contenants)
+    const liste = Object.values(structure.contenants)
       .filter((c) => !c.supprime && (c.parent || '') === (idParent || ''))
       .sort((a, b) => a.ordre - b.ordre || a.nom.localeCompare(b.nom, 'fr'));
+    // Check-list : un emplacement conditionnel dont la condition n'est pas remplie n'existe pas (ni carte, ni gommette, ni compte).
+    return gestion || simulation ? liste : liste.filter((f) => !enSommeil(f));
+  }
+  const calculsSommeil = new Set(); // garde-fou contre deux conditions qui se renverraient l'une à l'autre
+  /**
+   * Emplacement conditionnel en sommeil : sa condition n'est pas remplie (ex. le scope identifié aujourd'hui n'est pas
+   * un Schiller) et rien n'y a été identifié aujourd'hui. Condition : l'emplacement `si.emplacement` — dans un exemplaire,
+   * celui qui en est la copie — du même contenant primaire est occupé aujourd'hui par l'un des modèles `si.modeles`.
+   * Emplacement de référence introuvable : la condition est considérée remplie (on ne cache rien par erreur).
+   */
+  function enSommeil(e) {
+    const si = e && e.emplacement && e.emplacement.si;
+    if (!si || calculsSommeil.has(e.id)) return false;
+    calculsSommeil.add(e.id);
+    try {
+      return !conditionRemplie(e) && !occupantDuJour(e);
+    } finally { calculsSommeil.delete(e.id); }
+  }
+  function conditionRemplie(e) {
+    const si = e.emplacement.si;
+    if (!si.modeles.length) return true; // condition en cours de réglage
+    const racine = chemin(e.id)[0];
+    const cible = Object.values(structure.contenants).find((x) => !x.supprime && x.emplacement && x.id !== e.id
+      && (x.id === si.emplacement || x.source === si.emplacement) && (chemin(x.id)[0] || {}).id === (racine || {}).id);
+    if (!cible) return true;
+    const occ = occupantDuJour(cible);
+    return Boolean(occ && si.modeles.includes(occ.source));
   }
   /** Du premier niveau jusqu'au contenant. */
   function chemin(id) {
@@ -4318,7 +4351,7 @@ const Inventaires = (() => {
   function instantane(m) {
     return {
       nom: m.nom, ordre: m.ordre, photo: m.photo, vignette: m.vignette || '', scellable: m.scellable, categorie: m.categorie, etiquette: m.etiquette,
-      clAmbulancier: m.clAmbulancier, clElements: m.clElements,
+      clAmbulancier: m.clAmbulancier, clElements: m.clElements, emplacement: m.emplacement,
       points: [...m.points.map(sigPoint), ...(m.fleches || []).map(sigFleche)],
       nomVue: m.nomVue,
       vues: m.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: [...v.points.map(sigPoint), ...(v.fleches || []).map(sigFleche)] })),
@@ -4331,7 +4364,7 @@ const Inventaires = (() => {
     const versModele = (id) => (contenant(id) || {}).source || id;
     return {
       nom: e.nom, ordre: e.ordre, photo: e.photo, vignette: e.vignette || '', scellable: e.scellable, categorie: e.categorie, etiquette: e.etiquette,
-      clAmbulancier: e.clAmbulancier, clElements: e.clElements,
+      clAmbulancier: e.clAmbulancier, clElements: e.clElements, emplacement: e.emplacement,
       points: [...e.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })), ...(e.fleches || []).map(sigFleche)],
       nomVue: e.nomVue,
       vues: e.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: [...v.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })), ...(v.fleches || []).map(sigFleche)] })),
@@ -4488,21 +4521,24 @@ const Inventaires = (() => {
    * `forcer` : « Revenir au modèle » (ce contenant seulement : ses sous-inventaires gardent leurs personnalisations).
    * Renvoie { modifies, conserves }.
    */
-  const LIBELLES_CONFLIT = { nom: 'Nom', ordre: 'Place parmi les sous-inventaires', photo: 'Photo', vignette: 'Vignette', nomVue: 'Nom de la vue', scellable: 'Scellable', categorie: 'Catégorie', etiquette: 'Format d\'étiquette QR', clAmbulancier: 'Check-list ambulancier', clElements: 'Éléments vérifiés par l\'ambulancier' };
+  const LIBELLES_CONFLIT = { nom: 'Nom', ordre: 'Place parmi les sous-inventaires', photo: 'Photo', vignette: 'Vignette', nomVue: 'Nom de la vue', scellable: 'Scellable', categorie: 'Catégorie', etiquette: 'Format d\'étiquette QR', clAmbulancier: 'Check-list ambulancier', clElements: 'Éléments vérifiés par l\'ambulancier', emplacement: 'Modèles acceptés / condition de l\'emplacement' };
   function repercuter(e, m, forcer = false, racine = false, decider = () => false) {
     const bilanR = { modifies: 0, conserves: 0 };
     const base = e.base || instantane(m); // exemplaire ancien sans base : tout est considéré comme non modifié
     const v = vueExemplaire(e);
     const nm = instantane(m);
     const avant = canonique(e);
-    ['nom', 'ordre', 'photo', 'vignette', 'nomVue', 'scellable', 'categorie', 'etiquette', 'clAmbulancier', 'clElements'].forEach((k) => {
+    ['nom', 'ordre', 'photo', 'vignette', 'nomVue', 'scellable', 'categorie', 'etiquette', 'clAmbulancier', 'clElements', 'emplacement'].forEach((k) => {
       if (racine && (k === 'nom' || k === 'ordre')) return; // le sac garde son nom et sa place
       // Étiquette : un exemplaire sans format propre suit toujours le modèle (formats effacés par un ancien serveur).
       // Vignette : avant sa répercussion, la base n'en gardait pas ; sans vignette propre, l'exemplaire suit le type.
-      const suit = (k === 'etiquette' && !v.etiquette) || (k === 'vignette' && base.vignette === undefined && !v.vignette);
+      // Emplacement (modèles acceptés, condition) : la base ne le gardait pas avant ; l'exemplaire suit alors le type.
+      const suit = (k === 'etiquette' && !v.etiquette) || (k === 'vignette' && base.vignette === undefined && !v.vignette)
+        || (k === 'emplacement' && !('emplacement' in base));
+      if (k === 'emplacement' && !m.emplacement && !e.emplacement) return;
       if (forcer || suit || egal(v[k], base[k])) e[k] = k === 'vignette' ? (m.vignette || '') : copieProfonde(m[k]);
       else if (!egal(v[k], nm[k])) {
-        const val = (x) => (k === 'photo' ? (x ? 'photo' : 'aucune') : k === 'scellable' ? (x ? 'oui' : 'non') : k === 'etiquette' ? (x ? `${x.largeur}×${x.hauteur} mm` : '—') : (x === undefined || x === '' ? '—' : String(x)));
+        const val = (x) => (k === 'emplacement' ? (x ? `${modelesEmplacement({ emplacement: x }).map((id) => (contenant(id) || {}).nom || '?').join(', ')}${x.si ? ' (conditionnel)' : ''}` : '—') : k === 'photo' ? (x ? 'photo' : 'aucune') : k === 'scellable' ? (x ? 'oui' : 'non') : k === 'etiquette' ? (x ? `${x.largeur}×${x.hauteur} mm` : '—') : (x === undefined || x === '' ? '—' : String(x)));
         const libelle = k === 'photo' ? (e[k] ? (m[k] ? 'Photo remplacée ici' : 'Photo ajoutée ici') : 'Photo retirée ici')
           : k === 'vignette' ? (e[k] ? (m[k] ? 'Vignette différente ici' : 'Vignette propre ici (aucune dans le type)') : 'Vignette retirée ici')
           : `${LIBELLES_CONFLIT[k]} : « ${val(e[k])} » ici, « ${val(m[k])} » dans le type`;
@@ -5375,7 +5411,9 @@ const Inventaires = (() => {
     };
     const fixer = (liste) => {
       const avant = acceptes.length;
+      const si = c.emplacement && c.emplacement.si;
       c.emplacement = liste.length > 1 ? { modele: liste[0], modeles: liste } : { modele: liste[0] };
+      if (si) c.emplacement.si = si;
       marquer(c.id);
       rendre({ garderPosition: true });
       if (avant < 2 && liste.length > 1 && nomDeModele(liste)) setTimeout(renommer, 50);
@@ -5405,7 +5443,53 @@ const Inventaires = (() => {
             } }) : null);
       })),
       el('div', { classe: 'cfg-ligne' }, sel, el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Accepter aussi', disabled: !autres.length,
-        surclick: () => { if (sel.value) fixer([...acceptes, sel.value]); } })));
+        surclick: () => { if (sel.value) fixer([...acceptes, sel.value]); } })),
+      blocConditionEmplacement(c));
+  }
+
+  /**
+   * « Attendu seulement si… » : l'emplacement n'existe en check-list que si un autre emplacement du même ensemble
+   * (ex. « Scope/défibrillateur » du véhicule) est occupé par l'un des modèles cochés (ex. Schiller T7).
+   */
+  function blocConditionEmplacement(c) {
+    const si = c.emplacement.si || null;
+    const racine = chemin(c.id)[0];
+    const dedans = new Set(descendants(c.id).map((x) => x.id));
+    const candidats = descendants(racine.id).filter((x) => x.emplacement && !dedans.has(x.id) && !dansUnModele(x.id) === !dansUnModele(c.id))
+      .filter((x) => !(x.emplacement.si && x.emplacement.si.emplacement === c.id));
+    const nomPlace = (x) => { const ou = contenant(x.parent); return `${x.nom}${ou ? ` (${ou.nom})` : ''}`; };
+    const fixerSi = (nv) => {
+      if (nv && nv.emplacement && nv.modeles.length) c.emplacement.si = nv; else delete c.emplacement.si;
+      marquer(c.id);
+      rendre({ garderPosition: true });
+    };
+    const idSel = idChamp();
+    const sel = el('select', { id: idSel, surchange: (e) => {
+      const cible = contenant(e.target.value);
+      if (!cible) { fixerSi(null); return; }
+      // Emplacement choisi, modèles pas encore cochés : rien n'est enregistré tant qu'aucun modèle n'est coché.
+      if (!(si && si.emplacement === cible.id)) { c.emplacement.si = { emplacement: cible.id, modeles: [] }; rendre({ garderPosition: true }); }
+    } },
+    el('option', { value: '', texte: 'Toujours attendu' }),
+    ...candidats.map((x) => el('option', { value: x.id, selected: Boolean(si && si.emplacement === x.id), texte: `Seulement si « ${nomPlace(x)} » est…` })));
+    const cible = si ? contenant(si.emplacement) : null;
+    const coches = cible ? el('div', { classe: 'puces', role: 'group', 'aria-label': 'Modèles qui rendent cet emplacement attendu' },
+      ...modelesEmplacement(cible).flatMap((m) => {
+        const t = contenant(m);
+        const i = idChamp();
+        return [el('input', { type: 'checkbox', id: i, checked: si.modeles.includes(m), surchange: (e) => {
+          const l = e.target.checked ? [...si.modeles, m] : si.modeles.filter((x) => x !== m);
+          if (l.length) fixerSi({ emplacement: si.emplacement, modeles: modelesEmplacement(cible).filter((x) => l.includes(x)) });
+          else { c.emplacement.si = { emplacement: si.emplacement, modeles: [] }; rendre({ garderPosition: true }); }
+        } }), el('label', { for: i, texte: t ? t.nom : '(supprimé)' })];
+      })) : null;
+    const resume = cible && si.modeles.length
+      ? `En check-list, « ${c.nom} » n'apparaît que si « ${cible.nom} » est ${si.modeles.map((m) => `« ${(contenant(m) || {}).nom || '?'} »`).join(' ou ')}.`
+      : (cible ? 'Cochez le ou les modèles qui rendent cet emplacement attendu.' : 'Ex. pochette accessoires attendue seulement si le scope du véhicule est un Schiller.');
+    return el('div', { classe: 'inv-condition-emplacement' },
+      el('label', { for: idSel, classe: 'inv-libelle', texte: 'Attendu seulement si…' }), sel, coches,
+      el('p', { classe: 'aide-question', texte: resume }),
+      !candidats.length ? el('p', { classe: 'aide-question', texte: 'Aucun autre emplacement dans cet inventaire : ajoutez d\'abord celui dont dépend celui-ci (ex. « Scope/défibrillateur »).' }) : null);
   }
 
   /** Gestion : contenant vérifié par la check-list ambulancier (véhicule, éléments vérifiés ici). */

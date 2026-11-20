@@ -1859,6 +1859,7 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .inv-type small { color: var(--gris); }
 .inv-alerte-nom { margin: 0.4rem 0; padding: 0.5rem 0.7rem; border-radius: 10px; background: #fff4e0; color: #7a4b00; }
 .inv-alerte-nom .cfg-bouton { margin-left: 0.3rem; }
+.inv-condition-emplacement { margin-top: 0.8rem; padding-top: 0.6rem; border-top: 1px solid var(--bordure, #ddd); display: grid; gap: 0.4rem; }
 .inv-propose { color: var(--bleu); font-weight: 600; }
 .inv-type-famille small { color: var(--bleu); font-weight: 600; }
 .inv-type-retour { background: none; border: 0; padding: 0.2rem 0; color: var(--bleu); font: inherit; font-weight: 600; cursor: pointer; }
