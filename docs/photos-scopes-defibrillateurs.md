@@ -18,8 +18,8 @@ Pour chaque configuration, photographier l'ensemble Pro + LS monté :
 
 | Configuration | Ensemble Pro + LS | Housse fermée (face) | Housse ouverte / rangement |
 |---------------|:-----------------:|:--------------------:|:--------------------------:|
-| US            | ☐ | ☐ | ☐ |
-| UK            | ☐ | ☐ | ☐ |
+| US            | ✅ `img/scopes/tempus-pro-us.jpg` | ☐ | ☐ |
+| UK            | ✅ `img/scopes/tempus-pro-uk.jpg` | ☐ | ☐ |
 | Standard      | ☐ | ☐ | ☐ |
 | Hélico        | ☐ | ☐ | ☐ |
 
