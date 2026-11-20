@@ -2877,6 +2877,29 @@ const Inventaires = (() => {
     });
     return [...groupes.values()];
   }
+  /**
+   * Contenant lié à un appareil du suivi du matériel (ex. Schiller vissé dans sa housse) : scanner l'étiquette
+   * biomed ou la puce de l'appareil désigne alors le contenant. Lien fort : le contenant porte un contrôle
+   * « Matériel attendu » dont le n° désigne cet appareil. À défaut, par le nom : n° interne SMUR dans le nom du
+   * contenant et modèle de l'appareil dans le nom du contenant ou de son inventaire type (« Schiller T7 » › « Schiller 1 »).
+   * Renvoie le contenant s'il est seul à correspondre, sinon null.
+   */
+  function contenantDeAppareil(appareil, candidats) {
+    if (!appareil) return null;
+    const lies = candidats.filter((c) => c.articles.some((a) => a.controle === 'materiel' && a.attendu
+      && (appareilDe(a, a.attendu) || {}).id === appareil.id));
+    if (lies.length === 1) return lies[0];
+    if (lies.length > 1) return null;
+    const num = cle(appareil.numInterne);
+    if (!num) return null;
+    const motsModele = cle(appareil.modele).split(' ').filter((m) => m.length >= 2);
+    const numDans = new RegExp(`(^|[^0-9])${num.replace(/[^0-9a-z]/g, '')}([^0-9]|$)`);
+    const parNom = candidats.filter((c) => {
+      const noms = `${cle(c.nom)} ${cle((contenant(c.source) || {}).nom)}`;
+      return numDans.test(cle(c.nom)) && (!motsModele.length || motsModele.some((m) => noms.includes(m)));
+    });
+    return parNom.length === 1 ? parNom[0] : null;
+  }
   /** Photo d'un modèle : sa vignette (ex. scope dans sa housse, de face), sinon sa photo d'inventaire. */
   function photoModele(t) {
     const image = el('span', { classe: 'inv-type-photo', 'aria-hidden': 'true' });
@@ -2960,10 +2983,29 @@ const Inventaires = (() => {
     const filtreTypes = typeAttendu ? [typeAttendu.id] : (familleOuverte || { types: typesAcceptes }).types.map((t) => t.id);
     const mobiles = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'mobile' && !dansUnModele(c.id)
       && (!emp || filtreTypes.includes(c.source)));
+    // Appareil scanné (étiquette biomed, n° de série, puce) : le contenant qui lui est lié, parmi tous les modèles acceptés.
+    const candidatsAppareil = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'mobile' && !dansUnModele(c.id)
+      && (!emp || typesAcceptes.some((t) => t.id === c.source)));
+    const parAppareil = (code) => {
+      const app = appareilParCode(code);
+      return app ? { appareil: app, c: contenantDeAppareil(app, candidatsAppareil) } : null;
+    };
+    const viaAppareil = (code) => {
+      const r = parAppareil(code);
+      if (!r) return null;
+      if (!r.c) return () => messageVue(`${libelleAppareil(r.appareil)} reconnu, mais aucun contenant ici ne lui est rattaché : choisissez le contenant dans la liste.`, 'erreur');
+      return () => choisir(r.c.id);
+    };
     // Même type d'abord : exemplaires du même contenant d'inventaire type, puis noms proches.
     const memeType = (c) => (emp ? true : y ? (y.source && c.source === y.source) || cle(c.nom).replace(/\d+|n°/g, '').trim() === cle(y.nom).replace(/\d+|n°/g, '').trim() : Boolean(c.desaffecte));
     const filtrer = (texte) => {
       resultats.innerHTML = '';
+      // N° biomed ou de série saisi (ou douchette) : contenant de l'appareil en tête de liste.
+      const r = String(texte || '').trim().length >= 3 ? parAppareil(texte) : null;
+      if (r && r.c) {
+        resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => choisir(r.c.id) },
+          el('strong', { texte: r.c.nom }), el('small', { texte: `${libelleAppareil(r.appareil)} reconnu` }))));
+      }
       const mots = cle(texte).split(' ').filter(Boolean);
       const trouves = mobiles.filter((c) => mots.every((m) => cle(c.nom).includes(m)))
         .sort((a, b) => (memeType(b) - memeType(a)) || a.nom.localeCompare(b.nom, 'fr'));
@@ -2974,7 +3016,13 @@ const Inventaires = (() => {
           el('strong', { texte: c.nom }), el('small', { classe: c.desaffecte ? 'inv-desaffecte' : '', texte: c.desaffecte ? 'désaffecté : à retrouver' : '' }))));
       });
     };
-    const saisie = el('input', { id: champ, type: 'search', autocomplete: 'off', placeholder: y ? `ex. ${y.nom.replace(/\s*n°\s*\d+$/i, '')}` : 'ex. ampoulier, sacoche', surinput: (e) => filtrer(e.target.value) });
+    const saisie = el('input', { id: champ, type: 'search', autocomplete: 'off', placeholder: y ? `ex. ${y.nom.replace(/\s*n°\s*\d+$/i, '')}` : 'ex. ampoulier, sacoche, n° biomed', surinput: (e) => filtrer(e.target.value) });
+    // Douchette : le n° biomed arrive suivi d'Entrée, l'appareil reconnu ouvre directement son contenant.
+    saisie.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const suite = viaAppareil(saisie.value);
+      if (suite) { e.preventDefault(); suite(); }
+    });
     filtrer('');
     const qr = 'BarcodeDetector' in window;
     const nfc = 'NDEFReader' in window;
@@ -2985,8 +3033,8 @@ const Inventaires = (() => {
       el('p', { classe: 'consigne' }, `Avant de vérifier son contenu et ses péremptions, identifiez le contenant réellement présent dans « ${parent ? parent.nom : ''} » : scannez son QR code, lisez sa puce NFC ou choisissez-le dans la liste.`),
       el('section', { classe: 'inv-encadre-recherche' },
         el('div', { classe: 'inv-boutons-scan' },
-          el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !qr, surclick: () => scanner({ qr: true, nfc: false }, choisir) }, logoQr(), el('span', { texte: 'Scanner son QR code' })),
-          el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !nfc, surclick: () => scanner({ qr: false, nfc: true }, choisir) }, logoNfc(), el('span', { texte: 'Lire sa puce NFC' }))),
+          el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !qr, surclick: () => scanner({ qr: true, nfc: false }, choisir, viaAppareil) }, logoQr(), el('span', { texte: 'Scanner son QR code' })),
+          el('button', { type: 'button', classe: 'inv-bouton-scan', disabled: !nfc, surclick: () => scanner({ qr: false, nfc: true }, choisir, viaAppareil) }, logoNfc(), el('span', { texte: 'Lire sa puce NFC' }))),
         el('label', { for: champ, classe: 'inv-libelle-recherche inv-libelle-identif', texte: 'Ou choisissez-le :' }), saisie, resultats),
       el('p', { classe: 'message inv-message', role: 'alert', hidden: true }),
       el('p', { classe: 'aide-question', texte: `Lisez le nom sur le contenant ou scannez-le : il est à identifier à chaque vérification. Le contenant choisi sera rangé dans « ${parent ? parent.nom : ''} ».` }),
@@ -6369,7 +6417,7 @@ const Inventaires = (() => {
 
   // ---------- Scanner (QR code par la caméra, puce NFC) ----------
 
-  function scanner(choix = { qr: true, nfc: true }, surTrouve = aller) {
+  function scanner(choix = { qr: true, nfc: true }, surTrouve = aller, surAutre = null) {
     const qr = choix.qr && 'BarcodeDetector' in window;
     const nfc = choix.nfc && 'NDEFReader' in window;
     const video = el('video', { playsinline: '', muted: '', autoplay: '' });
@@ -6399,7 +6447,13 @@ const Inventaires = (() => {
     };
     const trouve = (texte) => {
       const m = /#inv=([a-z0-9]{6,16})$/.exec(String(texte || ''));
-      if (!m) { lecture.textContent = 'Ce code n\'est pas celui d\'un inventaire.'; return; }
+      if (!m) {
+        // Autre code (étiquette biomed, puce d'appareil) : la vue appelante peut le reconnaître.
+        const suite = surAutre ? surAutre(texte) : null;
+        if (suite) { fermer(); suite(); return; }
+        lecture.textContent = surAutre ? 'Ce code n\'est ni celui d\'un inventaire ni celui d\'un appareil connu.' : 'Ce code n\'est pas celui d\'un inventaire.';
+        return;
+      }
       fermer();
       surTrouve(m[1]);
     };
@@ -6408,7 +6462,8 @@ const Inventaires = (() => {
     annuler.focus();
 
     if (qr) {
-      const detecteur = new BarcodeDetector({ formats: ['qr_code'] });
+      // Avec reconnaissance d'appareil : aussi les codes-barres des étiquettes biomed.
+      const detecteur = new BarcodeDetector({ formats: surAutre ? ['qr_code', 'code_128', 'code_39', 'ean_13', 'data_matrix'] : ['qr_code'] });
       navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }).then((f) => {
         if (fini) { f.getTracks().forEach((t) => t.stop()); return; }
         flux = f;
@@ -6430,7 +6485,10 @@ const Inventaires = (() => {
       lecteur.addEventListener('reading', (e) => {
         if (CibleNfc.enReglage()) return; // puce passée pour repérer l'antenne
         const lienPuce = [...e.message.records].find((r) => r.recordType === 'url' || r.recordType === 'absolute-url');
-        trouve(lienPuce ? new TextDecoder().decode(lienPuce.data) : '');
+        const lien = lienPuce ? new TextDecoder().decode(lienPuce.data) : '';
+        // Puce d'appareil sans lien d'inventaire : on passe aussi son texte (« Biomed … », « S/N … »).
+        const textes = [...e.message.records].filter((r) => r.recordType === 'text').map((r) => { try { return new TextDecoder(r.encoding || 'utf-8').decode(r.data); } catch (err) { return ''; } });
+        trouve(/#inv=/.test(lien) || !surAutre ? lien : [lien, ...textes].filter(Boolean).join(' '));
       });
       lecteur.scan({ signal: arretNfc.signal }).catch(() => { /* NFC refusé ou éteint : le QR code reste possible */ });
     }
