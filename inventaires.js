@@ -559,13 +559,14 @@ const Inventaires = (() => {
   }
   function conditionRemplie(e) {
     const si = e.emplacement.si;
-    if (!si.modeles.length) return true; // condition en cours de réglage
-    const racine = chemin(e.id)[0];
-    const cible = Object.values(structure.contenants).find((x) => !x.supprime && x.emplacement && x.id !== e.id
-      && (x.id === si.emplacement || x.source === si.emplacement) && (chemin(x.id)[0] || {}).id === (racine || {}).id);
-    if (!cible) return true;
-    const occ = occupantDuJour(cible);
-    return Boolean(occ && si.modeles.includes(occ.source));
+    if (!si.modeles.length) return true; // condition en cours de réglage (aucun modèle coché)
+    const racine = (chemin(e.id)[0] || {}).id;
+    const memeEnsemble = Object.values(structure.contenants).filter((x) => !x.supprime && x.emplacement && x.id !== e.id && (chemin(x.id)[0] || {}).id === racine);
+    // L'emplacement de référence, ou sa copie ; à défaut (emplacement recréé à la main), celui qui accepte ces modèles.
+    const cibles = memeEnsemble.filter((x) => x.id === si.emplacement || x.source === si.emplacement);
+    const parModeles = memeEnsemble.filter((x) => modelesEmplacement(x).some((m) => si.modeles.includes(m)));
+    // Aucun emplacement de référence : condition non remplie (l'emplacement reste masqué).
+    return (cibles.length ? cibles : parModeles).some((x) => { const occ = occupantDuJour(x); return Boolean(occ && si.modeles.includes(occ.source)); });
   }
   /** Du premier niveau jusqu'au contenant. */
   function chemin(id) {
@@ -1359,7 +1360,9 @@ const Inventaires = (() => {
           c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null,
           c.traceur ? el('span', { classe: 'inv-tag-scellable', title: `Traceur GeoTraceSMUR : ${c.traceur}`, texte: '📡' }) : null,
           c.modele ? el('span', { classe: 'inv-tag-scellable inv-tag-modele', texte: `Type · ${pluriel(exemplairesDe(c.id).length, 'exemplaire')}` }) : null,
-          c.emplacement ? el('span', { classe: 'inv-tag-scellable inv-tag-emplacement', texte: 'Emplacement' }) : null),
+          c.emplacement ? el('span', { classe: 'inv-tag-scellable inv-tag-emplacement', texte: 'Emplacement' }) : null,
+          // Gestion : rappel qu'il est masqué en check-list hors condition (ex. « si Schiller T7 »).
+          gestion && c.emplacement && c.emplacement.si && c.emplacement.si.modeles.length ? el('span', { classe: 'inv-tag-scellable inv-tag-emplacement', title: 'Masqué en check-list si la condition n\'est pas remplie', texte: `si ${c.emplacement.si.modeles.map((m) => (contenant(m) || {}).nom || '?').join(' / ')}` }) : null),
         c.emplacement ? el('span', { classe: `inv-carte-occupant${occupant ? '' : ' vide'}`, texte: occupant ? `↳ ${occupant.nom}` : '↳ à identifier (QR, NFC ou liste)' }) : null,
         el('span', { classe: 'inv-carte-etat' }, b.complet ? '✓ ' : '', b.texte,
           sous ? ` · ${pluriel(sous, 'sous-inventaire')}` : ''),
