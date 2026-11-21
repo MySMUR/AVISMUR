@@ -3330,6 +3330,8 @@ const Inventaires = (() => {
         fils.length || niveau === 0 ? null : miniature(c),
         replie && nbFils ? el('span', { classe: 'inv-tb-replie', title: `${pluriel(nbFils, 'sous-inventaire')} non affichés`, texte: `+${nbFils}` }) : null,
         el('span', { classe: `inv-tb-nom${r.biomed ? ' inv-tb-biomed' : ''}`, texte: c.nom }),
+        // Matériel biomédical relevé dans ce contenant : en gras, avec son n° interne SMUR (« Scope Corpuls3 n° 2 »).
+        ...r.detail.appareils.filter((x) => !x.ou).map((x) => el('span', { classe: `inv-tb-appareil${x.ok ? '' : ' ko'}`, texte: x.nom })),
         el('span', { classe: 'inv-tb-pictos' }, ...r.pictos)),
       fils.length ? el('div', { classe: 'inv-tb-grille' }, ...fils) : null);
   }
