@@ -184,7 +184,7 @@ const Simulation = (() => {
     if (navigator.onLine) {
       appeler('etatSimulation').then((rep) => {
         if (!rep.ok) return;
-        brut.set.call(localStorage, CLE_DISPO, rep.disponible ? '1' : '0');
+        if (typeof rep.disponible === 'boolean') brut.set.call(localStorage, CLE_DISPO, rep.disponible ? '1' : '0');
         afficher(etat ? rep.autres : undefined);
       }).catch(() => {});
     }
