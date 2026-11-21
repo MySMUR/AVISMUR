@@ -741,7 +741,13 @@ function vueAutorisee(vue) {
 
 function ouvrirVue(demandee) {
   const precedente = vueCourante;
-  const vue = vueAutorisee(demandee);
+  let vue = vueAutorisee(demandee);
+  // Ambulancier : la fiche régulation du jour d'abord, la check-list des véhicules ensuite.
+  let ficheExigee = false;
+  if (roleCourant === 'ambulancier' && (vue === 'checklist-ambulancier' || vue === 'aujourdhui') && !Regulation.faiteAujourdhui()) {
+    vue = 'fiche-regulation';
+    ficheExigee = true;
+  }
   vueCourante = vue;
   // Lien actif dans le menu : la check-list du jour de l'IADE, ce sont ses inventaires ; celle de l'ambulancier, ses véhicules.
   const active = vue === 'aujourdhui' ? (profilIade() ? 'inventaires' : 'checklist-ambulancier') : vue;
@@ -788,7 +794,7 @@ function ouvrirVue(demandee) {
   else Annuaire.masquer();
 
   const regulation = vue === 'fiche-regulation';
-  if (regulation) { try { Regulation.ouvrir(); } catch (err) { console.error(err); } }
+  if (regulation) { try { Regulation.ouvrir(ficheExigee); } catch (err) { console.error(err); } }
   else Regulation.masquer();
 
   const infos = vue === 'accueil' || vue === 'types-infos';
@@ -819,6 +825,7 @@ GRAND_ECRAN.addEventListener('change', () => {
 
 /** Ouvre la check-list d'un véhicule, y compris depuis le tableau de bord du parc ou l'écran Carburant. */
 function ouvrirChecklist(id) {
+  if (roleCourant === 'ambulancier' && !Regulation.faiteAujourdhui()) { ouvrirVue('checklist-ambulancier'); return; } // fiche régulation d'abord
   if (!$('vue-parc').hidden || Ambulancier.mode() || $('zone-ambulancier').hidden) ouvrirVue('aujourdhui');
   Ambulancier.ouvrirChecklist(id);
 }
@@ -940,7 +947,7 @@ function ouvrirAppareilDuLien(lien) {
   if (vueCourante === 'suivi-materiel') Materiel.ouvrirAppareil(id);
 }
 Parc.initialiser({ appeler });
-Regulation.initialiser({ appeler, mettreEnFile, vignette: (id, classe) => (Ambulancier.vignette ? Ambulancier.vignette(id, classe) : null), fileAttente: () => fileAttente.lire() });
+Regulation.initialiser({ appeler, mettreEnFile, ouvrirVue: (v) => ouvrirVue(v), vignette: (id, classe) => (Ambulancier.vignette ? Ambulancier.vignette(id, classe) : null), fileAttente: () => fileAttente.lire() });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });
 Utilisateurs.initialiser({ appeler, aDroit, estPrincipal: () => roleCourant === 'admin' });
 Annuaire.initialiser({

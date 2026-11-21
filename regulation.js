@@ -13,8 +13,11 @@ const Regulation = (() => {
   let donnees = null; // réponse de lireFicheRegulation
   let saisie = null; // { vehicules: {id: {disponible, position, commentaire}}, bips: {id: {nom, horaires}} }
   let erreur = '';
+  let exigee = false; // ouverte à la place de la check-list, pas encore faite
+  const faite = () => lireStockage(CLE_FAITE) === aujourdhui();
   let message = { texte: '', classe: '' };
   const CLE = 'avismur_fiche_regulation';
+  const CLE_FAITE = 'avismur_fiche_regulation_faite'; // jour (jj/mm/aaaa) de la dernière fiche envoyée ou mise en file
   const CLE_BROUILLON = 'avismur_fiche_regulation_brouillon';
 
   function el(balise, attributs = {}, ...enfants) {
@@ -59,6 +62,7 @@ const Regulation = (() => {
       const premiere = !donnees;
       donnees = rep;
       ecrireStockage(CLE, rep);
+      if (rep.dernierEnvoi && rep.dernierEnvoi.date === aujourdhui()) ecrireStockage(CLE_FAITE, aujourdhui());
       if (premiere || !saisie) initialiserSaisie();
     } catch (e) {
       erreur = donnees ? 'Hors ligne : dernière fiche connue.' : 'Hors ligne et aucune fiche gardée sur cet appareil.';
@@ -73,28 +77,27 @@ const Regulation = (() => {
     return [];
   }
 
+  /** Interrupteur (case à cocher en rôle « switch ») : libellé, état, action au changement. */
+  function interrupteur(libelle, actif, surChange, classe) {
+    return el('label', { classe: `reg-inter reg-inter-${classe}` },
+      el('input', { type: 'checkbox', role: 'switch', checked: actif, surchange: (e) => surChange(e.target.checked) }),
+      el('span', { classe: 'reg-inter-piste', 'aria-hidden': 'true' }),
+      el('span', { texte: libelle }));
+  }
+
   function ligneVehicule(v) {
     const s = saisie.vehicules[v.id] || (saisie.vehicules[v.id] = { disponible: 'OUI', position: '', commentaire: '' });
     const positions = positionsPour(v);
-    const bascule = (valeur) => el('button', {
-      type: 'button', classe: `reg-dispo ${s.disponible === valeur ? 'actif' : ''} ${valeur === 'NON' ? 'non' : 'oui'}`,
-      'aria-pressed': String(s.disponible === valeur), texte: valeur === 'OUI' ? 'Disponible' : 'Indisponible',
-      surclick: () => {
-        s.disponible = valeur;
-        if (valeur === 'NON' && positions.includes('HS')) s.position = 'HS';
-        if (valeur === 'OUI' && s.position === 'HS') s.position = '';
-        garderBrouillon();
-        rendre();
-      },
-    });
+    const bascule = (valeur) => {
+      s.disponible = valeur;
+      if (valeur === 'NON' && positions.includes('HS')) s.position = 'HS';
+      if (valeur === 'OUI' && s.position === 'HS') s.position = '';
+      garderBrouillon();
+      rendre();
+    };
     // Armé : tout le matériel de prise en charge médicale à bord ; désarmé : véhicule vidé.
     // Indépendant de la disponibilité (armé et indisponible : contrôle au garage ; disponible et désarmé : VL en DSM).
     if (v.type !== 'AUTRE' && !s.armement) s.armement = 'ARMÉ';
-    const armement = (valeur) => el('button', {
-      type: 'button', classe: `reg-dispo ${s.armement === valeur ? 'actif' : ''} ${valeur === 'DÉSARMÉ' ? 'desarme' : 'arme'}`,
-      'aria-pressed': String(s.armement === valeur), texte: valeur === 'ARMÉ' ? 'Armé' : 'Désarmé',
-      surclick: () => { s.armement = valeur; garderBrouillon(); rendre(); },
-    });
     const choixPosition = positions.length ? el('select', {
       classe: 'reg-position', 'aria-label': `Position de ${v.id}`,
       surchange: (e) => { s.position = e.target.value; garderBrouillon(); },
@@ -104,8 +107,9 @@ const Regulation = (() => {
       App.vignette ? App.vignette(v.id, 'reg-vignette') : null,
       el('div', { classe: 'reg-vehicule-nom' }, el('strong', { texte: v.id.length <= 4 ? v.id : v.libelle }),
         v.id.length <= 4 ? el('small', { texte: v.libelle.replace(/^(VML|UMH)\s*F\s*\d+\s*/i, '') }) : null),
-      el('div', { classe: 'reg-dispos' }, bascule('OUI'), bascule('NON')),
-      v.type === 'AUTRE' ? null : el('div', { classe: 'reg-dispos', role: 'group', 'aria-label': `Armement de ${v.id}` }, armement('ARMÉ'), armement('DÉSARMÉ')),
+      el('div', { classe: 'reg-dispos' },
+        interrupteur('Disponible', s.disponible !== 'NON', (on) => bascule(on ? 'OUI' : 'NON'), 'dispo'),
+        v.type === 'AUTRE' ? null : interrupteur('Armé', s.armement !== 'DÉSARMÉ', (on) => { s.armement = on ? 'ARMÉ' : 'DÉSARMÉ'; garderBrouillon(); rendre(); }, 'arme')),
       choixPosition,
       el('input', {
         type: 'text', classe: 'reg-commentaire', placeholder: 'Commentaire', valeur: s.commentaire || '', maxlength: '200',
@@ -156,6 +160,8 @@ const Regulation = (() => {
     const bips = donnees.bips.map((b) => ({ id: b.id, affectation: b.affectation, ...saisie.bips[b.id] }));
     const ok = App.mettreEnFile({ action: 'envoyerFicheRegulation', donnees: { vehicules, bips } });
     if (!ok) return;
+    ecrireStockage(CLE_FAITE, aujourdhui());
+    localStorage.removeItem(CLE_BROUILLON);
     message = {
       texte: navigator.onLine ? 'Fiche envoyée à la régulation (PDF par mail).' : 'Hors ligne : la fiche partira au retour du réseau.',
       classe: 'succes',
@@ -169,6 +175,8 @@ const Regulation = (() => {
     zone.innerHTML = '';
     zone.append(el('h1', { texte: 'Fiche régulation' }),
       el('p', { classe: 'consigne', texte: `État du parc et personnels présents sur 24 h — ${aujourdhui()}` }));
+    if (exigee && !faite()) zone.append(el('p', { classe: 'message erreur', role: 'status', texte: 'Envoyez d\'abord la fiche régulation du jour : la check-list des véhicules vient après.' }));
+    if (faite() && App.ouvrirVue) zone.append(el('button', { type: 'button', classe: 'cfg-bouton reg-suite', texte: 'Fiche du jour envoyée : passer à la check-list', surclick: () => App.ouvrirVue('checklist-ambulancier') }));
     if (message.texte) zone.append(el('p', { classe: `message ${message.classe}`, role: 'status', texte: message.texte }));
     if (erreur) zone.append(el('p', { classe: `message ${donnees ? 'info' : 'erreur'}`, role: 'status', texte: erreur }));
     if (!donnees) {
@@ -221,7 +229,10 @@ const Regulation = (() => {
       App = app;
       zone = document.getElementById('zone-regulation');
     },
-    ouvrir() {
+    /** La fiche du jour est-elle envoyée (ou partie dans la file d'attente) ? */
+    faiteAujourdhui: () => faite(),
+    ouvrir(obligatoire) {
+      exigee = !!obligatoire;
       zone.hidden = false;
       message = { texte: '', classe: '' };
       if (!donnees) {

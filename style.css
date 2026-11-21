@@ -3221,3 +3221,14 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 .reg-nuit { background: #E6ECF7; }
 .reg-vignette { width: 64px; height: 48px; border-radius: 8px; overflow: hidden; flex: 0 0 auto; background: var(--ciel); }
 .reg-vignette img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.reg-dispos { flex-wrap: wrap; gap: 1rem; }
+.reg-inter { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; cursor: pointer; font-weight: 700; }
+.reg-inter input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.reg-inter-piste { position: relative; width: 48px; height: 28px; border-radius: 999px; background: var(--erreur); transition: background 0.15s; flex: 0 0 auto; }
+.reg-inter-piste::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform 0.15s; box-shadow: 0 1px 3px rgb(0 0 0 / 0.3); }
+.reg-inter input:checked + .reg-inter-piste { background: var(--rhone); }
+.reg-inter-arme .reg-inter-piste { background: var(--gris); }
+.reg-inter-arme input:checked + .reg-inter-piste { background: var(--rhone); }
+.reg-inter input:checked + .reg-inter-piste::after { transform: translateX(20px); }
+.reg-inter input:focus-visible + .reg-inter-piste { outline: 3px solid var(--orange); outline-offset: 2px; }
+.reg-suite { margin-top: 0.8rem; }
