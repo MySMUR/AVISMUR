@@ -3189,3 +3189,23 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 /* Tuiles : une fois l'inventaire fait, on affiche uniquement les manquants (badge cliquable → détail). */
 .inv-tuiles .inv-carte.fait .inv-badges:has(.inv-badge-manquant) { display: flex; }
 .inv-tuiles .inv-badges > .inv-badge:not(.inv-badge-manquant) { display: none; }
+
+/* ---------- Tableau de bord en carrés (même logique que les tuiles d'inventaire) ---------- */
+.inv-tb-tuile.afaire { --tb-fond: #EAF1FB; --tb-bord: #A9C4EA; }
+.inv-tb-grille, .inv-tb-grille .inv-tb-grille { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 640px) { .inv-tb-grille, .inv-tb-grille .inv-tb-grille { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 960px) { .inv-tb-grille, .inv-tb-grille .inv-tb-grille { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.inv-tb-tuile:not(.parent) { aspect-ratio: auto; max-height: none; position: relative; }
+.inv-tb-tuile:not(.parent) .inv-tb-tete { justify-content: flex-start; align-items: stretch; gap: 0.35rem; }
+.inv-tb-tuile:not(.parent) .inv-carte-photo { display: block; width: 100%; aspect-ratio: 1; }
+.inv-tb-tuile:not(.parent) .inv-carte-photo img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+.inv-tb-tuile:not(.parent) .inv-tb-nom { text-align: center; font-weight: 700; }
+.inv-tb-tuile:not(.parent) .inv-tb-pictos { justify-content: center; }
+/* Contenant replié (au-delà des niveaux affichés) : nombre de sous-inventaires masqués */
+.inv-tb-replie {
+  position: absolute; top: 0.45rem; right: 0.45rem; z-index: 1; padding: 0.1rem 0.45rem;
+  font-size: 0.78rem; font-weight: 800; color: #fff; background: var(--bleu); border-radius: 999px;
+}
+.inv-tb-niveaux { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.7rem; font-size: 0.92rem; color: var(--gris); }
+.inv-tb-niveaux strong { min-width: 3.5rem; text-align: center; color: var(--encre); }
+.inv-tb-niveaux .cfg-mini { min-width: 2.4rem; font-size: 1.1rem; font-weight: 800; }

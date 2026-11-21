@@ -3295,21 +3295,40 @@ const Inventaires = (() => {
    * côte à côte (carrés), autant par ligne que la largeur le permet. Un appui ouvre le détail.
    * `place` : nom de l'emplacement qu'il occupe.
    */
-  function tuileTableau(c, niveau = 0, vus = new Set(), place = '') {
+  const CLE_TB_NIVEAUX = 'avismur_inv_tb_niveaux';
+  /** Nombre de niveaux affichés sous le contenant primaire (0 = tous), réglé par l'utilisateur sur cet appareil. */
+  function niveauxTableau() {
+    let n = 2;
+    try { const v = localStorage.getItem(CLE_TB_NIVEAUX); if (v !== null && !Number.isNaN(Number(v))) n = Number(v); } catch (e) { /* stockage indisponible */ }
+    return Math.max(0, Math.min(9, n));
+  }
+  /** Profondeur de l'arborescence sous ce contenant (pour borner le réglage). */
+  function profondeur(id, vus = new Set()) {
+    if (vus.has(id)) return 0;
+    vus.add(id);
+    const f = enfants(id);
+    return f.length ? 1 + Math.max(...f.map((x) => profondeur(x.emplacement ? ((gestion ? enfants(x.id)[0] : occupantDuJour(x)) || {}).id || '' : x.id, vus))) : 0;
+  }
+  function tuileTableau(c, niveau = 0, vus = new Set(), place = '', max = 0) {
     if (vus.has(c.id)) return null;
     vus.add(c.id);
     if (c.emplacement) {
       const occupant = gestion ? enfants(c.id)[0] : occupantDuJour(c);
-      if (occupant) return tuileTableau(occupant, niveau, vus, c.nom);
+      if (occupant) return tuileTableau(occupant, niveau, vus, c.nom, max);
       return el('div', { classe: 'inv-tb-tuile avide' },
         el('button', { type: 'button', classe: 'inv-tb-tete', 'aria-haspopup': 'dialog', surclick: () => aller(c.id) },
           el('span', { classe: 'inv-tb-nom', texte: c.nom }),
           el('span', { classe: 'inv-tb-pictos' }, picto('identifier', 'À identifier', 'orange'))));
     }
     const r = resumeTableau(c);
-    const fils = enfants(c.id).map((f) => tuileTableau(f, niveau + 1, vus)).filter(Boolean);
+    // Au-delà du nombre de niveaux choisi, le contenant reste un carré (son contenu n'est pas déplié).
+    const replie = niveau > 0 && max > 0 && niveau >= max;
+    const nbFils = enfants(c.id).length;
+    const fils = replie ? [] : enfants(c.id).map((f) => tuileTableau(f, niveau + 1, vus, '', max)).filter(Boolean);
     return el('div', { classe: `inv-tb-tuile ${r.classe}${fils.length ? ' parent' : ''}${niveau === 0 ? ' inv-tb-primaire' : ''}` },
       el('button', { type: 'button', classe: 'inv-tb-tete', 'aria-haspopup': 'dialog', title: place && cle(place) !== cle(c.nom) ? `Emplacement : ${place}` : null, surclick: () => detailTableau(c, place) },
+        fils.length || niveau === 0 ? null : miniature(c),
+        replie && nbFils ? el('span', { classe: 'inv-tb-replie', title: `${pluriel(nbFils, 'sous-inventaire')} non affichés`, texte: `+${nbFils}` }) : null,
         el('span', { classe: `inv-tb-nom${r.biomed ? ' inv-tb-biomed' : ''}`, texte: c.nom }),
         el('span', { classe: 'inv-tb-pictos' }, ...r.pictos)),
       fils.length ? el('div', { classe: 'inv-tb-grille' }, ...fils) : null);
@@ -3341,7 +3360,16 @@ const Inventaires = (() => {
             surclick: () => { try { localStorage.setItem(CLE_TABLEAU, c.id); } catch (e) { /* stockage indisponible */ } rendre({ garderPosition: true }); } },
             el('span', { classe: `inv-tb-pastille ${r.classe}`, 'aria-hidden': 'true' }), c.nom);
         }));
-        return [onglets, el('div', { classe: 'inv-tb', role: 'tabpanel' }, tuileTableau(actuel))];
+        const max = niveauxTableau();
+        const prof = Math.max(1, profondeur(actuel.id));
+        const regler = (n) => { try { localStorage.setItem(CLE_TB_NIVEAUX, String(n)); } catch (e) { /* stockage indisponible */ } rendre({ garderPosition: true }); };
+        const affiche = max === 0 || max >= prof ? prof : max;
+        const niveaux = el('div', { classe: 'inv-tb-niveaux', role: 'group', 'aria-label': 'Niveaux affichés' },
+          el('span', { texte: 'Niveaux' }),
+          el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': 'Afficher un niveau de moins', disabled: affiche <= 1, texte: '−', surclick: () => regler(affiche - 1) }),
+          el('strong', { 'aria-live': 'polite', texte: affiche >= prof ? `${prof} (tout)` : String(affiche) }),
+          el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': 'Afficher un niveau de plus', disabled: affiche >= prof, texte: '+', surclick: () => regler(affiche + 1 >= prof ? 0 : affiche + 1) }));
+        return [onglets, niveaux, el('div', { classe: 'inv-tb', role: 'tabpanel' }, tuileTableau(actuel, 0, new Set(), '', max))];
       })(),
     ];
   }
