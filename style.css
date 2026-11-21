@@ -3186,3 +3186,6 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 .inv-tuiles .inv-carte-etat, .inv-tuiles .inv-badges, .inv-tuiles .inv-amb-etat { display: none; }
 .inv-tuiles .inv-carte.afaire, .inv-tuiles .inv-carte.vide { border-bottom-color: #A9C4EA; border-left-color: var(--trait); }
 .inv-tuiles .inv-carte-texte > strong { font-size: 1.05rem; }
+/* Tuiles : une fois l'inventaire fait, on affiche uniquement les manquants (badge cliquable → détail). */
+.inv-tuiles .inv-carte.fait .inv-badges:has(.inv-badge-manquant) { display: flex; }
+.inv-tuiles .inv-badges > .inv-badge:not(.inv-badge-manquant) { display: none; }

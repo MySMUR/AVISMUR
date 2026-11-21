@@ -1297,7 +1297,7 @@ const Inventaires = (() => {
     if (b.manquants) {
       // Souvent dans une carte (lien) : le badge ouvre le détail sans suivre le lien.
       const ouvrir = (e) => { e.preventDefault(); e.stopPropagation(); fenetreManquants(b); };
-      liste.push(el('span', { classe: 'inv-badge alerte inv-badge-cliquable', role: 'button', tabindex: '0', title: 'Voir ce qui manque',
+      liste.push(el('span', { classe: 'inv-badge alerte inv-badge-cliquable inv-badge-manquant', role: 'button', tabindex: '0', title: 'Voir ce qui manque',
         'aria-label': `${pluriel(b.manquants, 'manquant')} : voir le détail`, texte: pluriel(b.manquants, 'manquant'),
         surclick: ouvrir, surkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') ouvrir(e); } }));
     }
@@ -1305,7 +1305,7 @@ const Inventaires = (() => {
     if (b.proches) liste.push(el('span', { classe: 'inv-badge proche', texte: `${b.proches} bientôt périmé${b.proches > 1 ? 's' : ''}` }));
     if (b.sansDate) liste.push(el('span', { classe: 'inv-badge', texte: `${pluriel(b.sansDate, 'date')} à saisir` }));
     if (b.vides) liste.push(el('span', { classe: 'inv-badge proche', texte: `${pluriel(b.vides, 'emplacement')} à identifier` }));
-    if (b.ambManquants) liste.push(el('span', { classe: 'inv-badge alerte', texte: `${pluriel(b.ambManquants, 'manquant')} (ambulancier)` }));
+    if (b.ambManquants) liste.push(el('span', { classe: 'inv-badge alerte inv-badge-manquant', texte: `${pluriel(b.ambManquants, 'manquant')} (ambulancier)` }));
     if (b.oxygeneBas) liste.push(el('span', { classe: 'inv-badge alerte', texte: `${pluriel(b.oxygeneBas, 'bouteille')} O₂ basse${b.oxygeneBas > 1 ? 's' : ''}` }));
     return liste;
   }
