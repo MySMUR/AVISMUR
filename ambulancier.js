@@ -49,6 +49,12 @@ const Ambulancier = (() => {
   // ---------- Derniers kilométrages (envoyés par le serveur, gardés pour le hors ligne) ----------
   const releves = {
     lire: (vehicule) => lireStockage(CLE_RELEVES)[vehicule] || null,
+    /** Le serveur fait foi : remplace les relevés gardés sur l'appareil (anciennes saisies, simulation…). */
+    remplacer(nouveaux) {
+      const tous = {};
+      Object.entries(nouveaux || {}).forEach(([v, r]) => { if (r && r.km > 0) tous[v] = r; });
+      ecrireStockage(CLE_RELEVES, tous);
+    },
     /** Ne garde que le relevé le plus récent de chaque véhicule. */
     fusionner(nouveaux) {
       const tous = lireStockage(CLE_RELEVES);
@@ -829,7 +835,12 @@ const Ambulancier = (() => {
    * on y ajoute seulement ce qui attend encore l'envoi.
    */
   function majReleves(nouveaux, parc, statuts, enAttente = [], infos = null, inventaires = null) {
-    releves.fusionner(nouveaux);
+    // Dernier kilométrage saisi (par date), tel que le serveur le connaît, plus les saisies pas encore envoyées.
+    releves.remplacer(nouveaux);
+    enAttente.forEach((e) => {
+      const kmAttente = e.action === 'enregistrerEvenement' ? (e.type === 'plein' && e.detail && e.detail.km) : (e.liste === 'ambulancier' && e.items && e.items['Kilométrage']);
+      if (e.vehicule && Number(kmAttente) > 0) releves.fusionner({ [e.vehicule]: { km: Number(kmAttente), date: e.date } });
+    });
     if (inventaires && typeof inventaires === 'object') ecrireStockage(CLE_INV_VEHICULES, inventaires);
     if (infos) {
       ecrireStockage(CLE_INFOS, infos);
