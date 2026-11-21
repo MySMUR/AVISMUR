@@ -3182,3 +3182,7 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 .inv-tuiles > li.inv-tuile-large .inv-carte-texte { align-items: flex-start; }
 .inv-tuiles .inv-options-ligne { justify-content: center; }
 .inv-tuiles > li.inv-tuile-large .inv-options-ligne { justify-content: flex-start; }
+/* Tuiles : seulement l'image et le nom ; l'état se lit à la couleur de la bordure (bleu pâle = à faire). */
+.inv-tuiles .inv-carte-etat, .inv-tuiles .inv-badges, .inv-tuiles .inv-amb-etat { display: none; }
+.inv-tuiles .inv-carte.afaire, .inv-tuiles .inv-carte.vide { border-bottom-color: #A9C4EA; border-left-color: var(--trait); }
+.inv-tuiles .inv-carte-texte > strong { font-size: 1.05rem; }
