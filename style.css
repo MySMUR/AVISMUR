@@ -3235,3 +3235,36 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 .reg-horaires-fixe { border-color: transparent; background: none; color: var(--gris); display: flex; align-items: center; }
 .reg-vehicule-id { display: inline-flex; align-items: center; gap: 0.4rem; }
 .reg-vehicule-id .picto-helico { width: 2rem; height: 1.25rem; color: var(--bleu); }
+
+/* ---------- Mode simulation (simulation.js) ---------- */
+/* Rappel permanent : bandeau rayé sous l'en-tête, en-tête et barre d'état teintés. */
+.bandeau-simulation {
+  position: sticky; top: 0; z-index: 4;
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.55rem 1rem;
+  color: #3D2300;
+  background: repeating-linear-gradient(-45deg, #FFD08A 0 14px, #FFC46B 14px 28px);
+  border-bottom: 2px solid var(--orange);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.12);
+}
+.bandeau-simulation p { flex: 1; margin: 0; font-size: 0.92rem; line-height: 1.3; }
+.bandeau-simulation #simulation-avec { display: block; font-size: 0.82rem; }
+.bandeau-simulation button {
+  flex-shrink: 0; min-height: 2.5rem; padding: 0.35rem 0.9rem;
+  font: inherit; font-weight: 700; color: #3D2300;
+  background: #fff; border: 2px solid var(--orange); border-radius: var(--rayon); cursor: pointer;
+}
+.bandeau-simulation button:focus-visible { outline: 3px solid var(--bleu); outline-offset: 2px; }
+body.mode-simulation .bandeau { background: linear-gradient(135deg, var(--bleu) 55%, #8A5A14); }
+
+.tiroir-simulation {
+  display: flex; align-items: center; gap: 0.75rem;
+  width: 100%; min-height: 3rem; margin-bottom: 0.6rem; padding: 0.55rem 0.9rem;
+  font: inherit; text-align: left; color: var(--encre);
+  background: #FFF6EA; border: 2px solid #F5CF9F; border-radius: var(--rayon); cursor: pointer;
+}
+.tiroir-simulation small { display: block; font-size: 0.8rem; color: var(--gris); }
+.tiroir-simulation .simulation-libelle { font-weight: 700; }
+.tiroir-simulation:hover { background: #FFEFD8; }
+.tiroir-simulation:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
+.tiroir-simulation[aria-pressed="true"] { border-color: var(--orange); background: #FFE7C4; }

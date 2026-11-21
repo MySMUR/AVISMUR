@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=111">
+  <link rel="stylesheet" href="style.css?v=112">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -64,6 +64,13 @@
       <p id="fonction-utilisateur" class="utilisateur-fonction"></p>
     </div>
   </header>
+
+  <!-- Mode simulation (simulation.js) : rappel permanent, rien n'est enregistré pour de vrai -->
+  <div id="bandeau-simulation" class="bandeau-simulation" role="status" hidden>
+    <p><strong>Mode simulation</strong> — rien n'est enregistré pour de vrai.
+      <span id="simulation-avec" hidden></span></p>
+    <button id="quitter-simulation" type="button">Quitter</button>
+  </div>
 
   <main class="feuille">
     <!-- Connexion habituelle -->
@@ -283,6 +290,7 @@
         </section>
       </nav>
       <div class="tiroir-pied">
+        <button id="bouton-simulation" type="button" class="tiroir-simulation" aria-pressed="false"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3"/><path d="M7.5 15h9"/></svg><span class="tiroir-texte"><span class="simulation-libelle">Mode simulation</span><small>S'entraîner sur une journée vierge, sans rien enregistrer</small></span></button>
         <button id="deconnexion" type="button" class="tiroir-deconnexion">Se déconnecter</button>
         <p id="version-appli" class="version-appli" aria-label="Version de l'application"></p>
       </div>
@@ -295,6 +303,7 @@
   </footer>
 
   <script src="config.js?v=6"></script>
+  <script src="simulation.js?v=1"></script>
   <script src="recadrage.js?v=4"></script>
   <script src="detourage.js?v=3"></script>
   <script src="camera.js?v=1"></script>
@@ -319,6 +328,6 @@
     <button type="button" data-scan="qr" aria-label="Scanner un QR code" title="QR code"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM5 5v3h3V5zM14 3h7v7h-7zm2 2v3h3V5zM3 14h7v7H3zm2 2v3h3v-3zM14 14h3v3h-3zM18 18h3v3h-3zM14 18h3v3h-3zM18 14h3v3h-3z" fill="currentColor"/></svg><span>QR code</span></button>
     <button type="button" data-scan="nfc" aria-label="Lire une puce NFC" title="NFC"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 4v10h2V11l4 6h2V7h-2v6l-4-6z" fill="currentColor"/></svg><span>NFC</span></button>
   </nav>
-  <script src="app.js?v=58"></script>
+  <script src="app.js?v=59"></script>
 </body>
 </html>

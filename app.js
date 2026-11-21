@@ -83,7 +83,8 @@ async function requete(action, charge) {
   const r = await fetch(CONFIG.API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, jeton: actuelle && actuelle.jeton, ...charge }),
+    // Mode simulation (simulation.js) : le serveur range les saisies à part.
+    body: JSON.stringify({ action, jeton: actuelle && actuelle.jeton, ...(Simulation.actif() ? { simulation: true } : {}), ...charge }),
   });
   // Le serveur a répondu, mais pas en JSON (page d'erreur Google : script en échec, déploiement, quota…) :
   // ce n'est pas un problème de réseau, on remonte l'extrait pour l'afficher.
@@ -226,6 +227,7 @@ function afficherApplication(infos) {
     });
   }
   afficher('ecran-checklist');
+  Simulation.verifierAgent(infos.identifiant); // bandeau du mode simulation ; fin si un autre agent se connecte
   roleCourant = infos.role;
   majDroits(infos.droits || (session.lire() || {}).droits || (infos.role === 'admin' ? null : []));
   afficherAgent(infos);
@@ -565,6 +567,8 @@ document.querySelectorAll('.voir').forEach((bouton) => {
 });
 
 $('deconnexion').addEventListener('click', async () => {
+  const enSimulation = Simulation.actif();
+  if (enSimulation) await Simulation.sortir({ confirmer: false, recharger: false }); // la journée simulée est effacée
   const enregistre = appareil.lire();
   await Infos.desabonner(); // cet appareil ne reçoit plus les notifications de l'agent
   try {
@@ -578,6 +582,7 @@ $('deconnexion').addEventListener('click', async () => {
   session.effacer();
   appareil.effacer();
   afficher('ecran-connexion');
+  if (enSimulation) location.reload(); // plus aucune donnée simulée en mémoire
 });
 
 // ---------- Check-lists ----------
