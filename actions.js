@@ -180,7 +180,32 @@ const Actions = (() => {
   }
 
   // ---------- Plein ----------
-  function plein(v, info, etatV) {
+  /** Carburant : liste des pleins du véhicule, avec « Ajouter un plein » en haut. */
+  async function pleins(v, info, etatV) {
+    const titre = `${v.nom || v.id} · carburant`;
+    const ajouter = () => el('button', { type: 'button', classe: 'principal', texte: '＋ Ajouter un plein',
+      surclick: () => plein(v, info, etatV, () => pleins(v, info, etatV)) });
+    const panneau = fenetre(titre, ajouter(), el('p', { classe: 'aide-question', texte: 'Chargement des pleins…' }));
+    let entrees = null;
+    try {
+      const rep = await App.appeler('historiqueVehicule', { vehicule: v.id });
+      if (rep.ok) entrees = (rep.historique || []).filter((e) => e.type === 'plein');
+    } catch (e) { /* hors ligne : on montre le dernier plein connu */ }
+    if (!fond || !document.contains(panneau)) return; // fenêtre fermée ou autre écran entre-temps
+    if (!entrees) {
+      const d = info.dernierPlein;
+      fenetre(titre, ajouter(), el('p', { classe: 'message erreur', texte: 'Liste des pleins indisponible hors ligne.' }),
+        d ? el('p', { classe: 'aide-question', texte: `Dernier plein connu : ${date(d.date)}${d.agent ? ` · ${d.agent}` : ''}` }) : null);
+      return;
+    }
+    const liste = el('ul', { classe: 'historique' });
+    entrees.forEach((e) => liste.append(el('li', { classe: 'entree plein' },
+      el('span', { classe: 'entree-titre' }, el('strong', { texte: date(e.date) }), el('span', { texte: e.agent || '' })),
+      el('span', { classe: 'entree-resume', texte: resume(e) }))));
+    fenetre(titre, ajouter(), entrees.length ? liste : el('p', { texte: 'Aucun plein enregistré pour ce véhicule.' }));
+  }
+
+  function plein(v, info, etatV, retour = null) {
     const saisie = { km: '', carburant: 8, adblue: false, commentaire: '', photo: '' };
     const precedent = info.releve ? info.releve.km : null;
     const idKm = id();
@@ -212,7 +237,7 @@ const Actions = (() => {
           fermer();
         }
       } }),
-      boutonRetour(v, info, etatV));
+      retour ? el('button', { type: 'button', classe: 'lien', texte: '← Retour aux pleins', surclick: retour }) : boutonRetour(v, info, etatV));
   }
 
   // ---------- Garage ----------
@@ -443,7 +468,7 @@ const Actions = (() => {
   // silhouette, FACES et afficherPhotoServeur sont aussi utilisés par le tableau de bord du parc (parc.js).
   /** Ouvre directement un écran d'action (menu Véhicules > Carburant, Carrosserie, Suivi mécanique). */
   function ouvrirAction(type, v, info, etatV) {
-    const ecrans = { plein, exterieur, garage };
+    const ecrans = { plein: pleins, exterieur, garage };
     if (ecrans[type]) ecrans[type](v, info, etatV);
     else ouvrir(v, info, etatV);
   }
