@@ -3346,3 +3346,5 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .vehicule.cl-ligne.avec-defauts .cl-ligne-defauts { color: #8A4B00; font-weight: 700; }
 .cl-ligne-chevron { font-size: 1.5rem; color: var(--gris); }
 .vehicule.cl-ligne.indispo { background: repeating-linear-gradient(135deg, #F7F8FA 0 10px, #E8EBF0 10px 20px); }
+.cl-lignes .cl-ligne-defauts { display: flex; flex-direction: column; }
+.cl-lignes .cl-ligne-defauts small { font-size: 0.85rem; }
