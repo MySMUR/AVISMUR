@@ -3319,3 +3319,18 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .cl-tuile-position { display: inline-flex; align-items: center; justify-content: center; gap: 0.25rem; font-weight: 700; font-size: 0.85rem; line-height: 1.2; overflow-wrap: anywhere; }
 .cl-tuile-position svg { width: 1.2rem; height: 1.2rem; }
 .cl-tuile-etat { font-size: 0.78rem; color: var(--gris); }
+
+/* ---------- Carrosserie : flèches entre les faces, listes des défauts ---------- */
+.faces-nav { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin: 0.4rem 0; }
+.faces-nom { flex: 1; text-align: center; color: var(--bleu); }
+.faces-fleche { min-width: 48px; min-height: 48px; border-radius: 50%; border: 2px solid var(--trait); background: #fff; color: var(--bleu); font-size: 1.8rem; line-height: 1; cursor: pointer; }
+.faces-fleche:hover { border-color: var(--bleu); }
+.defauts-titre { margin: 1rem 0 0.4rem; font-size: 1rem; }
+.defauts-titre.passe { color: var(--gris); }
+.defauts-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.defaut-ligne { display: flex; align-items: center; gap: 0.6rem; width: 100%; padding: 0.5rem 0.6rem; text-align: left; background: #fff; border: 1px solid var(--trait); border-radius: var(--rayon); cursor: pointer; }
+.defaut-ligne:hover { border-color: var(--bleu); }
+.defaut-ligne .repere { position: static; margin: 0; flex-shrink: 0; }
+.defaut-ligne-texte { display: flex; flex-direction: column; min-width: 0; }
+.defaut-ligne-texte small { color: var(--gris); }
+.defaut-ligne.passe { opacity: 0.5; background: #F7F8FA; }

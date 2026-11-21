@@ -337,87 +337,106 @@ const Actions = (() => {
     return s;
   }
 
-  function exterieur(v, info, etatV) {
-    const nouveaux = [];
-    const repares = new Set();
-    let face = 'gauche';
-    let commentaire = '';
-    const panneau = fenetre(`${v.nom || v.id} · vérification extérieure`);
-    const corps = panneau.querySelector('.fenetre-corps');
+  /**
+   * Carrosserie : schéma du véhicule face par face (flèches ‹ ›) avec les défauts en cours ; toucher un point
+   * ouvre son détail (tout ambulancier peut le déclarer réparé) ; toucher le schéma ailleurs signale un défaut.
+   * Sous le schéma : défauts en cours puis défauts passés (plus pâles), du plus récent au plus ancien.
+   */
+  const ORDRE_FACES = Object.keys(FACES);
+  const recent = (a, b) => new Date(b.date || 0) - new Date(a.date || 0);
+  function exterieur(v, info, etatV, face = 'gauche', passes = null) {
+    info = (typeof Ambulancier !== 'undefined' && Ambulancier.infosVehicule ? Ambulancier.infosVehicule(v.id) : info) || info;
+    const titre = `${v.nom || v.id} · carrosserie`;
+    const enCours = [...info.defauts].sort((x, y) => -recent(x, y)); // plus ancien d'abord → numéros stables
+    const numero = (d) => enCours.indexOf(d) + 1;
+    const revenir = () => exterieur(v, info, etatV, face, passes);
 
-    function rendre() {
-      corps.innerHTML = '';
-      const onglets = el('div', { classe: 'puces faces', role: 'tablist' });
-      Object.entries(FACES).forEach(([f, libelle]) => {
-        const nb = info.defauts.filter((d) => d.face === f && !repares.has(d.id)).length + nouveaux.filter((d) => d.face === f).length;
-        onglets.append(el('button', { type: 'button', role: 'tab', classe: `face${f === face ? ' active' : ''}`, 'aria-selected': String(f === face),
-          texte: nb ? `${libelle} (${nb})` : libelle, surclick: () => { face = f; rendre(); } }));
+    const zone = el('div', { classe: `schema schema-${face === 'gauche' || face === 'droite' ? 'cote' : 'face'}` }, silhouette(face, v));
+    enCours.filter((d) => d.face === face).forEach((d) => zone.append(el('button', {
+      type: 'button', classe: 'repere connu', style: `left:${d.x * 100}%;top:${d.y * 100}%`,
+      'aria-label': `Défaut ${numero(d)}${d.commentaire ? ` : ${d.commentaire}` : ''}`, texte: String(numero(d)),
+      surclick: (e) => { e.stopPropagation(); detailDefaut(v, d, false, revenir); } })));
+    zone.addEventListener('click', (e) => {
+      const r = zone.getBoundingClientRect();
+      nouveauDefaut(v, { id: `${v.id}-${Date.now()}`, face, x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height, commentaire: '', photo: '' }, revenir);
+    });
+
+    const i = ORDRE_FACES.indexOf(face);
+    const vers = (pas) => ORDRE_FACES[(i + pas + ORDRE_FACES.length) % ORDRE_FACES.length];
+    const nbFace = enCours.filter((d) => d.face === face).length;
+    const navigation = el('div', { classe: 'faces-nav' },
+      el('button', { type: 'button', classe: 'faces-fleche', 'aria-label': `Vue précédente : ${FACES[vers(-1)]}`, texte: '‹', surclick: () => exterieur(v, info, etatV, vers(-1), passes) }),
+      el('strong', { classe: 'faces-nom', 'aria-live': 'polite', texte: nbFace ? `${FACES[face]} (${nbFace})` : FACES[face] }),
+      el('button', { type: 'button', classe: 'faces-fleche', 'aria-label': `Vue suivante : ${FACES[vers(1)]}`, texte: '›', surclick: () => exterieur(v, info, etatV, vers(1), passes) }));
+
+    const ligne = (d, passe) => el('li', {}, el('button', { type: 'button', classe: `defaut-ligne${passe ? ' passe' : ''}`, surclick: () => detailDefaut(v, d, passe, revenir) },
+      el('span', { classe: `repere ${passe ? 'repare' : 'connu'}`, texte: passe ? '✓' : String(numero(d)) }),
+      el('span', { classe: 'defaut-ligne-texte' }, el('strong', { texte: d.commentaire || 'Sans description' }),
+        el('small', { texte: `${FACES[d.face] || ''} · ${date(d.date)}${d.agent ? ` · ${d.agent}` : ''}${passe && d.repareLe ? ` · réparé le ${date(d.repareLe)}` : ''}` }))));
+    const listeEnCours = enCours.length
+      ? el('ul', { classe: 'defauts-liste' }, ...[...enCours].sort(recent).map((d) => ligne(d, false)))
+      : el('p', { classe: 'aide-question', texte: 'Aucun défaut en cours.' });
+    const blocPasses = el('div', {});
+    if (passes === null) blocPasses.append(el('p', { classe: 'aide-question', texte: 'Chargement des défauts passés…' }));
+    else if (passes === false) blocPasses.append(el('p', { classe: 'aide-question', texte: 'Défauts passés indisponibles hors ligne.' }));
+    else if (passes.length) blocPasses.append(el('ul', { classe: 'defauts-liste' }, ...passes.map((d) => ligne(d, true))));
+    else blocPasses.append(el('p', { classe: 'aide-question', texte: 'Aucun défaut passé.' }));
+
+    const panneau = fenetre(titre,
+      el('p', { classe: 'aide-question', texte: 'Touchez un point pour voir le défaut, ou le schéma ailleurs pour en signaler un nouveau.' }),
+      navigation, zone,
+      el('h3', { classe: 'defauts-titre', texte: `Défauts en cours (${enCours.length})` }), listeEnCours,
+      el('h3', { classe: 'defauts-titre passe', texte: 'Défauts passés' }), blocPasses);
+
+    if (passes === null) {
+      App.appeler('historiqueVehicule', { vehicule: v.id }).then((rep) => {
+        if (!rep.ok) throw new Error();
+        const tous = {};
+        const repares = {};
+        (rep.historique || []).filter((e) => e.type === 'exterieur').forEach((e) => {
+          const d = e.detail || {};
+          (d.defauts || []).forEach((x) => { tous[x.id] = { ...x, date: e.date, agent: e.agent }; });
+          (d.repares || []).forEach((idR) => { repares[idR] = { repareLe: e.date, reparePar: e.agent }; });
+        });
+        const liste = Object.values(tous).filter((d) => repares[d.id] && !info.defauts.some((x) => x.id === d.id))
+          .map((d) => ({ ...d, ...repares[d.id] })).sort(recent);
+        return liste;
+      }).catch(() => false).then((liste) => {
+        if (fond && document.contains(panneau)) exterieur(v, info, etatV, face, liste);
       });
-
-      const zone = el('div', { classe: `schema schema-${face === 'gauche' || face === 'droite' ? 'cote' : 'face'}` }, silhouette(face, v));
-      const placer = (d, numero, classe, action) => {
-        zone.append(el('button', { type: 'button', classe: `repere ${classe}`, style: `left:${d.x * 100}%;top:${d.y * 100}%`,
-          'aria-label': `Défaut ${numero}${d.commentaire ? ` : ${d.commentaire}` : ''}`, texte: String(numero), surclick: (e) => { e.stopPropagation(); action(); } }));
-      };
-      const connus = info.defauts.filter((d) => d.face === face);
-      connus.forEach((d, i) => placer(d, i + 1, repares.has(d.id) ? 'repare' : 'connu', () => { detailConnu = d; rendre(); }));
-      const ici = nouveaux.filter((d) => d.face === face);
-      ici.forEach((d, i) => placer(d, connus.length + i + 1, 'nouveau', () => { detailNouveau = d; rendre(); }));
-      zone.addEventListener('click', (e) => {
-        const r = zone.getBoundingClientRect();
-        const d = { id: `${v.id}-${Date.now()}-${nouveaux.length}`, face, x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height, commentaire: '', photo: '' };
-        nouveaux.push(d);
-        detailNouveau = d;
-        detailConnu = null;
-        rendre();
-      });
-
-      corps.append(
-        el('p', { classe: 'aide-question', texte: 'Touchez le schéma à l\'endroit d\'un nouveau défaut (rayure, impact, bosse). Les défauts déjà connus sont en gris ; touchez-les pour les voir ou les déclarer réparés.' }),
-        onglets, zone,
-        el('p', { classe: 'legende-schema' }, el('span', { classe: 'repere connu', texte: '1' }), ' déjà connu  ',
-          el('span', { classe: 'repere nouveau', texte: '2' }), ' nouveau  ', el('span', { classe: 'repere repare', texte: '3' }), ' réparé'));
-
-      if (detailNouveau && nouveaux.includes(detailNouveau)) {
-        const d = detailNouveau;
-        const idC = id();
-        corps.append(el('div', { classe: 'defaut-detail' },
-          el('h3', { texte: 'Nouveau défaut' }),
-          el('div', { classe: 'champ' }, el('label', { for: idC, texte: 'Description' }),
-            el('input', { id: idC, valeur: d.commentaire, placeholder: 'Rayure, impact, bosse…', surinput: (e) => { d.commentaire = e.target.value; } })),
-          champPhoto('Photo du défaut', (p) => { d.photo = p; }, d.photo),
-          el('button', { type: 'button', classe: 'lien danger', texte: 'Supprimer ce défaut', surclick: () => {
-            nouveaux.splice(nouveaux.indexOf(d), 1); detailNouveau = null; rendre();
-          } })));
-      } else if (detailConnu) {
-        const d = detailConnu;
-        const photo = el('div', { classe: 'photo-defaut' });
-        const bloc = el('div', { classe: 'defaut-detail' },
-          el('h3', { texte: 'Défaut connu' }),
-          el('p', { texte: `${d.commentaire || 'Sans description'} — signalé le ${date(d.date)}${d.agent ? ` par ${d.agent}` : ''}` }), photo,
-          el('label', { classe: 'cfg-case' }, el('input', { type: 'checkbox', checked: repares.has(d.id),
-            surchange: (e) => { if (e.target.checked) repares.add(d.id); else repares.delete(d.id); rendre(); } }),
-          el('span', { texte: 'Réparé (ne plus l\'afficher)' })));
-        corps.append(bloc);
-        if (d.photoLocale) photo.append(el('img', { classe: 'photo-apercu', alt: 'Photo du défaut', src: d.photoLocale }));
-        else if (d.photo) photo.append(el('button', { type: 'button', classe: 'lien', texte: 'Voir la photo', surclick: () => afficherPhotoServeur(photo, d.photo) }));
-      }
-
-      const idCom = id();
-      corps.append(
-        el('div', { classe: 'champ' }, el('label', { for: idCom, texte: 'Commentaire général' }),
-          el('textarea', { id: idCom, rows: 2, valeur: commentaire, surinput: (e) => { commentaire = e.target.value; } })),
-        el('button', { type: 'button', classe: 'principal', texte: nouveaux.length || repares.size
-          ? `Enregistrer (${nouveaux.length} nouveau${nouveaux.length > 1 ? 'x' : ''}, ${repares.size} réparé${repares.size > 1 ? 's' : ''})`
-          : 'Enregistrer : aucun nouveau défaut', surclick: () => {
-          if (App.envoyerEvenement('exterieur', v.id, { defauts: nouveaux, repares: [...repares], commentaire })) fermer();
-        } }),
-        boutonRetour(v, info, etatV));
     }
-    let detailNouveau = null;
-    let detailConnu = null;
-    rendre();
   }
+
+  /** Détail d'un défaut ; s'il est en cours, n'importe quel ambulancier peut le déclarer réparé. */
+  function detailDefaut(v, d, passe, revenir) {
+    const photo = el('div', { classe: 'photo-defaut' });
+    const panneau = fenetre(`${v.nom || v.id} · défaut`,
+      el('p', {}, el('strong', { texte: d.commentaire || 'Sans description' })),
+      el('p', { classe: 'aide-question', texte: `${FACES[d.face] || ''} · signalé le ${date(d.date)}${d.agent ? ` par ${d.agent}` : ''}` }),
+      passe ? el('p', { classe: 'aide-question', texte: `Réparé le ${date(d.repareLe)}${d.reparePar ? ` (signalé par ${d.reparePar})` : ''}` }) : null,
+      photo,
+      passe ? null : el('button', { type: 'button', classe: 'principal', texte: '✓ Signaler comme réparé', surclick: () => {
+        if (App.envoyerEvenement('exterieur', v.id, { defauts: [], repares: [d.id], commentaire: '' })) revenir();
+        else message(panneau, 'Enregistrement impossible.', 'erreur');
+      } }),
+      el('button', { type: 'button', classe: 'lien', texte: '← Retour au schéma', surclick: revenir }));
+    if (d.photoLocale) photo.append(el('img', { classe: 'photo-apercu', alt: 'Photo du défaut', src: d.photoLocale }));
+    else if (d.photo) photo.append(el('button', { type: 'button', classe: 'lien', texte: 'Voir la photo', surclick: () => afficherPhotoServeur(photo, d.photo) }));
+  }
+
+  /** Signalement d'un nouveau défaut à l'endroit touché. */
+  function nouveauDefaut(v, d, revenir) {
+    const idC = id();
+    fenetre(`${v.nom || v.id} · nouveau défaut (${FACES[d.face]})`,
+      el('div', { classe: 'champ' }, el('label', { for: idC, texte: 'Description' }),
+        el('input', { id: idC, placeholder: 'Rayure, impact, bosse…', surinput: (e) => { d.commentaire = e.target.value; } })),
+      champPhoto('Photo du défaut', (p) => { d.photo = p; }, d.photo),
+      el('button', { type: 'button', classe: 'principal', texte: 'Enregistrer le défaut', surclick: () => {
+        if (App.envoyerEvenement('exterieur', v.id, { defauts: [d], repares: [], commentaire: '' })) revenir();
+      } }),
+      el('button', { type: 'button', classe: 'lien', texte: 'Annuler', surclick: revenir }));
+  }
+
 
   // ---------- Historique ----------
   const TYPES = { checklist: '📋 Check-list', plein: '⛽ Plein', garage: '🔧 Garage', nettoyage: '🧽 Nettoyage', exterieur: '🚐 Vérification extérieure' };
