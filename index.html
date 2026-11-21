@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=101">
+  <link rel="stylesheet" href="style.css?v=102">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -207,6 +207,9 @@
       <!-- Annuaire du personnel : agents de DB_SMUR, numéros partagés par leur titulaire (annuaire.js) -->
       <div id="zone-annuaire" class="annuaire" hidden></div>
 
+      <!-- Fiche régulation du matin : état du parc et bips, envoyée en PDF par mail (regulation.js) -->
+      <div id="zone-regulation" class="regulation" hidden></div>
+
       <!-- Inventaires emboîtés (IADE) : sac > sacoche > pochette, photos à points, péremptions (inventaires.js) -->
       <div id="zone-inventaires" class="inventaires" hidden></div>
 
@@ -239,6 +242,7 @@
           <h2 id="titre-rubrique-vehicules"><button type="button" class="rubrique-titre" aria-expanded="false" aria-controls="liste-rubrique-vehicules"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 16V8a1 1 0 0 1 1-1h10l4 4h2a1 1 0 0 1 1 1v4"/><path d="M3 16h2m4 0h6m4 0h2"/><circle cx="7" cy="16.5" r="2"/><circle cx="17" cy="16.5" r="2"/><path d="M8 10.5h3M9.5 9v3"/></svg>Véhicules<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg></button></h2>
           <ul id="liste-rubrique-vehicules" hidden>
           <li><button type="button" class="tiroir-lien" data-vue="checklist-ambulancier"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M8 5H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M9 13l2 2 4-4"/></svg><span class="tiroir-texte">Check-list ambulancier<small>Vérification du matin</small></span></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="fiche-regulation"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 4h16v12H8l-4 4z"/><path d="M8 8h8M8 12h5"/></svg><span class="tiroir-texte">Fiche régulation<small>Parc et personnels du jour, envoi au SAMU</small></span></button></li>
           <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 2h4M12 2v3"/><path d="M9 8a3 3 0 0 1 6 0v12a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1z"/><path d="M9 12h6"/></svg><span class="tiroir-texte">Commande d'oxygène<span class="etiquette">À venir</span></span></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="carburant"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M3 21h12M4 10h10"/><path d="M14 8l3 2v7.5a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg><span class="tiroir-texte">Carburant<small>Signaler un plein</small></span></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="carrosserie"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 17v-4l2.5-5h13l2.5 5v4z"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/><path d="M5.5 13h13"/></svg><span class="tiroir-texte">Carrosserie<small>Rayures, impacts, réparations</small></span></button></li>
@@ -309,11 +313,12 @@
   <script src="materiel.js?v=22"></script>
   <script src="profil.js?v=6"></script>
   <script src="annuaire.js?v=3"></script>
+  <script src="regulation.js?v=1"></script>
   <script src="meteo.js?v=1"></script>
   <nav id="barre-scan" class="barre-scan" aria-label="Accès rapide aux inventaires">
     <button type="button" data-scan="qr" aria-label="Scanner un QR code" title="QR code"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM5 5v3h3V5zM14 3h7v7h-7zm2 2v3h3V5zM3 14h7v7H3zm2 2v3h3v-3zM14 14h3v3h-3zM18 18h3v3h-3zM14 18h3v3h-3zM18 14h3v3h-3z" fill="currentColor"/></svg><span>QR code</span></button>
     <button type="button" data-scan="nfc" aria-label="Lire une puce NFC" title="NFC"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 4v10h2V11l4 6h2V7h-2v6l-4-6z" fill="currentColor"/></svg><span>NFC</span></button>
   </nav>
-  <script src="app.js?v=53"></script>
+  <script src="app.js?v=54"></script>
 </body>
 </html>

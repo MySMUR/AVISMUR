@@ -3110,3 +3110,33 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 .pret-detail dt { color: var(--gris); }
 .pret-detail dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
 @media (max-width: 30rem) { .pret-detail-ligne { grid-template-columns: 1fr; gap: 0; } }
+
+/* ---------- Fiche régulation (regulation.js) ---------- */
+.regulation h2 { font-size: 1.1rem; margin: 1.4rem 0 0.6rem; }
+.reg-dernier { color: var(--gris); margin: 0.2rem 0 0; }
+.reg-liste { display: flex; flex-direction: column; gap: 0.6rem; }
+.reg-vehicule, .reg-bip {
+  background: #fff; border: 1px solid var(--trait); border-radius: var(--rayon);
+  padding: 0.7rem 0.8rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+}
+.reg-vehicule.indispo { border-left: 6px solid var(--erreur); }
+.reg-vehicule-nom, .reg-bip-affectation { display: flex; flex-direction: column; min-width: 7rem; flex: 1 0 7rem; }
+.reg-vehicule-nom small, .reg-bip-affectation small { color: var(--gris); }
+.reg-dispos { display: flex; gap: 0.3rem; }
+.reg-dispo {
+  border: 2px solid var(--trait); background: #fff; color: var(--encre);
+  border-radius: 999px; padding: 0.35rem 0.8rem; min-height: 44px;
+}
+.reg-dispo.actif.oui, .reg-dispo.actif.arme { background: var(--rhone); border-color: var(--rhone); color: #fff; }
+.reg-dispo.actif.non { background: var(--erreur); border-color: var(--erreur); color: #fff; }
+.reg-dispo.actif.desarme { background: var(--gris); border-color: var(--gris); color: #fff; }
+.reg-position, .reg-commentaire, .reg-nom, .reg-horaires {
+  font: inherit; border: 1px solid var(--trait); border-radius: 8px; padding: 0.45rem 0.6rem; min-height: 44px;
+}
+.reg-position { flex: 1 1 12rem; }
+.reg-commentaire { flex: 1 1 100%; }
+.reg-nom { flex: 2 1 11rem; }
+.reg-horaires { flex: 1 1 9rem; }
+.reg-vider { border: none; background: none; color: var(--gris); min-width: 44px; min-height: 44px; }
+.reg-note { flex-basis: 100%; margin: 0; color: var(--gris); font-size: 0.9rem; font-style: italic; }
+.reg-actions { display: flex; flex-direction: column; gap: 0.6rem; margin: 1.4rem 0 2rem; }

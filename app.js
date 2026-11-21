@@ -373,6 +373,7 @@ async function envoyerFileAttente() {
   let envoyees = 0;
   let infosEnvoyees = false;
   let materielEnvoye = false;
+  let ficheEnvoyee = false;
   let erreurServeur = '';
   let avertissement = '';
   const refusees = new Set();
@@ -384,6 +385,7 @@ async function envoyerFileAttente() {
         if (suivante.donnees) { // mur d'informations (creerInfo, terminerInfo) ; suivi du matériel (Materiel.actions)
           rep = await appeler(suivante.action, { ...suivante.donnees, idSaisie: suivante.id, dateSaisie: suivante.date });
           if (Materiel.actions.includes(suivante.action)) materielEnvoye = true;
+          else if (suivante.action === 'envoyerFicheRegulation') ficheEnvoyee = true;
           else infosEnvoyees = true;
         } else if (suivante.action === 'deplacerContenant') {
           rep = await appeler('deplacerContenant', {
@@ -437,6 +439,7 @@ async function envoyerFileAttente() {
   Inventaires.surEnvoi();
   if (infosEnvoyees) Infos.surEnvoi();
   if (materielEnvoye) Materiel.surEnvoi();
+  if (ficheEnvoyee) Regulation.surEnvoi();
 }
 
 function bilanEnvoi({ envoyees, restantes, erreurServeur, avertissement }) {
@@ -731,6 +734,7 @@ function vueAutorisee(vue) {
   if (vue === 'base-articles' && !accesInventaires() && !aDroit('ARTICLES')) return 'aujourdhui';
   if ((vue === 'suivi-materiel' || vue === 'materiel-prets') && !accesInventaires() && !aDroit('MATERIEL')) return 'aujourdhui';
   if (vue === 'inventaires' && !accesInventaires()) return 'aujourdhui';
+  if (vue === 'fiche-regulation' && !accesVehicules()) return 'aujourdhui';
   if (DROITS_VUES[vue] && !aUnDroit(...DROITS_VUES[vue])) return 'accueil';
   return vue;
 }
@@ -783,13 +787,17 @@ function ouvrirVue(demandee) {
   if (annuaire) Annuaire.ouvrir();
   else Annuaire.masquer();
 
+  const regulation = vue === 'fiche-regulation';
+  if (regulation) Regulation.ouvrir();
+  else Regulation.masquer();
+
   const infos = vue === 'accueil' || vue === 'types-infos';
   if (vue === 'accueil') Infos.afficher(cibleInfo);
   else if (vue === 'types-infos') Infos.afficherTypes();
   else Infos.masquer();
   cibleInfo = '';
 
-  const vehicules = !parc && !inventaires && !config && !utilisateurs && !infos && !materiel && !monProfil && !annuaire;
+  const vehicules = !parc && !inventaires && !config && !utilisateurs && !infos && !materiel && !monProfil && !annuaire && !regulation;
   $('zone-ambulancier').hidden = !vehicules;
   if (vehicules) {
     const def = VUES_VEHICULES[vue] || VUES_VEHICULES['checklist-ambulancier'];
@@ -932,6 +940,7 @@ function ouvrirAppareilDuLien(lien) {
   if (vueCourante === 'suivi-materiel') Materiel.ouvrirAppareil(id);
 }
 Parc.initialiser({ appeler });
+Regulation.initialiser({ appeler, mettreEnFile, fileAttente: () => fileAttente.lire() });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });
 Utilisateurs.initialiser({ appeler, aDroit, estPrincipal: () => roleCourant === 'admin' });
 Annuaire.initialiser({
