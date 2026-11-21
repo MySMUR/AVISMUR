@@ -90,6 +90,22 @@ const Actions = (() => {
         action('🕘', 'Historique du véhicule', 'Check-lists, pleins, garage, carrosserie', () => historique(v, info, etatV))));
   }
 
+  /** Check-list ambulancier : toucher une tuile propose de faire (ou reprendre) la check-list du jour. */
+  function proposerChecklist(v, info, etatV) {
+    const cl = info.statut;
+    const heureCL = cl ? new Date(cl.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
+    fenetre(v.nom || v.id,
+      el('p', { classe: 'fenetre-resume', texte: cl
+        ? `Check-list faite à ${heureCL} par ${cl.agent}${cl.anomalies.length ? ` (${cl.anomalies.length} anomalie${cl.anomalies.length > 1 ? 's' : ''})` : ''}.`
+        : (etatV.position && etatV.position.position ? `Position du jour : ${etatV.position.position}` : 'Check-list du jour à faire.') }),
+      el('div', { classe: 'actions' },
+        el('button', { type: 'button', classe: 'action action-principale', surclick: () => { fermer(); App.ouvrirChecklist(v.id); } },
+          el('span', { classe: 'action-icone', 'aria-hidden': 'true', texte: '📋' }),
+          el('span', { classe: 'action-texte' }, el('strong', { texte: cl ? 'Reprendre la check-list' : 'Faire la check-list' }),
+            el('small', { texte: cl ? 'Corriger : la nouvelle remplace la précédente' : 'Vérification du matin' })))),
+      el('button', { type: 'button', classe: 'lien', texte: 'Autres actions sur le véhicule ›', surclick: () => ouvrir(v, info, etatV) }));
+  }
+
   // ---------- Dernière check-list (lecture) ----------
   function voirCheckList(v, info, etatV, cl) {
     if (!cl) {
@@ -432,5 +448,5 @@ const Actions = (() => {
     else ouvrir(v, info, etatV);
   }
 
-  return { ouvrir, ouvrirAction, fermer, silhouette, FACES, afficherPhotoServeur };
+  return { ouvrir, ouvrirAction, proposerChecklist, fermer, silhouette, FACES, afficherPhotoServeur };
 })();

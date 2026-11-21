@@ -686,7 +686,7 @@ const GRAND_ECRAN = window.matchMedia('(min-width: 1100px)');
 
 // Vues de la rubrique Véhicules et action ouverte en touchant une case (null : menu d'actions du véhicule).
 const VUES_VEHICULES = {
-  'checklist-ambulancier': { mode: null, titre: 'Vérification du véhicule', consigne: 'Touchez un véhicule pour ses actions' },
+  'checklist-ambulancier': { mode: null, titre: 'Vérification du véhicule', consigne: 'Touchez un véhicule pour faire sa check-list' },
   carburant: { mode: 'plein', titre: 'Carburant', consigne: 'Touchez le véhicule dont vous avez fait le plein' },
   carrosserie: { mode: 'exterieur', titre: 'Carrosserie', consigne: 'Touchez un véhicule pour sa vérification extérieure' },
   mecanique: { mode: 'garage', titre: 'Suivi mécanique', consigne: 'Touchez un véhicule pour noter un passage au garage' },

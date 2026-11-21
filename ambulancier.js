@@ -562,8 +562,39 @@ const Ambulancier = (() => {
     return bouton;
   }
 
+  /**
+   * Check-list ambulancier : véhicule en tuile, comme les inventaires (vignette, indicatif, position du jour).
+   * Bleu = check-list à faire, vert = faite, orange = anomalies, hachuré = non disponible (aucune action).
+   */
+  function tuile(v) {
+    const etatV = etatVehicule(v);
+    const indispo = etatV.classe === 'indispo';
+    const estChoisi = etat.vehicule === v.id;
+    const bouton = el('button', {
+      type: 'button', classe: `vehicule cl-tuile ${etatV.classe}${estChoisi ? ' choisi' : ''}`, 'data-vehicule': v.id,
+      ...(indispo ? { disabled: '', 'aria-disabled': 'true', title: 'Non disponible d\'après l\'état du parc du jour' } : { 'aria-haspopup': 'dialog' }),
+    });
+    if (!indispo) bouton.addEventListener('click', () => Actions.proposerChecklist(v, infosVehicule(v.id), etatV));
+    const photo = el('span', { classe: 'cl-tuile-photo', 'aria-hidden': 'true' });
+    const inv = inventaireVehicule(v.id);
+    if (inv && inv.photo) { const img = el('span', { classe: 'cl-tuile-img' }); photo.append(img); poserPhotoVehicule(img, inv.photo); }
+    else if (v.picto === 'nourrisson') photo.append(nourrisson());
+    else photo.classList.add('vierge');
+    let position = null;
+    if (indispo) position = el('span', { classe: 'cl-tuile-position', texte: 'Non disponible' });
+    else if (estDZ(etatV.position)) position = el('span', { classe: 'cl-tuile-position' }, helico(), el('span', { texte: 'DZ' }));
+    else if (etatV.position && etatV.position.position) position = el('span', { classe: 'cl-tuile-position', texte: etatV.position.position });
+    const nb = etatV.statut ? etatV.statut.anomalies.length : 0;
+    const etatTexte = indispo ? '' : (etatV.statut ? `CL faite ${heure(etatV.statut.date)}${nb ? ` · ${nb} anomalie${nb > 1 ? 's' : ''}` : ''}` : 'CL à faire');
+    bouton.append(photo, el('strong', { classe: 'cl-tuile-nom', texte: v.nom || v.id }), position,
+      etatTexte ? el('small', { classe: 'cl-tuile-etat', texte: etatTexte }) : null);
+    return bouton;
+  }
+
   function rendreVehicules() {
     zoneVehicules.innerHTML = '';
+    // Check-list ambulancier : tuiles comme les inventaires ; autres actions (carburant…) : grandes cases.
+    zoneVehicules.classList.toggle('cl-tuiles', !modeAction);
     // Sans état du parc du jour, les positions et les véhicules indisponibles ne peuvent pas s'afficher.
     const parc = lireStockage(CLE_PARC);
     const avis = document.getElementById('avis-parc');
@@ -577,7 +608,7 @@ const Ambulancier = (() => {
     // Un véhicule désactivé par un administrateur n'apparaît plus, ni ceux que l'action ne concerne pas
     // (pas de plein ni de garage pour la couveuse, par exemple).
     const exclu = { plein: 'sansPlein', exterieur: 'sansExterieur', garage: 'sansGarage' }[modeAction];
-    VEHICULES.filter((v) => !v.inactif && !(exclu && v[exclu])).forEach((v) => zoneVehicules.append(carte(v)));
+    VEHICULES.filter((v) => !v.inactif && !(exclu && v[exclu])).forEach((v) => zoneVehicules.append(modeAction ? carte(v) : tuile(v)));
     // Prévient le tableau de bord du parc (ordinateur) que les données ont changé.
     document.dispatchEvent(new CustomEvent('parc-maj'));
   }
