@@ -3334,3 +3334,15 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .defaut-ligne-texte { display: flex; flex-direction: column; min-width: 0; }
 .defaut-ligne-texte small { color: var(--gris); }
 .defaut-ligne.passe { opacity: 0.5; background: #F7F8FA; }
+
+/* ---------- Carrosserie : une ligne par véhicule ---------- */
+.cartes-vehicules.cl-lignes { grid-template-columns: 1fr; gap: 0.45rem; }
+.vehicule.cl-ligne { display: flex; align-items: center; gap: 0.8rem; width: 100%; padding: 0.45rem 0.7rem 0.45rem 0.45rem; text-align: left; background: #fff; border: 2px solid var(--trait); border-radius: 12px; cursor: pointer; }
+.vehicule.cl-ligne:hover { border-color: var(--bleu); }
+.cl-ligne-photo { flex-shrink: 0; width: 3.2rem; height: 3.2rem; overflow: hidden; border-radius: 8px; background: var(--ciel); }
+.cl-ligne-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.cl-ligne-nom { font-size: 1.1rem; color: var(--bleu); min-width: 3rem; }
+.cl-ligne-defauts { flex: 1; font-size: 0.92rem; color: var(--gris); }
+.vehicule.cl-ligne.avec-defauts .cl-ligne-defauts { color: #8A4B00; font-weight: 700; }
+.cl-ligne-chevron { font-size: 1.5rem; color: var(--gris); }
+.vehicule.cl-ligne.indispo { background: repeating-linear-gradient(135deg, #F7F8FA 0 10px, #E8EBF0 10px 20px); }

@@ -596,10 +596,26 @@ const Ambulancier = (() => {
     return bouton;
   }
 
+  /** Carrosserie : une ligne par véhicule — petite vignette, nom, nombre de défauts en cours. */
+  function ligneCarrosserie(v) {
+    const etatV = etatVehicule(v);
+    const nb = infosVehicule(v.id).defauts.length;
+    const bouton = el('button', { type: 'button', classe: `vehicule cl-ligne${etatV.classe === 'indispo' ? ' indispo' : ''}${nb ? ' avec-defauts' : ''}`, 'data-vehicule': v.id, 'aria-haspopup': 'dialog' });
+    bouton.addEventListener('click', () => Actions.ouvrirAction('exterieur', v, infosVehicule(v.id), etatV));
+    const photo = el('span', { classe: 'cl-ligne-photo', 'aria-hidden': 'true' });
+    const inv = inventaireVehicule(v.id);
+    if (inv && inv.photo) { const img = el('span', { classe: 'cl-tuile-img' }); photo.append(img); poserPhotoVehicule(img, inv.photo); }
+    bouton.append(photo, el('strong', { classe: 'cl-ligne-nom', texte: v.nom || v.id }),
+      el('span', { classe: 'cl-ligne-defauts', texte: nb ? `${nb} défaut${nb > 1 ? 's' : ''} en cours` : 'Aucun défaut' }),
+      el('span', { classe: 'cl-ligne-chevron', 'aria-hidden': 'true', texte: '›' }));
+    return bouton;
+  }
+
   function rendreVehicules() {
     zoneVehicules.innerHTML = '';
     // Toutes les rubriques ambulancier : tuiles comme les inventaires.
-    zoneVehicules.classList.add('cl-tuiles');
+    zoneVehicules.classList.toggle('cl-tuiles', modeAction !== 'exterieur');
+    zoneVehicules.classList.toggle('cl-lignes', modeAction === 'exterieur');
     // Sans état du parc du jour, les positions et les véhicules indisponibles ne peuvent pas s'afficher.
     const parc = lireStockage(CLE_PARC);
     const avis = document.getElementById('avis-parc');
@@ -613,7 +629,7 @@ const Ambulancier = (() => {
     // Un véhicule désactivé par un administrateur n'apparaît plus, ni ceux que l'action ne concerne pas
     // (pas de plein ni de garage pour la couveuse, par exemple).
     const exclu = { plein: 'sansPlein', exterieur: 'sansExterieur', garage: 'sansGarage' }[modeAction];
-    VEHICULES.filter((v) => !v.inactif && !(exclu && v[exclu])).forEach((v) => zoneVehicules.append(tuile(v)));
+    VEHICULES.filter((v) => !v.inactif && !(exclu && v[exclu])).forEach((v) => zoneVehicules.append(modeAction === 'exterieur' ? ligneCarrosserie(v) : tuile(v)));
     // Prévient le tableau de bord du parc (ordinateur) que les données ont changé.
     document.dispatchEvent(new CustomEvent('parc-maj'));
   }
