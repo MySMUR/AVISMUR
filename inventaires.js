@@ -1373,6 +1373,27 @@ const Inventaires = (() => {
   }
 
   /**
+   * Inventaires de la page d'accueil en tuiles (2 par ligne sur téléphone). En gestion, chaque tuile porte
+   * une poignée « ⠿ » : glisser pour changer l'ordre (enregistré dans `ordre`, commun à tous les appareils).
+   */
+  function listeTuiles(liste) {
+    const ul = el('ul', { classe: 'inv-liste inv-tuiles' });
+    liste.forEach((c) => {
+      const li = el('li', { 'data-cle': c.id }, carte(c));
+      if (edition) { li.classList.add('inv-ligne-triable'); li.prepend(poignee(c.nom)); }
+      ul.append(li);
+    });
+    if (edition) {
+      ul.classList.add('inv-liste-triable');
+      triable(ul, (cles) => {
+        cles.forEach((id, rang) => { const x = contenant(id); if (x && x.ordre !== rang) { x.ordre = rang; marquer(x.id); } });
+        rendre({ garderPosition: true });
+      });
+    }
+    return ul;
+  }
+
+  /**
    * La modification des inventaires se fait dans l'administration (menu > Administration >
    * Gestion des inventaires). On reste dans ce mode en naviguant ; pour réaliser un inventaire,
    * on repasse par le menu (Inventaires).
@@ -1695,14 +1716,14 @@ const Inventaires = (() => {
       .sort((x, y) => x.ordre - y.ordre || x.nom.localeCompare(y.nom, 'fr'));
     noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Contenants primaires' }));
     noeuds.push(primaires.length
-      ? el('ul', { classe: 'inv-liste' }, ...primaires.map((c) => el('li', {}, carte(c))))
+      ? listeTuiles(primaires)
       : el('p', { classe: 'aide-question', texte: estAdmin() ? (gestion ? 'Aucun contenant primaire : ouvrez un inventaire et choisissez la catégorie « Primaire ».' : 'Aucun contenant primaire : menu > Administration > Gestion des inventaires.') : 'Aucun contenant primaire pour l\'instant : utilisez la loupe ci-dessus.' }));
     // Inventaires types : visibles des administrateurs seulement.
     const modeles = racines.filter((c) => c.modele);
     if (gestion) {
       noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Inventaires types' }),
         el('p', { classe: 'aide-question', texte: 'Structures des contenants identiques (sacs, ampouliers…) : on modifie le type, puis on répercute sur ses exemplaires. Ils ne se vérifient pas.' }),
-        modeles.length ? el('ul', { classe: 'inv-liste' }, ...modeles.map((c) => el('li', {}, carte(c))))
+        modeles.length ? listeTuiles(modeles)
           : el('p', { classe: 'aide-question', texte: 'Aucun pour l\'instant : créez un contenant (+), puis Réglages › « Inventaire type ».' }));
     }
     // Administrateurs : inventaires de premier niveau pas encore classés.
@@ -2171,7 +2192,7 @@ const Inventaires = (() => {
         secours = montres.length < fils.length;
       }
     }
-    const liste = el('ul', { classe: 'inv-liste' });
+    const liste = el('ul', { classe: 'inv-liste inv-tuiles' });
     fils.forEach((f, i) => {
       if (!montres.includes(f)) return;
       const li = el('li', { 'data-cle': f.id }, carte(f, i + 1, texteGommette(c, f.id, i)));
@@ -2198,6 +2219,7 @@ const Inventaires = (() => {
         // Options repliées par défaut : la liste reste lisible. Seul « Placer sur la photo » reste visible
         // tant que le sous-inventaire n'a pas de gommette (c'est l'étape suivante logique).
         const ouvert = optionsOuvertes.has(f.id) || placement === f.id;
+        if (ouvert) li.classList.add('inv-tuile-large'); // options dépliées : la tuile prend toute la largeur
         const idOptions = idChamp();
         li.append(el('div', { classe: 'inv-options-ligne' },
           vc.photo && !point && !ailleurs.length && !ouvert ? el('button', {
@@ -2226,7 +2248,7 @@ const Inventaires = (() => {
       const indispo = vuesDe(c).some((v) => v.photo && photosIndisponibles.has(v.photo));
       const listeSecours = secours ? el('section', { classe: 'inv-section inv-liste-secours', hidden: !indispo },
         el('h2', { texte: 'Sous-inventaires' }),
-        el('ul', { classe: 'inv-liste' }, ...surPhoto.map((f) => el('li', { 'data-cle': f.id }, carte(f, fils.indexOf(f) + 1, texteGommette(c, f.id, fils.indexOf(f))))))) : null;
+        el('ul', { classe: 'inv-liste inv-tuiles' }, ...surPhoto.map((f) => el('li', { 'data-cle': f.id }, carte(f, fils.indexOf(f) + 1, texteGommette(c, f.id, fils.indexOf(f))))))) : null;
       return [montres.length ? el('section', { classe: 'inv-section' }, el('h2', { texte: secours ? 'Hors photo' : 'Sous-inventaires' }), liste) : null, listeSecours];
     }
     liste.classList.add('inv-liste-triable');

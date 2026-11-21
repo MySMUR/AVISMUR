@@ -3140,3 +3140,45 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 .reg-vider { border: none; background: none; color: var(--gris); min-width: 44px; min-height: 44px; }
 .reg-note { flex-basis: 100%; margin: 0; color: var(--gris); font-size: 0.9rem; font-style: italic; }
 .reg-actions { display: flex; flex-direction: column; gap: 0.6rem; margin: 1.4rem 0 2rem; }
+
+/* ---------- Inventaires en tuiles (accueil et sous-inventaires) : 2 par ligne sur téléphone ---------- */
+.inv-tuiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+@media (min-width: 640px) { .inv-tuiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 960px) { .inv-tuiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.inv-tuiles > li { min-width: 0; }
+.inv-tuiles .inv-carte {
+  height: 100%; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 0.45rem;
+  min-height: 0; padding: 0.55rem; border-left-width: 2px; border-bottom-width: 6px; text-align: center;
+}
+.inv-tuiles .inv-carte.fait { border-bottom-color: var(--rhone); border-left-color: var(--trait); }
+.inv-tuiles .inv-carte.encours, .inv-tuiles .inv-carte.afaire { border-bottom-color: var(--orange); border-left-color: var(--trait); }
+.inv-tuiles .inv-carte.fait.anomalie { border-bottom-color: var(--orange); border-left-color: var(--trait); }
+.inv-tuiles .inv-chevron { display: none; }
+.inv-tuiles .inv-carte-texte { align-items: center; gap: 0.15rem; }
+.inv-tuiles .inv-carte-texte > strong { font-size: 0.98rem; line-height: 1.2; overflow-wrap: anywhere; }
+.inv-tuiles .inv-carte-etat, .inv-tuiles .inv-carte-occupant { font-size: 0.8rem; line-height: 1.25; }
+.inv-tuiles .inv-badges { justify-content: center; }
+.inv-tuiles .inv-tag-scellable { font-size: 0.68rem; }
+/* Vignette (accueil) ou photo du sous-inventaire : carré sur toute la largeur de la tuile */
+.inv-tuiles .inv-repere:has(img), .inv-tuiles .inv-carte-photo { display: block; width: 100%; aspect-ratio: 1; }
+.inv-tuiles .inv-repere img, .inv-tuiles .inv-carte-photo img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+.inv-tuiles .inv-repere:empty:not(.vierge) { width: 100%; height: auto; aspect-ratio: 1; }
+/* Sous-inventaire : gommette (numéro) posée sur le coin de la photo */
+.inv-tuiles .inv-carte { position: relative; }
+.inv-tuiles .inv-repere:not(:has(img)):not(:empty) { position: absolute; top: 0.3rem; left: 0.3rem; z-index: 1; }
+.inv-tuiles .inv-repere:not(:has(img)):not(:empty) + .inv-carte-texte { margin-top: 2.4rem; }
+.inv-tuiles .inv-repere:not(:has(img)):empty.vierge { display: none; }
+/* Gestion : poignée en haut à droite de la tuile, options dépliées sur toute la largeur */
+.inv-tuiles.inv-liste-triable > li.inv-ligne-triable { display: block; position: relative; }
+.inv-tuiles > li.inv-ligne-triable > .inv-poignee {
+  position: absolute; top: 0.25rem; right: 0.25rem; z-index: 2; width: 2.2rem; min-height: 2.2rem;
+  background: rgb(255 255 255 / 0.9); box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+}
+.inv-tuiles > li.inv-tuile-large { grid-column: 1 / -1; }
+.inv-tuiles > li.inv-tuile-large .inv-carte { flex-direction: row; align-items: center; text-align: left; }
+.inv-tuiles > li.inv-tuile-large .inv-carte-photo, .inv-tuiles > li.inv-tuile-large .inv-repere:has(img) { width: 4rem; flex-shrink: 0; }
+.inv-tuiles > li.inv-tuile-large .inv-repere:not(:has(img)):not(:empty) { position: static; }
+.inv-tuiles > li.inv-tuile-large .inv-repere + .inv-carte-texte { margin-top: 0; }
+.inv-tuiles > li.inv-tuile-large .inv-carte-texte { align-items: flex-start; }
+.inv-tuiles .inv-options-ligne { justify-content: center; }
+.inv-tuiles > li.inv-tuile-large .inv-options-ligne { justify-content: flex-start; }
