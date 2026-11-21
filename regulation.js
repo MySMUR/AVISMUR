@@ -124,14 +124,19 @@ const Regulation = (() => {
   function ligneBip(b) {
     const s = saisie.bips[b.id] || (saisie.bips[b.id] = { nom: '', horaires: '' });
     const liste = (donnees.listes || {})[b.categorie] || [];
-    const idListe = `reg-liste-${b.categorie}`;
     return el('div', { classe: 'reg-bip' },
       el('div', { classe: 'reg-bip-affectation' }, el('strong', { texte: b.affectation.replace(/^[\d.\s]+-\s*/, '') }),
         el('small', { texte: (/^([\d.]{14})/.exec(b.affectation) || [])[1] || '' })),
-      el('input', {
-        type: 'text', classe: 'reg-nom', placeholder: 'Nom', valeur: s.nom || '', list: liste.length ? idListe : null, autocomplete: 'off',
-        'aria-label': `Nom ${b.affectation}`, surinput: (e) => { s.nom = e.target.value; garderBrouillon(); },
-      }),
+      // Liste déroulante des utilisateurs de l'appli (métier du bip) ; saisie libre si aucune liste (élève ambulancier).
+      liste.length ? el('select', {
+        classe: 'reg-nom', 'aria-label': `Nom ${b.affectation}`,
+        surchange: (e) => { s.nom = e.target.value; garderBrouillon(); },
+      }, el('option', { valeur: '', texte: '— personne —' }),
+      [...new Set([s.nom, ...liste].filter(Boolean))].map((n) => el('option', { valeur: n, texte: n, selected: n === s.nom })))
+        : el('input', {
+          type: 'text', classe: 'reg-nom', placeholder: 'Nom', valeur: s.nom || '', autocomplete: 'off',
+          'aria-label': `Nom ${b.affectation}`, surinput: (e) => { s.nom = e.target.value; garderBrouillon(); },
+        }),
       // Horaires des ambulanciers et des IADE : fixés par le Sheet, non modifiables.
       /^(ade|iade)$/.test(b.categorie) ? el('span', { classe: 'reg-horaires reg-horaires-fixe', texte: b.horaires || '' }) : el('input', {
         type: 'text', classe: 'reg-horaires', placeholder: 'Horaires', valeur: s.horaires || '',
@@ -227,9 +232,6 @@ const Regulation = (() => {
       });
     });
     zone.append(blocPersonnel);
-    Object.entries(donnees.listes || {}).forEach(([cat, noms]) => {
-      if (!/^positions/.test(cat) && noms.length) zone.append(el('datalist', { id: `reg-liste-${cat}` }, noms.map((n) => el('option', { valeur: n }))));
-    });
     zone.append(el('div', { classe: 'reg-actions' },
       el('button', { type: 'button', classe: 'principal', texte: 'Envoyer à la régulation', surclick: envoyer }),
       el('button', {
