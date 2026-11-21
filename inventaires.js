@@ -694,6 +694,12 @@ const Inventaires = (() => {
     if (p.vehicule) return listeVehicules().find((v) => v.id === p.vehicule) || { id: p.vehicule };
     return vehiculeDuNom(p);
   }
+  /** Contenant primaire dont le véhicule est désarmé d'après la dernière fiche régulation. */
+  function vehiculeDesarme(p) {
+    const v = vehiculeDuPrimaire(p);
+    if (!v) return false;
+    try { return (JSON.parse(localStorage.getItem('avismur_armement')) || {})[v.id] === 'DÉSARMÉ'; } catch (e) { return false; }
+  }
   /** Contenant primaire relié à ce véhicule (inventaires gardés sur l'appareil), ou null. */
   function primaireDuVehicule(id) {
     return Object.values(structure.contenants).find((c) => !c.supprime && vehiculeDuPrimaire(c) && vehiculeDuPrimaire(c).id === id) || null;
@@ -1712,7 +1718,8 @@ const Inventaires = (() => {
     }
 
     // Page des inventaires : seulement les contenants primaires (véhicules, réserve).
-    const primaires = tous.filter((c) => c.categorie === 'primaire' && !dansUnModele(c.id))
+    // Véhicule désarmé (fiche régulation) : vidé, rien à vérifier, il n'apparaît plus (sauf en gestion).
+    const primaires = tous.filter((c) => c.categorie === 'primaire' && !dansUnModele(c.id) && (gestion || !vehiculeDesarme(c)))
       .sort((x, y) => x.ordre - y.ordre || x.nom.localeCompare(y.nom, 'fr'));
     noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Contenants primaires' }));
     noeuds.push(primaires.length

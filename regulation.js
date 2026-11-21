@@ -103,12 +103,13 @@ const Regulation = (() => {
     if (v.type !== 'AUTRE' && !s.armement) s.armement = 'ARMÉ';
     const choixPosition = positions.length ? el('select', {
       classe: 'reg-position', 'aria-label': `Position de ${v.id}`,
-      surchange: (e) => { s.position = e.target.value; garderBrouillon(); },
+      surchange: (e) => { s.position = e.target.value; garderBrouillon(); rendre(); },
     }, el('option', { valeur: '', texte: '— position —' }),
     [...new Set([...positions, s.position].filter(Boolean))].map((p) => el('option', { valeur: p, texte: p, selected: p === s.position }))) : null;
     return el('div', { classe: `reg-vehicule ${s.disponible === 'NON' ? 'indispo' : ''}` },
       App.vignette ? App.vignette(v.id, 'reg-vignette') : null,
-      el('div', { classe: 'reg-vehicule-nom' }, el('strong', { texte: v.id.length <= 4 ? v.id : v.libelle }),
+      el('div', { classe: 'reg-vehicule-nom' }, el('strong', { classe: 'reg-vehicule-id' }, v.id.length <= 4 ? v.id : v.libelle,
+        /^dz$/i.test(String(s.position || '').trim()) && typeof Ambulancier !== 'undefined' && Ambulancier.helico ? Ambulancier.helico() : null),
         v.id.length <= 4 ? el('small', { texte: v.libelle.replace(/^(VML|UMH)\s*F\s*\d+\s*/i, '') }) : null),
       el('div', { classe: 'reg-dispos' },
         interrupteur('Disponible', s.disponible !== 'NON', (on) => bascule(on ? 'OUI' : 'NON'), 'dispo'),
@@ -165,6 +166,10 @@ const Regulation = (() => {
     const ok = App.mettreEnFile({ action: 'envoyerFicheRegulation', donnees: { vehicules, bips } });
     if (!ok) return;
     ecrireStockage(CLE_FAITE, aujourdhui());
+    // Armement connu tout de suite de l'appareil (inventaires IADE), même hors ligne.
+    const arm = lireStockage('avismur_armement') || {};
+    vehicules.forEach((v) => { if (v.armement) arm[v.id] = v.armement; });
+    ecrireStockage('avismur_armement', arm);
     // La copie locale reflète la fiche envoyée (commentaires, positions…), même hors ligne.
     donnees.vehicules.forEach((v) => Object.assign(v, saisie.vehicules[v.id] || {}));
     donnees.bips.forEach((b) => { const x = saisie.bips[b.id] || {}; b.nom = x.nom || ''; if (!/^(ade|iade)$/.test(b.categorie)) b.horaires = x.horaires || ''; });

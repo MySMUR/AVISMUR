@@ -3233,3 +3233,5 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 .reg-inter input:focus-visible + .reg-inter-piste { outline: 3px solid var(--orange); outline-offset: 2px; }
 .reg-suite { margin-top: 0.8rem; }
 .reg-horaires-fixe { border-color: transparent; background: none; color: var(--gris); display: flex; align-items: center; }
+.reg-vehicule-id { display: inline-flex; align-items: center; gap: 0.4rem; }
+.reg-vehicule-id .picto-helico { width: 2rem; height: 1.25rem; color: var(--bleu); }
