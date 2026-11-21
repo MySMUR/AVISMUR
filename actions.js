@@ -156,12 +156,16 @@ const Actions = (() => {
       el('label', { for: i, classe: 'bouton-photo', texte: `📷 ${libelle}` }), entree, apercu, recadrer, retirer);
   }
 
+  const photosEnMemoire = {}; // photos déjà chargées : affichage immédiat la fois suivante
   async function afficherPhotoServeur(conteneur, idPhoto) {
+    const poser = (src) => { conteneur.textContent = ''; conteneur.append(el('img', { classe: 'photo-apercu', alt: 'Photo du défaut', src })); };
+    if (/^data:|^blob:|^https?:/.test(idPhoto)) { poser(idPhoto); return; }
+    if (photosEnMemoire[idPhoto]) { poser(photosEnMemoire[idPhoto]); return; }
     conteneur.textContent = 'Chargement de la photo…';
     try {
       const rep = await App.appeler('photo', { id: idPhoto });
       conteneur.textContent = '';
-      if (rep.ok) conteneur.append(el('img', { classe: 'photo-apercu', alt: 'Photo du défaut', src: rep.photo }));
+      if (rep.ok) { photosEnMemoire[idPhoto] = rep.photo; poser(rep.photo); }
       else conteneur.textContent = 'Photo indisponible.';
     } catch (e) {
       conteneur.textContent = 'Photo indisponible hors ligne.';
@@ -421,7 +425,8 @@ const Actions = (() => {
       } }),
       el('button', { type: 'button', classe: 'lien', texte: '← Retour au schéma', surclick: revenir }));
     if (d.photoLocale) photo.append(el('img', { classe: 'photo-apercu', alt: 'Photo du défaut', src: d.photoLocale }));
-    else if (d.photo) photo.append(el('button', { type: 'button', classe: 'lien', texte: 'Voir la photo', surclick: () => afficherPhotoServeur(photo, d.photo) }));
+    else if (d.photo) afficherPhotoServeur(photo, d.photo);
+    else photo.append(el('p', { classe: 'aide-question', texte: 'Pas de photo pour ce défaut.' }));
   }
 
   /** Signalement d'un nouveau défaut à l'endroit touché. */

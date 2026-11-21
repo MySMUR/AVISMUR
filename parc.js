@@ -651,7 +651,7 @@ const Parc = (() => {
         const photo = el('div', { classe: 'photo-defaut' });
         const item = el('li', {}, el('span', { texte: `${d.commentaire || 'Sans description'} — ${jour(d.date)}${d.agent ? `, ${d.agent}` : ''}` }));
         if (d.photoLocale) photo.append(el('img', { classe: 'photo-apercu', alt: 'Photo du défaut', src: d.photoLocale }));
-        else if (d.photo) item.append(' ', el('button', { type: 'button', classe: 'lien', texte: 'Voir la photo', surclick: () => Actions.afficherPhotoServeur(photo, d.photo) }));
+        else if (d.photo) Actions.afficherPhotoServeur(photo, d.photo);
         item.append(photo);
         liste.append(item);
       });
