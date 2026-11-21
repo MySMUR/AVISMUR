@@ -87,7 +87,21 @@ const Actions = (() => {
         v.sansExterieur ? null : action('🚐', 'Vérification extérieure', info.defauts.length ? `${info.defauts.length} défaut(s) connu(s)` : 'Carrosserie : rayures, impacts', () => exterieur(v, info, etatV)),
         v.sansGarage ? null : action('🔧', 'Passage au garage', info.dernierGarage ? `Dernier : ${date(info.dernierGarage.date)}` : 'Entretien, réparation, contrôle', () => garage(v, info, etatV)),
         v.sansNettoyage ? null : action('🧽', 'Nettoyage', resumeNettoyage(info), () => nettoyage(v, info, etatV)),
-        action('🕘', 'Historique du véhicule', 'Check-lists, pleins, garage, carrosserie', () => historique(v, info, etatV))));
+        action('🕘', 'Historique du véhicule', 'Check-lists, pleins, garage, carrosserie', () => historique(v, info, etatV)),
+        actionArmement(v, action)));
+  }
+
+  /** VML et UMH : désarmer (que devient le contenu des tiroirs et placards ?) ou réarmer (desarmement.js). */
+  function actionArmement(v, action) {
+    if (typeof Desarmement === 'undefined' || !/^(VML|UMH)$/i.test(String(v.modele || ''))) return null;
+    const desarme = Desarmement.estDesarme(v.id);
+    const e = Desarmement.desarmements()[v.id];
+    return action(desarme ? '🧰' : '📦', desarme ? 'Réarmer le véhicule' : 'Désarmer le véhicule',
+      desarme ? (Desarmement.resume(e) || 'Véhicule désarmé') : 'Le contenu des tiroirs et placards est retiré',
+      async () => {
+        fermer();
+        await Desarmement.basculer(v.id, desarme);
+      });
   }
 
   /** Check-list ambulancier : toucher une tuile propose de faire (ou reprendre) la check-list du jour. */

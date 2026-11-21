@@ -215,6 +215,8 @@ const Inventaires = (() => {
       })() } : {}),
       ...(c.modele ? { modele: true } : {}),
       ...(c.desaffecte ? { desaffecte: c.desaffecte } : {}), // mobile dont la place a été prise : à retrouver
+      // Caisses d'un véhicule désarmé (répertoire virtuel, Desarmement.gs) : véhicule, date, agent ; copie : contenant d'origine.
+      ...(c.stock && typeof c.stock === 'object' ? { stock: { ...c.stock } } : {}),
       // Emplacement : attend un exemplaire d'un inventaire type (ex. un « Ampoulier A » dans chaque sac) ;
       // l'exemplaire identifié en check-list y est rangé (enfant de l'emplacement).
       // Plusieurs inventaires types possibles (ex. scopes de marques différentes, Tempus à pochettes variables) :
@@ -1032,6 +1034,7 @@ const Inventaires = (() => {
     }
     synchro.serveurInconnu = false;
     versionServeur = Number(rep.version) || 0;
+    if (typeof Desarmement !== 'undefined') Desarmement.majServeur(rep.armement, rep.desarmements);
     const contenants = {};
     rep.contenants.forEach((c) => {
       if (!c || !ID.test(c.id)) return;
@@ -1693,6 +1696,7 @@ const Inventaires = (() => {
       ligneSynchro(), ligneAvis(),
     ];
     noeuds.push(encadreARetrouver());
+    if (!gestion) noeuds.push(encadreContenuALocaliser());
     if (!tous.length) {
       noeuds.push(el('p', { classe: 'consigne', texte: estAdmin()
         ? 'Aucun inventaire pour l\'instant. Menu > Administration > Gestion des inventaires pour créer le premier (un véhicule, la réserve…), puis ajoutez-lui une photo, des sous-inventaires et des articles.'
@@ -1719,12 +1723,20 @@ const Inventaires = (() => {
 
     // Page des inventaires : seulement les contenants primaires (véhicules, réserve).
     // Véhicule désarmé (fiche régulation) : vidé, rien à vérifier, il n'apparaît plus (sauf en gestion).
-    const primaires = tous.filter((c) => c.categorie === 'primaire' && !dansUnModele(c.id) && (gestion || !vehiculeDesarme(c)))
+    const primaires = tous.filter((c) => c.categorie === 'primaire' && !c.stock && !dansUnModele(c.id) && (gestion || !vehiculeDesarme(c)))
       .sort((x, y) => x.ordre - y.ordre || x.nom.localeCompare(y.nom, 'fr'));
     noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Contenants primaires' }));
     noeuds.push(primaires.length
       ? listeTuiles(primaires)
       : el('p', { classe: 'aide-question', texte: estAdmin() ? (gestion ? 'Aucun contenant primaire : ouvrez un inventaire et choisissez la catégorie « Primaire ».' : 'Aucun contenant primaire : menu > Administration > Gestion des inventaires.') : 'Aucun contenant primaire pour l\'instant : utilisez la loupe ci-dessus.' }));
+    // Caisses : contenu des tiroirs et placards d'un véhicule désarmé, rangé au SMUR (répertoire virtuel des péremptions).
+    const caisses = tous.filter((c) => c.categorie === 'primaire' && c.stock && !c.parent);
+    if (caisses.length) {
+      noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Caisses (véhicules désarmés)' }),
+        el('p', { classe: 'aide-question', texte: 'Contenu des tiroirs et placards rangé dans les locaux : ses péremptions sont suivies ici jusqu\'au réarmement d\'un véhicule.' }),
+        listeTuiles(caisses));
+    }
+    if (!gestion) noeuds.push(blocArmement());
     // Inventaires types : visibles des administrateurs seulement.
     const modeles = racines.filter((c) => c.modele);
     if (gestion) {
@@ -2872,6 +2884,53 @@ const Inventaires = (() => {
     avis = `Alerte ignorée : « ${c.nom} » reste désaffecté (noté sur sa fiche) jusqu'à ce qu'on l'identifie quelque part.`;
     rendre({ garderPosition: true });
   }
+  // ----- Désarmement des véhicules (desarmement.js, Desarmement.gs) -----
+  /** Véhicule désarmé dont le contenu des tiroirs et placards n'a pas été localisé : question posée aux IADE. */
+  function encadreContenuALocaliser() {
+    if (typeof Desarmement === 'undefined') return null;
+    const liste = Desarmement.enAttente();
+    if (!liste.length) return null;
+    return el('section', { classe: 'inv-a-retrouver dsm-a-localiser', role: 'alert' },
+      el('h2', { texte: liste.length > 1 ? 'Contenu de véhicules désarmés à localiser' : `Contenu de ${liste[0].id} désarmé à localiser` }),
+      el('p', { classe: 'aide-question', texte: 'L\'ambulancier ne savait pas ce qu\'était devenu le contenu des tiroirs et placards. Indiquez-le pour que les péremptions suivent.' }),
+      el('ul', {}, ...liste.map((e) => el('li', {},
+        el('strong', { texte: e.id }),
+        el('span', { texte: ` — désarmé${e.depuis ? ` le ${new Date(e.depuis).toLocaleDateString('fr-FR')}` : ''}${e.par ? ` (${e.par})` : ''}` }),
+        el('span', { classe: 'inv-a-retrouver-actions' },
+          el('button', { type: 'button', classe: 'lien', texte: 'Où est le contenu ?', surclick: async () => { if (await Desarmement.repondre(e.id)) { avis = 'Contenu renseigné : les péremptions suivent.'; rendre({ garderPosition: true }); } } }))))));
+  }
+  /** Armement des véhicules : désarmer (avec la question du contenu) ou réarmer dans la journée. Ambulanciers et IADE. */
+  function blocArmement() {
+    if (typeof Desarmement === 'undefined' || estEtudiantApp()) return null;
+    const vs = vehiculesArmables();
+    if (!vs.length) return null;
+    const desarmes = vs.filter((v) => Desarmement.estDesarme(v.id));
+    return el('details', { classe: 'cfg-section dsm-armement', open: desarmes.length > 0 && Desarmement.enAttente().length > 0 },
+      el('summary', { texte: `Armement des véhicules${desarmes.length ? ` — désarmé${desarmes.length > 1 ? 's' : ''} : ${desarmes.map((v) => v.id).join(', ')}` : ''}` }),
+      el('ul', { classe: 'dsm-liste' }, ...vs.map((v) => {
+        const desarme = Desarmement.estDesarme(v.id);
+        const e = Desarmement.desarmements()[v.id];
+        return el('li', { classe: desarme ? 'desarme' : '' },
+          el('strong', { texte: v.nom || v.id }),
+          el('span', { classe: 'dsm-etat', texte: desarme ? `Désarmé${e && Desarmement.resume(e) ? ` · ${Desarmement.resume(e)}` : ''}` : 'Armé' }),
+          el('button', {
+            type: 'button', classe: 'cfg-bouton', texte: desarme ? 'Réarmer' : 'Désarmer',
+            surclick: async () => {
+              if (await Desarmement.basculer(v.id, desarme)) {
+                avis = navigator.onLine ? `${v.id} ${desarme ? 'armé' : 'désarmé'}.` : `${v.id} ${desarme ? 'armé' : 'désarmé'} : enregistré, envoi au retour du réseau.`;
+                rendre({ garderPosition: true });
+              }
+            },
+          }));
+      })));
+  }
+  /** Véhicules qui s'arment et se désarment (VML, UMH). */
+  const vehiculesArmables = () => listeVehicules().filter((v) => /^(VML|UMH)$/i.test(String(v.modele || ''))).map((v) => ({ id: v.id, nom: v.nom || v.id }));
+  const estEtudiantApp = () => App && App.role && App.role() === 'etudiant-iade';
+  /** Caisses existantes (réarmement depuis des caisses). */
+  const stocks = () => Object.values(structure.contenants).filter((c) => !c.supprime && c.stock && c.categorie === 'primaire' && !c.parent)
+    .map((c) => ({ id: c.id, nom: c.nom, vehicule: c.stock.vehicule || '' }));
+
   function encadreARetrouver() {
     const liste = aRetrouver();
     if (!liste.length) return null;
@@ -6771,5 +6830,6 @@ const Inventaires = (() => {
 
   /** Pour la check-list ambulancier : photo d'un véhicule (vignette de son contenant primaire) gardée sur l'appareil. */
   const photoVehicule = (id) => { const p = primaireDuVehicule(id); return p ? p.vignette || '' : ''; };
-  return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate, scanRapide, obtenirPhoto, enMemoire: (id) => Photos.enMemoire(id), photoVehicule };
+  return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate, scanRapide, obtenirPhoto, enMemoire: (id) => Photos.enMemoire(id), photoVehicule,
+    stocks: () => stocks(), vehiculesArmables: () => vehiculesArmables() };
 })();

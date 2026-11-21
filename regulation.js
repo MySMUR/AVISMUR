@@ -115,12 +115,63 @@ const Regulation = (() => {
         v.id.length <= 4 ? el('small', { texte: v.libelle.replace(/^(VML|UMH)\s*F\s*\d+\s*/i, '') }) : null),
       el('div', { classe: 'reg-dispos' },
         interrupteur('Disponible', s.disponible !== 'NON', (on) => bascule(on ? 'OUI' : 'NON'), 'dispo'),
-        v.type === 'AUTRE' ? null : interrupteur('Armé', s.armement !== 'DÉSARMÉ', (on) => { s.armement = on ? 'ARMÉ' : 'DÉSARMÉ'; garderBrouillon(); rendre(); }, 'arme')),
+        v.type === 'AUTRE' ? null : interrupteur('Armé', s.armement !== 'DÉSARMÉ', (on) => basculerArmement(v, s, on), 'arme')),
       choixPosition,
+      resumeContenu(v, s),
       el('input', {
         type: 'text', classe: 'reg-commentaire', placeholder: 'Commentaire', valeur: s.commentaire || '', maxlength: '200',
         'aria-label': `Commentaire ${v.id}`, surinput: (e) => { s.commentaire = e.target.value; garderBrouillon(); },
       }));
+  }
+
+  /** Armement de la veille (dernière fiche ou changement noté dans la journée). */
+  const armementVeille = (id) => {
+    const v = donnees.vehicules.find((x) => x.id === id);
+    const local = typeof Desarmement !== 'undefined' ? Desarmement.armement()[id] : '';
+    return local || (v && v.armement) || 'ARMÉ';
+  };
+  /**
+   * Véhicule passé désarmé par rapport à la veille : où est le contenu des tiroirs et placards ? (desarmement.js)
+   * Réarmé : le contenu vient-il de caisses ? Le choix part avec la fiche (Desarmement.gs).
+   */
+  async function basculerArmement(v, s, arme) {
+    const avant = { armement: s.armement, contenu: s.contenu, depuisStock: s.depuisStock };
+    s.armement = arme ? 'ARMÉ' : 'DÉSARMÉ';
+    delete s.contenu;
+    delete s.depuisStock;
+    const change = s.armement !== armementVeille(v.id);
+    if (change && typeof Desarmement !== 'undefined') {
+      if (!arme) {
+        const r = await Desarmement.choisir({
+          vehicule: v.id, inconnu: true,
+          vehicules: donnees.vehicules.filter((x) => x.type !== 'AUTRE').map((x) => ({ id: x.id, nom: x.id })),
+        });
+        if (!r) { Object.assign(s, avant); rendre(); return; }
+        s.contenu = r;
+        // Le véhicule armé avec ce contenu passe armé sur la fiche aussi.
+        if (r.destination === 'autre' && saisie.vehicules[r.cible]) { saisie.vehicules[r.cible].armement = 'ARMÉ'; saisie.vehicules[r.cible].armePar = v.id; }
+      } else if (!s.armePar) {
+        const stocks = typeof Inventaires !== 'undefined' && Inventaires.stocks ? Inventaires.stocks() : [];
+        if (stocks.length) {
+          const r = await Desarmement.choisirStock({ vehicule: v.id, stocks });
+          if (r === null) { Object.assign(s, avant); rendre(); return; }
+          if (r) s.depuisStock = r;
+        }
+      }
+    }
+    if (arme === false) delete s.armePar;
+    garderBrouillon();
+    rendre();
+  }
+  /** Devenir du contenu choisi pour un véhicule désarmé ce matin. */
+  function resumeContenu(v, s) {
+    if (s.contenu && s.armement === 'DÉSARMÉ') {
+      const c = s.contenu;
+      return el('p', { classe: 'reg-note dsm-note', texte: c.destination === 'autre' ? `Contenu passé dans ${c.cible}` : `Contenu : ${Desarmement.LIBELLES[c.destination].toLowerCase()}` });
+    }
+    if (s.armePar && s.armement === 'ARMÉ') return el('p', { classe: 'reg-note dsm-note', texte: `Armé avec le contenu de ${s.armePar}` });
+    if (s.depuisStock && s.armement === 'ARMÉ') return el('p', { classe: 'reg-note dsm-note', texte: 'Armé depuis des caisses' });
+    return null;
   }
 
   function ligneBip(b) {

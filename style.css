@@ -3348,3 +3348,15 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .vehicule.cl-ligne.indispo { background: repeating-linear-gradient(135deg, #F7F8FA 0 10px, #E8EBF0 10px 20px); }
 .cl-lignes .cl-ligne-defauts { display: flex; flex-direction: column; }
 .cl-lignes .cl-ligne-defauts small { font-size: 0.85rem; }
+
+/* Désarmement des véhicules (desarmement.js) */
+.dsm-choix { display: flex; flex-direction: column; gap: 0.5rem; }
+.dsm-option { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0.8rem; border: 1px solid var(--trait); border-radius: var(--rayon); text-align: left; cursor: pointer; }
+.dsm-option input { width: 1.2rem; height: 1.2rem; margin: 0; }
+.dsm-cible { width: 100%; }
+.dsm-liste { list-style: none; margin: 0.6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.dsm-liste li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.8rem; }
+.dsm-liste .dsm-etat { flex: 1; color: var(--gris); font-size: 0.9rem; }
+.dsm-liste li.desarme .dsm-etat { color: var(--encre); }
+.dsm-liste .cfg-bouton { width: auto; }
+.dsm-note { margin: 0; font-size: 0.85rem; color: var(--gris); }

@@ -313,7 +313,7 @@ async function chargerReleves(silencieux = false) {
   const fin = silencieux ? () => {} : chargement.debut('Chargement des véhicules et des check-lists du jour…');
   try {
     const rep = await appeler('derniersReleves');
-    if (rep.ok && rep.armement) { try { localStorage.setItem('avismur_armement', JSON.stringify(rep.armement)); } catch (e) { /* stockage plein */ } }
+    if (rep.ok) Desarmement.majServeur(rep.armement, rep.desarmements); // armement et contenu des véhicules désarmés
     if (rep.ok) Ambulancier.majReleves(rep.releves, rep.parc, rep.statuts, fileAttente.lire(), rep.infos, rep.inventaires);
   } catch (err) { /* hors ligne : on garde les derniers relevés connus */ } finally {
     relevesEnCours = false;
@@ -961,6 +961,14 @@ function ouvrirAppareilDuLien(lien) {
   if (vueCourante === 'suivi-materiel') Materiel.ouvrirAppareil(id);
 }
 Parc.initialiser({ appeler });
+Desarmement.initialiser({
+  mettreEnFile,
+  agent: () => (session.lire() || appareil.lire() || {}).identifiant || '',
+  fileAttente: () => fileAttente.lire(),
+  vehicules: () => Inventaires.vehiculesArmables(),
+  stocks: () => Inventaires.stocks(),
+  surChangement: () => { if (!$('zone-ambulancier').hidden) Ambulancier.afficher(); },
+});
 Regulation.initialiser({ appeler, mettreEnFile, ouvrirVue: (v) => ouvrirVue(v), vignette: (id, classe) => (Ambulancier.vignette ? Ambulancier.vignette(id, classe) : null), fileAttente: () => fileAttente.lire() });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });
 Utilisateurs.initialiser({ appeler, aDroit, estPrincipal: () => roleCourant === 'admin' });
