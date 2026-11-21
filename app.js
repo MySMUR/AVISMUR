@@ -788,7 +788,7 @@ function ouvrirVue(demandee) {
   else Annuaire.masquer();
 
   const regulation = vue === 'fiche-regulation';
-  if (regulation) Regulation.ouvrir();
+  if (regulation) { try { Regulation.ouvrir(); } catch (err) { console.error(err); } }
   else Regulation.masquer();
 
   const infos = vue === 'accueil' || vue === 'types-infos';
@@ -940,7 +940,7 @@ function ouvrirAppareilDuLien(lien) {
   if (vueCourante === 'suivi-materiel') Materiel.ouvrirAppareil(id);
 }
 Parc.initialiser({ appeler });
-Regulation.initialiser({ appeler, mettreEnFile, vignette: (id, classe) => Ambulancier.vignette(id, classe), fileAttente: () => fileAttente.lire() });
+Regulation.initialiser({ appeler, mettreEnFile, vignette: (id, classe) => (Ambulancier.vignette ? Ambulancier.vignette(id, classe) : null), fileAttente: () => fileAttente.lire() });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });
 Utilisateurs.initialiser({ appeler, aDroit, estPrincipal: () => roleCourant === 'admin' });
 Annuaire.initialiser({

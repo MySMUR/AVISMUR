@@ -410,14 +410,6 @@ const Ambulancier = (() => {
     let derniereCL = i.derniereCL || null;
     if (statut && (!derniereCL || new Date(statut.date) >= new Date(derniereCL.date))) derniereCL = statut;
     return {
-    /** Vignette du véhicule (photo des inventaires), pour d'autres écrans (fiche régulation). Rien si pas de photo. */
-    vignette(id, classe) {
-      const inv = inventaireVehicule(id);
-      if (!inv || !inv.photo) return null;
-      const bloc = el('span', { classe, 'aria-hidden': 'true' });
-      poserPhotoVehicule(bloc, inv.photo);
-      return bloc;
-    },
       statut, derniereCL, dernierPlein: i.dernierPlein || null, dernierGarage: i.dernierGarage || null,
       derniereVerifExterieure: i.derniereVerifExterieure || null, defauts: i.defauts || [], releve: releves.lire(id),
       dernierNettoyageInterieur: i.dernierNettoyageInterieur || null, dernierNettoyageExterieur: i.dernierNettoyageExterieur || null,
@@ -848,6 +840,14 @@ const Ambulancier = (() => {
   }
 
   return {
+    /** Vignette du véhicule (photo des inventaires), pour d'autres écrans (fiche régulation). Rien si pas de photo. */
+    vignette(id, classe) {
+      const inv = inventaireVehicule(id);
+      if (!inv || !inv.photo) return null;
+      const bloc = el('span', { classe, 'aria-hidden': 'true' });
+      poserPhotoVehicule(bloc, inv.photo);
+      return bloc;
+    },
     initialiser, finChargement, infosVehicule, etatVehicule, inventaireVehicule, estDZ, helico, cadran, carburantActuel, creerCarte: carte, noterEvenement,
     ouvrirChecklist: (id) => choisirVehicule(id),
     vehiculeChoisi: () => etat.vehicule,
