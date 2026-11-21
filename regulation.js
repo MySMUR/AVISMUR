@@ -67,6 +67,8 @@ const Regulation = (() => {
       // la copie gardée sur l'appareil peut dater d'avant le dernier envoi.
       const brouillon = lireStockage(CLE_BROUILLON);
       if (premiere || !saisie || !(brouillon && brouillon.jour === aujourdhui())) initialiserSaisie();
+      // Fiche du jour déjà envoyée (par un collègue, depuis un autre appareil) : on passe directement à la check-list.
+      if (exigee && faite() && zone && !zone.hidden && App.ouvrirVue) { exigee = false; App.ouvrirVue('checklist-ambulancier'); return; }
     } catch (e) {
       erreur = donnees ? 'Hors ligne : dernière fiche connue.' : 'Hors ligne et aucune fiche gardée sur cet appareil.';
     }
@@ -193,7 +195,7 @@ const Regulation = (() => {
     zone.innerHTML = '';
     zone.append(el('h1', { texte: 'Fiche régulation' }),
       el('p', { classe: 'consigne', texte: `État du parc et personnels présents sur 24 h — ${aujourdhui()}` }));
-    if (exigee && !faite()) zone.append(el('p', { classe: 'message erreur', role: 'status', texte: 'Envoyez d\'abord la fiche régulation du jour : la check-list des véhicules vient après.' }));
+    if (exigee && !faite()) zone.append(el('p', { classe: 'message erreur', role: 'status', texte: 'La fiche régulation du jour n\'a pas encore été envoyée : remplissez-la et envoyez-la, la check-list des véhicules vient ensuite.' }));
     if (faite() && App.ouvrirVue) zone.append(el('button', { type: 'button', classe: 'cfg-bouton reg-suite', texte: 'Fiche du jour envoyée : passer à la check-list', surclick: () => App.ouvrirVue('checklist-ambulancier') }));
     if (message.texte) zone.append(el('p', { classe: `message ${message.classe}`, role: 'status', texte: message.texte }));
     if (erreur) zone.append(el('p', { classe: `message ${donnees ? 'info' : 'erreur'}`, role: 'status', texte: erreur }));

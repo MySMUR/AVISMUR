@@ -747,12 +747,18 @@ function vueAutorisee(vue) {
   return vue;
 }
 
+/** La vue demandée est-elle la check-list des véhicules alors que la fiche régulation du jour n'est pas envoyée ? */
+function ficheRegulationExigee(vue) {
+  const checklistVehicules = vue === 'checklist-ambulancier' || (vue === 'aujourdhui' && !profilIade());
+  return checklistVehicules && accesVehicules() && !Regulation.faiteAujourdhui();
+}
+
 function ouvrirVue(demandee) {
   const precedente = vueCourante;
   let vue = vueAutorisee(demandee);
-  // Ambulancier : la fiche régulation du jour d'abord, la check-list des véhicules ensuite.
+  // Check-list des véhicules (ambulancier ou tout profil ayant les véhicules) : la fiche régulation du jour d'abord.
   let ficheExigee = false;
-  if (roleCourant === 'ambulancier' && (vue === 'checklist-ambulancier' || vue === 'aujourdhui') && !Regulation.faiteAujourdhui()) {
+  if (ficheRegulationExigee(vue)) {
     vue = 'fiche-regulation';
     ficheExigee = true;
   }
@@ -833,7 +839,7 @@ GRAND_ECRAN.addEventListener('change', () => {
 
 /** Ouvre la check-list d'un véhicule, y compris depuis le tableau de bord du parc ou l'écran Carburant. */
 function ouvrirChecklist(id) {
-  if (roleCourant === 'ambulancier' && !Regulation.faiteAujourdhui()) { ouvrirVue('checklist-ambulancier'); return; } // fiche régulation d'abord
+  if (ficheRegulationExigee('checklist-ambulancier')) { ouvrirVue('checklist-ambulancier'); return; } // fiche régulation d'abord
   if (!$('vue-parc').hidden || Ambulancier.mode() || $('zone-ambulancier').hidden) ouvrirVue('aujourdhui');
   Ambulancier.ouvrirChecklist(id);
 }
