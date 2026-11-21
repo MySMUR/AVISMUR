@@ -128,13 +128,14 @@ const Regulation = (() => {
         type: 'text', classe: 'reg-nom', placeholder: 'Nom', valeur: s.nom || '', list: liste.length ? idListe : null, autocomplete: 'off',
         'aria-label': `Nom ${b.affectation}`, surinput: (e) => { s.nom = e.target.value; garderBrouillon(); },
       }),
-      el('input', {
+      // Horaires des ambulanciers et des IADE : fixés par le Sheet, non modifiables.
+      /^(ade|iade)$/.test(b.categorie) ? el('span', { classe: 'reg-horaires reg-horaires-fixe', texte: b.horaires || '' }) : el('input', {
         type: 'text', classe: 'reg-horaires', placeholder: 'Horaires', valeur: s.horaires || '',
         'aria-label': `Horaires ${b.affectation}`, surinput: (e) => { s.horaires = e.target.value; garderBrouillon(); },
       }),
       el('button', {
         type: 'button', classe: 'reg-vider', 'aria-label': `Vider ${b.affectation}`, texte: '✕',
-        surclick: () => { s.nom = ''; s.horaires = ''; garderBrouillon(); rendre(); },
+        surclick: () => { s.nom = ''; if (!/^(ade|iade)$/.test(b.categorie)) s.horaires = ''; garderBrouillon(); rendre(); },
       }),
       b.note ? el('p', { classe: 'reg-note', texte: b.note }) : null);
   }
@@ -142,7 +143,7 @@ const Regulation = (() => {
   /** Nuit : prise de poste entre 17 h et 5 h (« 18h00 -----> 6h00 »). Interne et étudiants : jour. */
   function periodeBip(b) {
     if (!/^(ade|iade)$/.test(b.categorie)) return 'jour';
-    const horaires = ((saisie.bips[b.id] || {}).horaires || b.horaires || '');
+    const horaires = b.horaires || '';
     const m = /(\d{1,2})\s*h/i.exec(horaires);
     if (!m) return 'jour';
     const h = Number(m[1]);

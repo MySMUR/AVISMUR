@@ -3232,3 +3232,4 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 .reg-inter input:checked + .reg-inter-piste::after { transform: translateX(20px); }
 .reg-inter input:focus-visible + .reg-inter-piste { outline: 3px solid var(--orange); outline-offset: 2px; }
 .reg-suite { margin-top: 0.8rem; }
+.reg-horaires-fixe { border-color: transparent; background: none; color: var(--gris); display: flex; align-items: center; }
