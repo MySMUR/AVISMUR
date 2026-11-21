@@ -3277,3 +3277,16 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .tiroir-simulation:hover { background: #FFEFD8; }
 .tiroir-simulation:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
 .tiroir-simulation[aria-pressed="true"] { border-color: var(--orange); background: #FFE7C4; }
+
+/* Choix du mode de simulation (simulation.js) */
+.dialogue-simulation { max-width: 30rem; width: calc(100vw - 2rem); padding: 1.2rem; border: 0; border-radius: var(--rayon); color: var(--encre); }
+.dialogue-simulation::backdrop { background: rgb(19 41 75 / 0.5); }
+.dialogue-simulation h2 { margin: 0 0 0.5rem; font-size: 1.2rem; }
+.dialogue-simulation ul { margin: 0 0 1rem; padding-left: 1.2rem; font-size: 0.92rem; color: var(--gris); }
+.choix-simulation {
+  display: block; width: 100%; margin-bottom: 0.6rem; padding: 0.7rem 0.9rem; text-align: left;
+  font: inherit; color: #3D2300; background: #FFF6EA; border: 2px solid #F5CF9F; border-radius: var(--rayon); cursor: pointer;
+}
+.choix-simulation small { display: block; margin-top: 0.2rem; font-size: 0.82rem; color: #6E5235; }
+.choix-simulation:hover, .choix-simulation:focus-visible { border-color: var(--orange); background: #FFE7C4; outline: none; }
+.choix-annuler { width: 100%; min-height: 2.6rem; font: inherit; color: var(--gris); background: none; border: 0; cursor: pointer; }

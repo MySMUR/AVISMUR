@@ -84,7 +84,7 @@ async function requete(action, charge) {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     // Mode simulation (simulation.js) : le serveur range les saisies à part.
-    body: JSON.stringify({ action, jeton: actuelle && actuelle.jeton, ...(Simulation.actif() ? { simulation: true } : {}), ...charge }),
+    body: JSON.stringify({ action, jeton: actuelle && actuelle.jeton, ...(Simulation.actif() ? { simulation: true, simulationMode: Simulation.mode() } : {}), ...charge }),
   });
   // Le serveur a répondu, mais pas en JSON (page d'erreur Google : script en échec, déploiement, quota…) :
   // ce n'est pas un problème de réseau, on remonte l'extrait pour l'afficher.

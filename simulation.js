@@ -24,6 +24,8 @@ const Simulation = (() => {
     'mysmur.inventaires.impression', 'avismur_inv_astuce_retour', 'avismur_rafale', 'avismur_vrac_camera', 'avismur_cible_nfc',
     'avismur_infos_filtre', 'avismur_inv_tb_niveaux', 'avismur_inv_tableau', 'avismur-traceurs',
   ]);
+  // Paramétrage gardé sur l'appareil : commun en simulation d'utilisation, mis à part en simulation totale.
+  const PARAMETRAGE_LOCAL = new Set(['avismur_config', 'avismur_inv_modifs']);
   const proto = Storage.prototype;
   const brut = { get: proto.getItem, set: proto.setItem, remove: proto.removeItem };
   const aujourdhui = () => new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' }); // aaaa-mm-jj
@@ -57,7 +59,8 @@ const Simulation = (() => {
 
   // Stockage local : en simulation, les données de l'appli sont lues et écrites à part.
   const aPart = (stockage, k) => Boolean(etat) && stockage === localStorage && typeof k === 'string'
-    && /^(avismur[_-]|mysmur\.)/.test(k) && k.indexOf(PREFIXE) !== 0 && !PARTAGEES.has(k);
+    && /^(avismur[_-]|mysmur\.)/.test(k) && k.indexOf(PREFIXE) !== 0
+    && (!PARTAGEES.has(k) || (etat.mode === 'totale' && PARAMETRAGE_LOCAL.has(k)));
   const cle = (stockage, k) => (aPart(stockage, k) ? PREFIXE + k : k);
   proto.getItem = function getItem(k) { return brut.get.call(this, cle(this, k)); };
   proto.setItem = function setItem(k, v) { return brut.set.call(this, cle(this, k), v); };
@@ -83,6 +86,8 @@ const Simulation = (() => {
     if (theme) theme.content = etat ? '#9A4A00' : '#1D4F9F';
     const bandeau = $('bandeau-simulation');
     if (bandeau) bandeau.hidden = !etat;
+    const titre = $('simulation-titre');
+    if (titre) titre.textContent = totale() ? 'MODE SIMULATION TOTALE' : 'MODE SIMULATION';
     const avec = $('simulation-avec');
     if (avec) {
       const liste = autres || [];
@@ -123,17 +128,44 @@ const Simulation = (() => {
     location.reload();
   }
 
+  const aDesDroits = () => { const s = (typeof session !== 'undefined' && session.lire()) || {}; return s.role === 'admin' || (s.droits || []).length > 0; };
+  const totale = () => Boolean(etat) && etat.mode === 'totale';
+
+  /** Fenêtre de choix : simulation d'utilisation ou simulation totale (agents ayant des droits d'administration). Renvoie le mode ou ''. */
+  function choisirMode() {
+    return new Promise((resoudre) => {
+      const d = document.createElement('dialog');
+      d.className = 'dialogue-simulation';
+      const admin = aDesDroits();
+      d.innerHTML = `<h2>Mode simulation</h2>
+        <ul>
+          <li>Vous partez d'une journée vierge : check-lists, inventaires, pleins, fiche régulation, informations…</li>
+          <li>Seuls les agents eux aussi en simulation voient ce que vous faites ; notifications et mails ne vont qu'à eux.</li>
+          <li>En quittant le mode, tout ce que vous avez fait est effacé.</li>
+        </ul>
+        <button type="button" data-mode="usage" class="choix-simulation"><strong>Simulation d'utilisation</strong>
+          <small>${admin ? 'Vos actions d\'administration (véhicules, inventaires, articles, matériel…) sont réelles et conservées.' : 'S\'entraîner aux check-lists et aux tâches du quotidien.'}</small></button>
+        ${admin ? `<button type="button" data-mode="totale" class="choix-simulation"><strong>Simulation totale</strong>
+          <small>Les actions d'administration sont simulées elles aussi : rien n'est conservé. La gestion des utilisateurs et des droits n'est pas disponible.</small></button>` : ''}
+        <button type="button" data-mode="" class="choix-annuler">Annuler</button>`;
+      d.addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (b) d.close(b.dataset.mode);
+        else if (e.target === d) d.close('');
+      });
+      d.addEventListener('close', () => { d.remove(); resoudre(d.returnValue || ''); });
+      document.body.append(d);
+      d.showModal();
+    });
+  }
+
   async function entrer() {
     if (!navigator.onLine) {
       signaler('Pas de réseau : le mode simulation ne peut être activé qu\'en ligne.');
       return;
     }
-    if (!window.confirm('Passer en mode simulation ?\n\n'
-      + '• Vous partez d\'une journée vierge : check-lists, inventaires, pleins, fiche régulation, informations…\n'
-      + '• Seuls les agents eux aussi en simulation voient ce que vous faites.\n'
-      + '• Rien n\'est envoyé : ni notification, ni mail à la régulation, ni SMS.\n'
-      + '• En quittant le mode, tout ce que vous avez fait est effacé.\n'
-      + '• Les modifications du paramétrage (véhicules, inventaires, articles, matériel) restent, elles, enregistrées.')) return;
+    const mode = await choisirMode();
+    if (!mode) return;
     // Ce qui attend sur l'appareil part d'abord pour de vrai.
     await envoyerFileAttente();
     if (fileAttente.lire().length) {
@@ -155,7 +187,7 @@ const Simulation = (() => {
       return;
     }
     viderDonnees();
-    etat = { jour: rep.jour || aujourdhui(), identifiant: (session.lire() || {}).identifiant || '', depuis: new Date().toISOString() };
+    etat = { jour: rep.jour || aujourdhui(), identifiant: (session.lire() || {}).identifiant || '', depuis: new Date().toISOString(), mode };
     brut.set.call(localStorage, CLE, JSON.stringify(etat));
     location.reload(); // tout est relu, cette fois dans la journée simulée
   }
@@ -217,6 +249,7 @@ const Simulation = (() => {
 
   return {
     actif: () => Boolean(etat),
+    mode: () => (etat ? etat.mode || 'usage' : ''),
     entrer,
     sortir,
     verifierAgent,
