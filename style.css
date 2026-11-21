@@ -3212,3 +3212,12 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 .inv-tb-appareil { font-size: 0.85rem; font-weight: 800; line-height: 1.2; color: var(--encre); overflow-wrap: anywhere; }
 .inv-tb-tuile:not(.parent) .inv-tb-appareil { text-align: center; }
 .inv-tb-appareil.ko { color: var(--erreur); }
+.reg-bloc { background: var(--ciel); border: 2px solid var(--trait); border-radius: var(--rayon); padding: 0.4rem 0.8rem 1rem; margin-top: 1.2rem; }
+.reg-bloc h2 { margin-top: 0.6rem; }
+.reg-bloc h3 { font-size: 1rem; margin: 1rem 0 0.5rem; padding-bottom: 0.25rem; border-bottom: 2px solid var(--bleu); color: var(--bleu); }
+.reg-bloc h4 { font-size: 0.95rem; margin: 0.8rem 0 0.4rem; color: var(--gris); }
+.reg-periode { border-radius: var(--rayon); padding: 0.2rem 0.6rem 0.6rem; margin-top: 0.8rem; }
+.reg-jour { background: #FFF8E6; }
+.reg-nuit { background: #E6ECF7; }
+.reg-vignette { width: 64px; height: 48px; border-radius: 8px; overflow: hidden; flex: 0 0 auto; background: var(--ciel); }
+.reg-vignette img { width: 100%; height: 100%; object-fit: cover; display: block; }

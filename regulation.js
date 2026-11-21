@@ -101,6 +101,7 @@ const Regulation = (() => {
     }, el('option', { valeur: '', texte: '— position —' }),
     [...new Set([...positions, s.position].filter(Boolean))].map((p) => el('option', { valeur: p, texte: p, selected: p === s.position }))) : null;
     return el('div', { classe: `reg-vehicule ${s.disponible === 'NON' ? 'indispo' : ''}` },
+      App.vignette ? App.vignette(v.id, 'reg-vignette') : null,
       el('div', { classe: 'reg-vehicule-nom' }, el('strong', { texte: v.id.length <= 4 ? v.id : v.libelle }),
         v.id.length <= 4 ? el('small', { texte: v.libelle.replace(/^(VML|UMH)\s*F\s*\d+\s*/i, '') }) : null),
       el('div', { classe: 'reg-dispos' }, bascule('OUI'), bascule('NON')),
@@ -132,6 +133,16 @@ const Regulation = (() => {
         surclick: () => { s.nom = ''; s.horaires = ''; garderBrouillon(); rendre(); },
       }),
       b.note ? el('p', { classe: 'reg-note', texte: b.note }) : null);
+  }
+
+  /** Nuit : prise de poste entre 17 h et 5 h (« 18h00 -----> 6h00 »). Interne et étudiants : jour. */
+  function periodeBip(b) {
+    if (!/^(ade|iade)$/.test(b.categorie)) return 'jour';
+    const horaires = ((saisie.bips[b.id] || {}).horaires || b.horaires || '');
+    const m = /(\d{1,2})\s*h/i.exec(horaires);
+    if (!m) return 'jour';
+    const h = Number(m[1]);
+    return h >= 17 || h < 5 ? 'nuit' : 'jour';
   }
 
   function envoyer() {
@@ -172,11 +183,28 @@ const Regulation = (() => {
         : dernier ? `Dernier envoi : ${dernier.date} à ${dernier.heure}${dernier.agent ? ` (${dernier.agent.replace(/^MySMUR : /, '')})` : ''}` : '',
     }));
 
+    // Véhicules : départs primaires puis secondaires.
+    const blocVehicules = el('section', { classe: 'reg-bloc' }, el('h2', { texte: 'Véhicules' }));
     ['primaire', 'secondaire'].forEach((groupe) => {
       const vs = donnees.vehicules.filter((v) => v.groupe === groupe);
-      if (vs.length) zone.append(el('h2', { texte: groupe === 'primaire' ? 'Départs primaires' : 'Départs secondaires' }), el('div', { classe: 'reg-liste' }, vs.map(ligneVehicule)));
+      if (vs.length) blocVehicules.append(el('h3', { texte: groupe === 'primaire' ? 'Départs primaires' : 'Départs secondaires' }), el('div', { classe: 'reg-liste' }, vs.map(ligneVehicule)));
     });
-    zone.append(el('h2', { texte: 'Personnels et bips' }), el('div', { classe: 'reg-liste' }, donnees.bips.map(ligneBip)));
+    zone.append(blocVehicules);
+
+    // Personnel : jour puis nuit ; dans chacun, ambulanciers, IADE, puis interne et étudiants.
+    const blocPersonnel = el('section', { classe: 'reg-bloc' }, el('h2', { texte: 'Personnel et bips' }));
+    const famille = (b) => (b.categorie === 'ade' ? 'Ambulanciers' : b.categorie === 'iade' ? 'IADE' : 'Interne et étudiants');
+    [['jour', 'Jour'], ['nuit', 'Nuit']].forEach(([periode, titre]) => {
+      const bs = donnees.bips.filter((b) => periodeBip(b) === periode);
+      if (!bs.length) return;
+      const sous = el('div', { classe: `reg-periode reg-${periode}` }, el('h3', { texte: titre }));
+      ['Ambulanciers', 'IADE', 'Interne et étudiants'].forEach((f) => {
+        const lignes = bs.filter((b) => famille(b) === f);
+        if (lignes.length) sous.append(el('h4', { texte: f }), el('div', { classe: 'reg-liste' }, lignes.map(ligneBip)));
+      });
+      blocPersonnel.append(sous);
+    });
+    zone.append(blocPersonnel);
     Object.entries(donnees.listes || {}).forEach(([cat, noms]) => {
       if (!/^positions/.test(cat) && noms.length) zone.append(el('datalist', { id: `reg-liste-${cat}` }, noms.map((n) => el('option', { valeur: n }))));
     });

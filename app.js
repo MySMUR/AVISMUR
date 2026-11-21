@@ -940,7 +940,7 @@ function ouvrirAppareilDuLien(lien) {
   if (vueCourante === 'suivi-materiel') Materiel.ouvrirAppareil(id);
 }
 Parc.initialiser({ appeler });
-Regulation.initialiser({ appeler, mettreEnFile, fileAttente: () => fileAttente.lire() });
+Regulation.initialiser({ appeler, mettreEnFile, vignette: (id, classe) => Ambulancier.vignette(id, classe), fileAttente: () => fileAttente.lire() });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });
 Utilisateurs.initialiser({ appeler, aDroit, estPrincipal: () => roleCourant === 'admin' });
 Annuaire.initialiser({
