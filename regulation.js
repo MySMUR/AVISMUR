@@ -199,18 +199,19 @@ const Regulation = (() => {
     });
     zone.append(blocVehicules);
 
-    // Personnel : jour puis nuit ; dans chacun, ambulanciers, IADE, puis interne et étudiants.
+    // Personnel : ambulanciers, IADE, puis interne et étudiants ; dans chacun, jour puis nuit.
     const blocPersonnel = el('section', { classe: 'reg-bloc' }, el('h2', { texte: 'Personnel et bips' }));
     const famille = (b) => (b.categorie === 'ade' ? 'Ambulanciers' : b.categorie === 'iade' ? 'IADE' : 'Interne et étudiants');
-    [['jour', 'Jour'], ['nuit', 'Nuit']].forEach(([periode, titre]) => {
-      const bs = donnees.bips.filter((b) => periodeBip(b) === periode);
+    ['Ambulanciers', 'IADE', 'Interne et étudiants'].forEach((f) => {
+      const bs = donnees.bips.filter((b) => famille(b) === f);
       if (!bs.length) return;
-      const sous = el('div', { classe: `reg-periode reg-${periode}` }, el('h3', { texte: titre }));
-      ['Ambulanciers', 'IADE', 'Interne et étudiants'].forEach((f) => {
-        const lignes = bs.filter((b) => famille(b) === f);
-        if (lignes.length) sous.append(el('h4', { texte: f }), el('div', { classe: 'reg-liste' }, lignes.map(ligneBip)));
+      blocPersonnel.append(el('h3', { texte: f }));
+      const periodes = [['jour', 'Jour'], ['nuit', 'Nuit']].map(([p, t]) => [p, t, bs.filter((b) => periodeBip(b) === p)]).filter((x) => x[2].length);
+      periodes.forEach(([periode, titre, lignes]) => {
+        blocPersonnel.append(el('div', { classe: `reg-periode reg-${periode}` },
+          periodes.length > 1 ? el('h4', { texte: titre }) : null,
+          el('div', { classe: 'reg-liste' }, lignes.map(ligneBip))));
       });
-      blocPersonnel.append(sous);
     });
     zone.append(blocPersonnel);
     Object.entries(donnees.listes || {}).forEach(([cat, noms]) => {
