@@ -63,7 +63,10 @@ const Regulation = (() => {
       donnees = rep;
       ecrireStockage(CLE, rep);
       if (rep.dernierEnvoi && rep.dernierEnvoi.date === aujourdhui()) ecrireStockage(CLE_FAITE, aujourdhui());
-      if (premiere || !saisie) initialiserSaisie();
+      // Sans brouillon du jour, on repart toujours de la fiche fraîchement lue (commentaires compris) :
+      // la copie gardée sur l'appareil peut dater d'avant le dernier envoi.
+      const brouillon = lireStockage(CLE_BROUILLON);
+      if (premiere || !saisie || !(brouillon && brouillon.jour === aujourdhui())) initialiserSaisie();
     } catch (e) {
       erreur = donnees ? 'Hors ligne : dernière fiche connue.' : 'Hors ligne et aucune fiche gardée sur cet appareil.';
     }
@@ -162,6 +165,10 @@ const Regulation = (() => {
     const ok = App.mettreEnFile({ action: 'envoyerFicheRegulation', donnees: { vehicules, bips } });
     if (!ok) return;
     ecrireStockage(CLE_FAITE, aujourdhui());
+    // La copie locale reflète la fiche envoyée (commentaires, positions…), même hors ligne.
+    donnees.vehicules.forEach((v) => Object.assign(v, saisie.vehicules[v.id] || {}));
+    donnees.bips.forEach((b) => { const x = saisie.bips[b.id] || {}; b.nom = x.nom || ''; if (!/^(ade|iade)$/.test(b.categorie)) b.horaires = x.horaires || ''; });
+    ecrireStockage(CLE, donnees);
     localStorage.removeItem(CLE_BROUILLON);
     message = {
       texte: navigator.onLine ? 'Fiche envoyée à la régulation (PDF par mail).' : 'Hors ligne : la fiche partira au retour du réseau.',
