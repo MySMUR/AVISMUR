@@ -569,12 +569,17 @@ const Ambulancier = (() => {
   function tuile(v) {
     const etatV = etatVehicule(v);
     const indispo = etatV.classe === 'indispo';
+    // Carburant, carrosserie, suivi mécanique : un véhicule indisponible (souvent au garage) reste accessible.
+    const bloque = indispo && !modeAction;
     const estChoisi = etat.vehicule === v.id;
     const bouton = el('button', {
       type: 'button', classe: `vehicule cl-tuile ${etatV.classe}${estChoisi ? ' choisi' : ''}`, 'data-vehicule': v.id,
-      ...(indispo ? { disabled: '', 'aria-disabled': 'true', title: 'Non disponible d\'après l\'état du parc du jour' } : { 'aria-haspopup': 'dialog' }),
+      ...(bloque ? { disabled: '', 'aria-disabled': 'true', title: 'Non disponible d\'après l\'état du parc du jour' } : { 'aria-haspopup': 'dialog' }),
     });
-    if (!indispo) bouton.addEventListener('click', () => Actions.proposerChecklist(v, infosVehicule(v.id), etatV));
+    if (!bloque) bouton.addEventListener('click', () => (modeAction
+      ? Actions.ouvrirAction(modeAction, v, infosVehicule(v.id), etatV)
+      : Actions.proposerChecklist(v, infosVehicule(v.id), etatV)));
+    if (indispo && !bloque) bouton.classList.add('accessible');
     const photo = el('span', { classe: 'cl-tuile-photo', 'aria-hidden': 'true' });
     const inv = inventaireVehicule(v.id);
     if (inv && inv.photo) { const img = el('span', { classe: 'cl-tuile-img' }); photo.append(img); poserPhotoVehicule(img, inv.photo); }
@@ -593,8 +598,8 @@ const Ambulancier = (() => {
 
   function rendreVehicules() {
     zoneVehicules.innerHTML = '';
-    // Check-list ambulancier : tuiles comme les inventaires ; autres actions (carburant…) : grandes cases.
-    zoneVehicules.classList.toggle('cl-tuiles', !modeAction);
+    // Toutes les rubriques ambulancier : tuiles comme les inventaires.
+    zoneVehicules.classList.add('cl-tuiles');
     // Sans état du parc du jour, les positions et les véhicules indisponibles ne peuvent pas s'afficher.
     const parc = lireStockage(CLE_PARC);
     const avis = document.getElementById('avis-parc');
@@ -608,7 +613,7 @@ const Ambulancier = (() => {
     // Un véhicule désactivé par un administrateur n'apparaît plus, ni ceux que l'action ne concerne pas
     // (pas de plein ni de garage pour la couveuse, par exemple).
     const exclu = { plein: 'sansPlein', exterieur: 'sansExterieur', garage: 'sansGarage' }[modeAction];
-    VEHICULES.filter((v) => !v.inactif && !(exclu && v[exclu])).forEach((v) => zoneVehicules.append(modeAction ? carte(v) : tuile(v)));
+    VEHICULES.filter((v) => !v.inactif && !(exclu && v[exclu])).forEach((v) => zoneVehicules.append(tuile(v)));
     // Prévient le tableau de bord du parc (ordinateur) que les données ont changé.
     document.dispatchEvent(new CustomEvent('parc-maj'));
   }
