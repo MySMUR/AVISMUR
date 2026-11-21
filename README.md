@@ -47,9 +47,9 @@ Liens connexes à prévoir (fonctionnalités non encore développées) :
 
 ## Mode simulation (`simulation.js`)
 
-Menu > « Mode simulation » : l'agent part d'une journée vierge et peut tout faire (check-lists, inventaires, pleins, fiche régulation, informations…) sans rien enregistrer pour de vrai. Seuls les agents eux aussi en simulation voient ces saisies ; en quittant le mode, tout ce que l'agent a fait est effacé. Le paramétrage (véhicules, inventaires, articles, matériel) reste réel. Détail côté serveur : README du backend, `Simulation.gs`.
+Menu > « Mode simulation », tout en bas (sous « Se déconnecter ») : ouvert à tous, sauf si le super utilisateur (administrateur principal) décoche « Proposé à tous les agents » juste dessous. L'agent part d'une journée vierge et peut tout faire (check-lists, inventaires, pleins, fiche régulation, informations…) sans rien enregistrer pour de vrai. Seuls les agents eux aussi en simulation voient ces saisies ; en quittant le mode, tout ce que l'agent a fait est effacé. Le paramétrage (véhicules, inventaires, articles, matériel) reste réel. Détail côté serveur : README du backend, `Simulation.gs`.
 
-- Bandeau rayé orange sous l'en-tête tant que le mode est actif, avec le bouton « Quitter » et les autres agents en simulation.
+- Tant que le mode est actif : toute l'appli passe dans les tons ambre (variables CSS redéfinies sur `body.mode-simulation`) et un bandeau flottant « MODE SIMULATION » reste en haut de l'écran, avec « Quitter » et les autres agents en simulation.
 - Chaque requête porte `simulation: true` (`requete()` dans `app.js`).
 - Stockage de l'appareil : en simulation, les clés de l'appli (`avismur_…`) sont lues et écrites sous `avismur_sim__avismur_…` (y compris la file d'attente et les brouillons), effacées à l'entrée et à la sortie. Les clés communes (connexion, réglages de l'appareil, paramétrage en attente) sont listées dans `PARTAGEES` : **toute nouvelle clé de préférence d'affichage doit y être ajoutée**, sinon elle est mise à part en simulation.
 - Activation seulement en ligne, une fois partis les enregistrements réels en attente. Arrêt automatique le lendemain, à la déconnexion, ou si un autre agent se connecte sur l'appareil.

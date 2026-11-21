@@ -15,10 +15,11 @@
  */
 const Simulation = (() => {
   const CLE = 'avismur_simulation'; // { jour: 'aaaa-mm-jj', identifiant, depuis } : présente = mode simulation
+  const CLE_DISPO = 'avismur_simulation_dispo'; // '1' / '0' : mode ouvert aux agents (choix du super utilisateur)
   const PREFIXE = 'avismur_sim__';
   // Communes aux deux modes : connexion, réglages de l'appareil, paramétrage en attente d'envoi.
   const PARTAGEES = new Set([
-    CLE, 'avismur_appareil', 'avismur_rester_connecte', 'avismur_config', 'avismur_inv_modifs', 'avismur_photo', 'avismur_profil',
+    CLE, CLE_DISPO, 'avismur_appareil', 'avismur_rester_connecte', 'avismur_config', 'avismur_inv_modifs', 'avismur_photo', 'avismur_profil',
     'avismur_annuaire', 'avismur_push_cle', 'avismur_push_desactive', 'avismur_detourage', 'avismur-echelle-mm',
     'mysmur.inventaires.impression', 'avismur_inv_astuce_retour', 'avismur_rafale', 'avismur_vrac_camera', 'avismur_cible_nfc',
     'avismur_infos_filtre', 'avismur_inv_tb_niveaux', 'avismur_inv_tableau', 'avismur-traceurs',
@@ -72,9 +73,14 @@ const Simulation = (() => {
     zone.scrollIntoView({ block: 'nearest' });
   }
 
-  /** Bandeau rayé sous l'en-tête et libellé du bouton du menu. */
+  const superUtilisateur = () => ((typeof session !== 'undefined' && session.lire()) || {}).role === 'admin';
+  const disponible = () => brut.get.call(localStorage, CLE_DISPO) !== '0';
+
+  /** Couleurs de l'appli, bandeau flottant, bouton du bas du menu (et son réglage pour le super utilisateur). */
   function afficher(autres) {
     document.body.classList.toggle('mode-simulation', Boolean(etat));
+    const theme = document.querySelector('meta[name="theme-color"]');
+    if (theme) theme.content = etat ? '#9A4A00' : '#1D4F9F';
     const bandeau = $('bandeau-simulation');
     if (bandeau) bandeau.hidden = !etat;
     const avec = $('simulation-avec');
@@ -90,7 +96,31 @@ const Simulation = (() => {
         ? 'Tout ce qui a été fait en simulation sera effacé'
         : 'S\'entraîner sur une journée vierge, sans rien enregistrer';
       bouton.setAttribute('aria-pressed', String(Boolean(etat)));
+      bouton.hidden = !etat && !disponible() && !superUtilisateur();
     }
+    const reglage = $('simulation-reglage');
+    if (reglage) {
+      reglage.hidden = !superUtilisateur();
+      $('simulation-disponible').checked = disponible();
+    }
+  }
+
+  /** Le super utilisateur ouvre ou ferme le mode simulation à tous les agents. */
+  async function regler(ouvert) {
+    let rep;
+    try { rep = await appeler('reglerSimulation', { disponible: ouvert }); } catch (e) { rep = { ok: false, erreur: ERREUR_RESEAU }; }
+    if (rep.ok) brut.set.call(localStorage, CLE_DISPO, ouvert ? '1' : '0');
+    else signaler(rep.erreur || 'Réglage refusé.');
+    afficher();
+  }
+
+  /** Le serveur indique que le mode a été fermé : on en sort sur l'appareil. */
+  function fermee() {
+    brut.set.call(localStorage, CLE_DISPO, '0');
+    if (!etat) { afficher(); return; }
+    terminerLocalement();
+    window.alert('Le mode simulation a été désactivé par l\'administrateur : retour aux données réelles.');
+    location.reload();
   }
 
   async function entrer() {
@@ -151,6 +181,13 @@ const Simulation = (() => {
   /** Après la connexion : un autre agent sur l'appareil ne reste pas dans la simulation du précédent. */
   function verifierAgent(identifiant) {
     if (messageFin) { signaler(messageFin, 'message'); messageFin = ''; }
+    if (navigator.onLine) {
+      appeler('etatSimulation').then((rep) => {
+        if (!rep.ok) return;
+        brut.set.call(localStorage, CLE_DISPO, rep.disponible ? '1' : '0');
+        afficher(etat ? rep.autres : undefined);
+      }).catch(() => {});
+    }
     if (!etat) { afficher(); return; }
     if (identifiant && etat.identifiant && identifiant !== etat.identifiant) {
       terminerLocalement();
@@ -158,9 +195,6 @@ const Simulation = (() => {
       return;
     }
     afficher();
-    if (navigator.onLine) {
-      appeler('etatSimulation').then((rep) => { if (rep.ok && etat) afficher(rep.autres); }).catch(() => {});
-    }
   }
 
   // Application restée ouverte après minuit : la journée simulée est terminée.
@@ -175,6 +209,8 @@ const Simulation = (() => {
     afficher();
     const bouton = $('bouton-simulation');
     if (bouton) bouton.addEventListener('click', () => { if (typeof fermerMenu === 'function') fermerMenu(); return etat ? sortir() : entrer(); });
+    const case_ = $('simulation-disponible');
+    if (case_) case_.addEventListener('change', () => regler(case_.checked));
     const quitter = $('quitter-simulation');
     if (quitter) quitter.addEventListener('click', () => sortir());
   });
@@ -184,5 +220,6 @@ const Simulation = (() => {
     entrer,
     sortir,
     verifierAgent,
+    fermee,
   };
 })();

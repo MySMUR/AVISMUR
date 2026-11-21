@@ -90,7 +90,9 @@ async function requete(action, charge) {
   // ce n'est pas un problème de réseau, on remonte l'extrait pour l'afficher.
   const texte = await r.text();
   try {
-    return JSON.parse(texte);
+    const rep = JSON.parse(texte);
+    if (rep && rep.simulationFermee) Simulation.fermee(); // mode simulation fermé par le super utilisateur
+    return rep;
   } catch (e) {
     const titre = (texte.match(/<title>([^<]*)<\/title>/i) || [])[1] || '';
     const corps = texte.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
