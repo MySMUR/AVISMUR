@@ -1128,14 +1128,14 @@ document.querySelectorAll('#barre-scan [data-scan]').forEach((b) => b.addEventLi
 }));
 // NFC : seulement là où la lecture est possible (Chrome sur Android).
 document.querySelector('#barre-scan [data-scan="nfc"]').hidden = !('NDEFReader' in window);
-// Maison : retour à l'accueil. Clochette : le mur d'informations, en haut de la page.
+// Maison : retour à l'accueil. Clochette : liste des notifications (lues supprimables).
 function allerAccueil() {
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   ouvrirVue('accueil');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 $('barre-accueil').addEventListener('click', allerAccueil);
-$('barre-notifications').addEventListener('click', allerAccueil);
+$('barre-notifications').addEventListener('click', () => Infos.ouvrirNotifications());
 document.addEventListener('infos-compteur', (e) => {
   const n = Number(e.detail) || 0;
   const pastille = document.querySelector('#barre-notifications .barre-compteur');

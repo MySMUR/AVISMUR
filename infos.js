@@ -26,6 +26,7 @@ const Infos = (() => {
   const CLE_FILTRE = 'avismur_infos_filtre';
   const CLE_PUSH = 'avismur_push_cle';
   const CLE_VUES = 'avismur_infos_vues'; // informations déjà vues sur cet appareil, par agent (clochette de la barre du bas)
+  const CLE_SUPPRIMEES = 'avismur_notifs_supprimees'; // notifications lues que l'agent a retirées de sa liste (cet appareil)
   const METIERS = [
     { id: 'ambulancier', libelle: 'Ambulanciers' },
     { id: 'iade', libelle: 'IADE' },
@@ -199,31 +200,82 @@ const Infos = (() => {
   }
 
   // ---------- Clochette (barre d'actions rapide) ----------
-  // Non lues : informations en cours qui me concernent, publiées par un autre, pas encore vues sur cet appareil.
-  function lireVues() {
-    try { return (JSON.parse(localStorage.getItem(CLE_VUES)) || {})[agent()] || []; } catch (e) { return []; }
+  // Notifications : informations en cours qui me concernent, publiées par un autre. Non lues : pas encore vues sur
+  // cet appareil. Une notification lue peut être supprimée : elle quitte la liste de la clochette (pas le mur).
+  function lireListe(cle) {
+    try { return new Set((JSON.parse(localStorage.getItem(cle)) || {})[agent()] || []); } catch (e) { return new Set(); }
+  }
+  function ecrireListe(cle, ids) {
+    try {
+      const toutes = JSON.parse(localStorage.getItem(cle)) || {};
+      toutes[agent()] = [...ids].slice(-500);
+      localStorage.setItem(cle, JSON.stringify(toutes));
+    } catch (e) { /* stockage indisponible */ }
+  }
+  function notifications() {
+    if (!agent()) return [];
+    const supprimees = lireListe(CLE_SUPPRIMEES);
+    const aujourdhui = jour();
+    return infosAffichees().filter((i) => i.id && !i.enAttente && i.auteur !== agent() && pourMoi(i)
+      && statut(i, aujourdhui) === 'encours' && !supprimees.has(i.id))
+      .sort((x, y) => String(y.creee || y.debut).localeCompare(String(x.creee || x.debut)));
   }
   function nonLues() {
-    if (!agent()) return 0;
-    const vues = new Set(lireVues());
-    const aujourdhui = jour();
-    return infosAffichees().filter((i) => !i.enAttente && i.auteur !== agent() && pourMoi(i)
-      && statut(i, aujourdhui) === 'encours' && !vues.has(i.id)).length;
+    const vues = lireListe(CLE_VUES);
+    return notifications().filter((i) => !vues.has(i.id)).length;
   }
   function signalerCompteur() {
     document.dispatchEvent(new CustomEvent('infos-compteur', { detail: nonLues() }));
   }
-  /** Mur affiché : tout ce qui est en cours est considéré comme vu. */
-  function marquerVues() {
+  function marquerLues(ids) {
     if (!agent()) return;
-    try {
-      const toutes = JSON.parse(localStorage.getItem(CLE_VUES)) || {};
-      const ids = new Set(toutes[agent()] || []);
-      infosAffichees().forEach((i) => { if (i.id) ids.add(i.id); });
-      toutes[agent()] = [...ids].slice(-500);
-      localStorage.setItem(CLE_VUES, JSON.stringify(toutes));
-    } catch (e) { /* stockage indisponible */ }
+    const vues = lireListe(CLE_VUES);
+    ids.forEach((x) => vues.add(x));
+    ecrireListe(CLE_VUES, vues);
     signalerCompteur();
+  }
+  /** Mur affiché : tout ce qui est en cours est considéré comme lu. */
+  function marquerVues() { marquerLues(infosAffichees().map((i) => i.id).filter(Boolean)); }
+  function supprimerNotifications(ids) {
+    const supprimees = lireListe(CLE_SUPPRIMEES);
+    ids.forEach((x) => supprimees.add(x));
+    ecrireListe(CLE_SUPPRIMEES, supprimees);
+    signalerCompteur();
+  }
+
+  /** Fenêtre de la clochette : liste des notifications, non lues en tête ; les lues se suppriment. */
+  function ouvrirNotifications() {
+    const idTitre = nouvelId();
+    const corps = el('div', { classe: 'notifs' });
+    function remplir() {
+      const vues = lireListe(CLE_VUES);
+      const liste = notifications();
+      const lues = liste.filter((i) => vues.has(i.id));
+      corps.innerHTML = '';
+      if (!liste.length) { corps.append(el('p', { classe: 'consigne', texte: 'Aucune notification.' })); return; }
+      const nonLuesListe = liste.filter((i) => !vues.has(i.id));
+      corps.append(el('div', { classe: 'notifs-outils' },
+        nonLuesListe.length ? el('button', { type: 'button', classe: 'secondaire', texte: 'Tout marquer comme lu',
+          surclick: () => { marquerLues(nonLuesListe.map((i) => i.id)); remplir(); } }) : null,
+        lues.length ? el('button', { type: 'button', classe: 'secondaire', texte: `Supprimer les lues (${lues.length})`,
+          surclick: () => { supprimerNotifications(lues.map((i) => i.id)); remplir(); } }) : null));
+      corps.append(el('ul', { classe: 'notifs-liste' }, ...nonLuesListe.concat(lues).map((i) => {
+        const lue = vues.has(i.id);
+        return el('li', { classe: `notif ${i.importance || 'normale'}${lue ? ' lue' : ''}` },
+          el('button', { type: 'button', classe: 'notif-ouvrir', surclick: () => {
+            marquerLues([i.id]);
+            fermerFenetre();
+            location.hash = `#info=${i.id}`;
+          } },
+          lue ? null : el('span', { classe: 'notif-point', 'aria-label': 'Non lue' }),
+          el('strong', { texte: i.titre || 'Information' }),
+          el('small', { texte: [i.auteur, i.creee ? dateCourte(String(i.creee).slice(0, 10)) : ''].filter(Boolean).join(' · ') })),
+          lue ? el('button', { type: 'button', classe: 'notif-supprimer', 'aria-label': `Supprimer la notification « ${i.titre || 'Information'} »`, title: 'Supprimer',
+            texte: '✕', surclick: () => { supprimerNotifications([i.id]); remplir(); } }) : null);
+      })));
+    }
+    remplir();
+    ouvrirFenetre('Notifications', idTitre, corps);
   }
 
   const estVisible = () => zone && !zone.hidden;
@@ -1008,6 +1060,7 @@ const Infos = (() => {
     publier(prerempli) { formulaire(prerempli); },
     /** Nombre d'informations non lues (clochette) ; relit le mur en ligne. */
     nonLues,
+    ouvrirNotifications,
     actualiserCompteur() { signalerCompteur(); charger(); },
     initialiser(fonctions) {
       App = fonctions;

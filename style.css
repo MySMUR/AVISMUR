@@ -1946,6 +1946,22 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
   body.connecte .inv-scan-icone { display: none; }
   body.connecte .inv-barre-bas { bottom: calc(4rem + env(safe-area-inset-bottom)); padding-bottom: 0.55rem; }
 }
+/* Fenêtre de la clochette (infos.js) */
+.notifs-outils { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+.notifs-outils button { width: auto; padding-inline: 0.9rem; }
+.notifs-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.notif { display: flex; align-items: stretch; gap: 0.3rem; border: 1px solid var(--trait, #d5dbe5); border-left-width: 5px; border-radius: 0.6rem; background: #fff; }
+.notif.urgente { border-left-color: #d32f2f; }
+.notif.importante { border-left-color: #f57c00; }
+.notif.normale { border-left-color: var(--bleu, #1d4e9e); }
+.notif.lue { background: #f4f6f9; }
+.notif.lue strong { font-weight: 500; color: #555; }
+.notif-ouvrir { flex: 1; display: grid; grid-template-columns: auto 1fr; column-gap: 0.5rem; align-items: center; text-align: left; padding: 0.6rem 0.75rem; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; }
+.notif-ouvrir strong, .notif-ouvrir small { grid-column: 2; }
+.notif-ouvrir small { color: #667; }
+.notif-point { grid-row: 1 / span 2; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: #d32f2f; }
+.notif-supprimer { width: 2.8rem; flex-shrink: 0; border: 0; border-left: 1px solid var(--trait, #d5dbe5); background: none; color: #777; font-size: 1.1rem; cursor: pointer; border-radius: 0 0.6rem 0.6rem 0; }
+.notif-supprimer:hover { color: #d32f2f; }
 .barre-scan-avis { position: fixed; left: 1rem; right: 1rem; bottom: calc(5rem + env(safe-area-inset-bottom)); z-index: 60; margin: 0; padding: 0.75rem 1rem; border-radius: 0.6rem; background: #263238; color: #fff; text-align: center; }
 
 /* ---------- Suivi du matériel (materiel.js) ---------- */
