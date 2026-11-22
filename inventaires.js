@@ -5539,13 +5539,29 @@ const Inventaires = (() => {
    * Bouton « Tout est scellé » du contenant affiché : l'agent vérifie d'abord les sous-contenants de son choix
    * en y entrant, puis valide d'un coup les scellables restants (après confirmation).
    */
+  /** Contenants dont la liste des scellables non vérifiés est dépliée (conservé entre deux rendus). */
+  const scellesDeroules = new Set();
   function blocScellesGroupes(c) {
     const { prets, aIdentifier } = scellablesSous(c);
     if (!prets.length && !aIdentifier.length) return null;
     const bloques = new Map(prets.map((x) => [x.id, obstaclesScelle(x)]).filter(([, o]) => o.length));
+    const n = prets.length + aIdentifier.length;
+    const ligne = (x, etat) => {
+      const ou = cheminSous(c, x);
+      return el('li', {}, el('strong', { texte: x.nom }), ou ? el('small', { texte: ` · ${ou}` }) : null,
+        el('span', { classe: 'inv-scelles-etat', texte: etat }));
+    };
+    const deroule = el('details', { classe: 'inv-scelles-details' },
+      el('summary', { classe: 'inv-scelles-resume' }, logoCadenas(),
+        el('span', { texte: `${pluriel(n, 'contenant')} scellable${n > 1 ? 's' : ''} non vérifié${n > 1 ? 's' : ''}` }),
+        el('span', { classe: 'inv-scelles-chevron', 'aria-hidden': 'true', texte: '▾' })),
+      el('ul', { classe: 'inv-scelles-detail-liste' },
+        ...prets.map((x) => ligne(x, bloques.has(x.id) ? 'inventaire incomplet' : 'à vérifier')),
+        ...aIdentifier.map((f) => ligne(f, 'à identifier'))));
+    if (scellesDeroules.has(c.id)) deroule.open = true;
+    deroule.addEventListener('toggle', () => { if (deroule.open) scellesDeroules.add(c.id); else scellesDeroules.delete(c.id); });
     return el('section', { classe: 'inv-scelles-groupes' },
-      el('p', { classe: 'inv-scelles-resume' }, logoCadenas(),
-        el('span', { texte: `${pluriel(prets.length + aIdentifier.length, 'contenant')} scellable${prets.length + aIdentifier.length > 1 ? 's' : ''} non vérifié${prets.length + aIdentifier.length > 1 ? 's' : ''}` })),
+      deroule,
       el('div', { classe: 'inv-boutons-scelle' },
         prets.length ? el('button', { type: 'button', classe: 'principal', texte: 'Tout est scellé', surclick: () => confirmerScelles(c, prets, bloques, aIdentifier) }) : null,
         aIdentifier.length ? el('button', { type: 'button', classe: 'cfg-bouton inv-bouton-lecture', surclick: () => scannerScelles(c) },

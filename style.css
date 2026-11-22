@@ -1784,6 +1784,14 @@ textarea:focus { border-color: var(--bleu); }
 .inv-boutons-scelle .cfg-bouton { flex: 1 1 10rem; min-height: 3rem; }
 .inv-scelles-groupes { margin: 0.4rem 0 0.8rem; padding: 0.6rem 0.7rem; background: var(--ciel); border: 2px solid var(--bleu); border-radius: 14px; }
 .inv-scelles-resume { display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.5rem; font-weight: 600; color: var(--bleu); }
+.inv-scelles-details > summary { cursor: pointer; list-style: none; }
+.inv-scelles-details > summary::-webkit-details-marker { display: none; }
+.inv-scelles-chevron { margin-left: auto; transition: transform 0.2s; font-size: 1.1rem; }
+.inv-scelles-details[open] .inv-scelles-chevron { transform: rotate(180deg); }
+.inv-scelles-detail-liste { list-style: none; margin: 0 0 0.6rem; padding: 0; }
+.inv-scelles-detail-liste li { padding: 0.35rem 0; border-top: 1px solid rgba(0,0,0,0.08); display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem; }
+.inv-scelles-detail-liste small { color: #555; }
+.inv-scelles-etat { margin-left: auto; font-size: 0.8rem; color: var(--bleu); background: rgba(30,80,160,0.08); border-radius: 1rem; padding: 0.05rem 0.5rem; }
 .inv-scelles-resume .inv-tb-cadenas, .inv-confirmer-scelles .inv-tb-cadenas { width: 1.2rem; height: 1.2rem; color: var(--bleu); }
 .inv-scelles-groupes .inv-bouton-lecture { display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; }
 .inv-scelles-groupes .inv-bouton-lecture svg { width: 1.2rem; height: 1.2rem; }
