@@ -1119,6 +1119,7 @@ function aiguillerCodeLu(code) {
     if (type === 'mat') ouvrirAppareilDuLien(lien);
     else if (type === 'pret') ouvrirPretDuLien(lien);
     else if (type === 'info') ouvrirInfoDuLien(lien);
+    else if (accesInventaires()) { ouvrirVue('inventaires'); Inventaires.ouvrirScanne(decodeURIComponent(lien.slice(5))); }
     else if (location.hash === lien) ouvrirVue(vueDuLien());
     else location.hash = lien;
     return;

@@ -594,6 +594,8 @@ const Inventaires = (() => {
   // Consultation seule : demandée (recherche par le nom), ou aucun contenant primaire connu
   // (ex. contenant mobile désaffecté scanné sans avoir dit où l'on est) : rien à cocher ni à dater.
   /** Le contenant est (ou est rangé dans) un contenant mobile : il ne dit pas dans quel contenant primaire on se trouve. */
+  /** Contenants scannés sur place (action rapide QR / NFC) → contenant primaire où l'on était au scan. */
+  const scannesIci = new Map();
   const dansUnMobile = (c) => Boolean(c) && chemin(c.id).some((x) => x.categorie === 'mobile');
   // Consultation seule (inventaire impossible) : demandée (recherche par le nom) ; contenant mobile ouvert sans avoir
   // dit où l'on est, ou enregistré dans un autre contenant primaire que celui où l'on est ; aucun contenant primaire connu.
@@ -603,6 +605,8 @@ const Inventaires = (() => {
     const ici = contenant(contexte.primaire);
     const structurel = primaireDe(c.id);
     if (!ici) return dansUnMobile(c) || !structurel;
+    // Étiquette scannée par l'action rapide dans le contenant primaire où l'on est : il est là, on en fait l'inventaire.
+    if (chemin(c.id).some((x) => scannesIci.get(x.id) === ici.id)) return false;
     return dansUnMobile(c) && (!structurel || structurel.id !== ici.id);
   };
   /**
@@ -6911,8 +6915,21 @@ const Inventaires = (() => {
       if (zone && !zone.hidden && !gestion && identificationEnCours()) { identificationEnCours()(id); return; }
       const place = placeIci(contenant(id));
       if (place) { confirmerIdentification(place.y, id, place.dans); return; }
-      location.hash = lien(id);
+      ouvrirScanne(id);
     });
+  }
+  /**
+   * Contenant scanné par l'action rapide : si l'on se trouve dans un contenant primaire, il s'ouvre pour en faire
+   * l'inventaire (comme une étiquette lue sur place), même s'il est enregistré ailleurs ou si l'on consultait.
+   */
+  function ouvrirScanne(id) {
+    const x = contenant(id);
+    const ici = contenant(contexte.primaire);
+    if (!gestion && x && ici && ici.categorie === 'primaire' && !ici.supprime) {
+      fixerContexte(ici.id, false);
+      if (x.categorie !== 'primaire') scannesIci.set(x.id, ici.id);
+    }
+    if (location.hash === lien(id)) rendre(); else location.hash = lien(id);
   }
   /** Écran « Quel … se trouve ici ? » affiché : la fonction qui confirme l'identification, sinon null. */
   function identificationEnCours() {
@@ -6951,6 +6968,6 @@ const Inventaires = (() => {
 
   /** Pour la check-list ambulancier : photo d'un véhicule (vignette de son contenant primaire) gardée sur l'appareil. */
   const photoVehicule = (id) => { const p = primaireDuVehicule(id); return p ? p.vignette || '' : ''; };
-  return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate, scanRapide, obtenirPhoto, enMemoire: (id) => Photos.enMemoire(id), photoVehicule,
+  return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate, scanRapide, ouvrirScanne, obtenirPhoto, enMemoire: (id) => Photos.enMemoire(id), photoVehicule,
     stocks: () => stocks(), vehiculesArmables: () => vehiculesArmables(), peremptionsVehicule: (id) => peremptionsVehicule(id) };
 })();
