@@ -3350,6 +3350,12 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .cl-lignes .cl-ligne-defauts small { font-size: 0.85rem; }
 
 /* Désarmement des véhicules (desarmement.js) */
+.inv-carte.inv-desarme {
+  color: var(--gris); border-color: #9AA6B8; background-color: #EEF1F5; cursor: pointer; font: inherit; text-align: inherit;
+  background-image: repeating-linear-gradient(135deg, rgb(74 91 118 / 0.16) 0 8px, transparent 8px 18px);
+}
+.inv-carte.inv-desarme strong { color: var(--encre); }
+.inv-carte.inv-desarme .inv-repere img { filter: grayscale(1); opacity: 0.7; }
 .dsm-choix { display: flex; flex-direction: column; gap: 0.5rem; }
 .dsm-option { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0.8rem; border: 1px solid var(--trait); border-radius: var(--rayon); text-align: left; cursor: pointer; }
 .dsm-option input { width: 1.2rem; height: 1.2rem; margin: 0; }

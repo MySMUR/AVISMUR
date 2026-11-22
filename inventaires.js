@@ -1333,6 +1333,7 @@ const Inventaires = (() => {
   }
   /** `numero` : rang du sous-inventaire (gommette) ; `texte` : texte de sa gommette s'il remplace le numéro. */
   function carte(c, numero, texte) {
+    if (!gestion && !numero && c.categorie === 'primaire' && vehiculeDesarme(c)) return carteDesarme(c);
     const b = bilan(c.id);
     const t = numero ? (texte === undefined ? String(numero) : texte) : '';
     const repere = el('span', { classe: `inv-repere ${b.classe}${numero ? classesTexte(t) : ''}`, 'aria-hidden': 'true', texte: t });
@@ -1385,6 +1386,28 @@ const Inventaires = (() => {
    * Inventaires de la page d'accueil en tuiles (2 par ligne sur téléphone). En gestion, chaque tuile porte
    * une poignée « ⠿ » : glisser pour changer l'ordre (enregistré dans `ordre`, commun à tous les appareils).
    */
+  /** Véhicule désarmé : tuile grise hachurée, sans inventaire ; au toucher, devenir du contenu (ou la question). */
+  function carteDesarme(c) {
+    const v = vehiculeDuPrimaire(c);
+    const e = typeof Desarmement !== 'undefined' ? Desarmement.desarmements()[v.id] : null;
+    const aLocaliser = !e || e.statut === 'attente';
+    const repere = el('span', { classe: 'inv-repere', 'aria-hidden': 'true' });
+    const image = c.vignette || c.photo;
+    if (image) {
+      const vignette = (donnees) => { if (donnees) repere.append(el('img', { src: donnees, alt: '' })); };
+      if (Photos.enMemoire(image)) vignette(Photos.enMemoire(image)); else obtenirPhoto(image).then(vignette);
+    }
+    return el('button', { type: 'button', classe: 'inv-carte inv-desarme', surclick: () => infoDesarme(v.id) }, repere,
+      el('span', { classe: 'inv-carte-texte' },
+        el('strong', { texte: c.nom }),
+        el('span', { classe: 'inv-carte-etat', texte: aLocaliser ? 'Désarmé · contenu à localiser' : 'Désarmé' })));
+  }
+  /** Où est le contenu des tiroirs et placards du véhicule désarmé ; non renseigné : on le demande. */
+  async function infoDesarme(vehicule) {
+    if (typeof Desarmement === 'undefined') return;
+    if (await Desarmement.info(vehicule)) { avis = 'Contenu renseigné : les péremptions suivent.'; rendre({ garderPosition: true }); }
+  }
+
   function listeTuiles(liste) {
     const ul = el('ul', { classe: 'inv-liste inv-tuiles' });
     liste.forEach((c) => {
@@ -1722,8 +1745,8 @@ const Inventaires = (() => {
     }
 
     // Page des inventaires : seulement les contenants primaires (véhicules, réserve).
-    // Véhicule désarmé (fiche régulation) : vidé, rien à vérifier, il n'apparaît plus (sauf en gestion).
-    const primaires = tous.filter((c) => c.categorie === 'primaire' && !c.stock && !dansUnModele(c.id) && (gestion || !vehiculeDesarme(c)))
+    // Véhicule désarmé : tuile grise hachurée, pas d'inventaire ; au toucher, où est passé le contenu des tiroirs.
+    const primaires = tous.filter((c) => c.categorie === 'primaire' && !c.stock && !dansUnModele(c.id))
       .sort((x, y) => x.ordre - y.ordre || x.nom.localeCompare(y.nom, 'fr'));
     noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Contenants primaires' }));
     noeuds.push(primaires.length
@@ -5974,6 +5997,15 @@ const Inventaires = (() => {
       if (occ) id = occ.id;
       else if (dessus) { id = dessus.id; if (!contexte.consultation && c.parent === dessus.id) identifierEmplacement = `emp:${c.id}`; }
       if (id !== c.id) { history.replaceState(null, '', lien(id)); c = contenant(id); }
+    }
+    // Véhicule désarmé : pas d'inventaire (lien, QR, NFC…) ; retour à la page des inventaires avec l'information.
+    if (!gestion && c && !contexte.consultation && !dansUnMobile(c)) {
+      const p = primaireDe(c.id);
+      if (p && vehiculeDesarme(p)) {
+        history.replaceState(null, '', lien(''));
+        id = ''; c = null;
+        setTimeout(() => infoDesarme(vehiculeDuPrimaire(p).id), 0);
+      }
     }
     // Contenant primaire où l'on est : celui du contenant ouvert. La page des inventaires remet à zéro la consultation.
     if (!gestion) {

@@ -153,6 +153,24 @@ const Desarmement = (() => {
     return true;
   }
 
+  /**
+   * Toucher un véhicule désarmé : où a été mis le contenu des tiroirs et placards. Non renseigné : la question
+   * est posée (résout true si une réponse est enregistrée).
+   */
+  async function info(vehicule) {
+    const e = desarmements()[vehicule];
+    if (!e || e.statut === 'attente') return repondre(vehicule);
+    const date = e.depuis ? new Date(e.depuis).toLocaleDateString('fr-FR') : '';
+    await fenetre(`${vehicule} désarmé`, (corps, valider) => {
+      corps.append(
+        el('p', {}, el('strong', { texte: resume(e) })),
+        el('p', { classe: 'aide-question', texte: [date && `Désarmé le ${date}`, e.par && `par ${e.par}`].filter(Boolean).join(' ') + (e.traitePar && e.traitePar !== e.par ? ` · contenu renseigné par ${e.traitePar}` : '') }),
+        el('p', { classe: 'aide-question', texte: 'Pas d\'inventaire tant que le véhicule est désarmé. Pour le réarmer : fiche régulation ou menu du véhicule.' }),
+        el('div', { classe: 'mat-boutons' }, el('button', { type: 'button', classe: 'principal', texte: 'Fermer', surclick: () => valider(true) })));
+    });
+    return false;
+  }
+
   /** Réponse à la question en attente (l'ambulancier ne savait pas). */
   async function repondre(vehicule) {
     const r = await choisir({ vehicule, vehicules: App.vehicules ? App.vehicules() : [], inconnu: false, titre: `Contenu de ${vehicule} désarmé` });
@@ -173,7 +191,7 @@ const Desarmement = (() => {
       if (armementServeur && typeof armementServeur === 'object') ecrire(CLE_ARMEMENT, armementServeur);
       if (desarmementsServeur && typeof desarmementsServeur === 'object') ecrire(CLE_DESARMEMENTS, desarmementsServeur);
     },
-    armement, desarmements, estDesarme, resume, choisir, choisirStock, basculer, repondre, LIBELLES,
+    armement, desarmements, estDesarme, resume, info, choisir, choisirStock, basculer, repondre, LIBELLES,
     /** Véhicules désarmés dont le contenu reste à localiser. */
     enAttente: () => Object.entries(desarmements()).filter(([id, e]) => e && e.statut === 'attente' && estDesarme(id)).map(([id, e]) => ({ id, ...e })),
   };
