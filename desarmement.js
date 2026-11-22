@@ -132,6 +132,9 @@ const Desarmement = (() => {
   const peremptionsDe = (id) => {
     try { return typeof Inventaires !== 'undefined' && Inventaires.peremptionsVehicule ? Inventaires.peremptionsVehicule(id) : 0; } catch (e) { return 0; }
   };
+  // VL (VML) et AR (UMH) n'ont pas les mêmes tiroirs : pas de transfert de l'une à l'autre.
+  const modeleDe = (id) => ((typeof VEHICULES !== 'undefined' ? VEHICULES : []).find((v) => v.id === id) || {}).modele || '';
+  const compatibles = (a, b) => { const ma = modeleDe(a); const mb = modeleDe(b); return !ma || !mb || ma === mb; };
   const avertissement = () => el('p', { classe: 'dsm-avertissement', role: 'alert', hidden: true });
   const texteBlocage = (id, n) => `⚠️ ${id} a déjà ${n} péremption${n > 1 ? 's' : ''} dans ses tiroirs et placards : transfert impossible. Videz ou mettez à jour les péremptions de ${id} dans les inventaires avant de transférer.`;
 
@@ -141,7 +144,7 @@ const Desarmement = (() => {
    * Résout { destination, cible } ou null (annulé).
    */
   function choisir({ vehicule, vehicules = [], inconnu = true, titre }) {
-    const autres = vehicules.filter((v) => v.id !== vehicule);
+    const autres = vehicules.filter((v) => v.id !== vehicule && compatibles(v.id, vehicule));
     return fenetre(titre || `${vehicule} désarmé`, (corps, valider) => {
       let choix = '';
       const nom = `dsm-${Date.now()}`;
@@ -176,7 +179,7 @@ const Desarmement = (() => {
 
   /** Réarmement : le contenu vient-il de caisses ? Résout l'identifiant des caisses, '' (non) ou null (annulé). */
   function choisirStock({ vehicule, stocks }) {
-    const tries = [...stocks].sort((a, b) => Number(b.vehicule === vehicule) - Number(a.vehicule === vehicule));
+    const tries = stocks.filter((s) => !s.vehicule || compatibles(s.vehicule, vehicule)).sort((a, b) => Number(b.vehicule === vehicule) - Number(a.vehicule === vehicule));
     const n = peremptionsDe(vehicule);
     return fenetre(`${vehicule} armé`, (corps, valider) => {
       const alerte = avertissement();
