@@ -3456,3 +3456,16 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
   .imp-pret strong { font-size: 13pt; }
   .imp-pret span { font-size: 6.5pt; }
 }
+
+/* Action rapide : appareil scanné */
+.mat-rapide-tete { display: flex; gap: 0.8rem; align-items: center; }
+.mat-rapide-photo { width: 72px; height: 72px; object-fit: contain; border-radius: 8px; background: #fff; flex: none; }
+.mat-rapide-ids { margin: 0 0 0.3rem; color: var(--texte-doux, #555); font-size: 0.9rem; }
+.mat-rapide-lieu { margin: 0.8rem 0; padding: 0.6rem 0.8rem; border-radius: 8px; background: rgba(0, 0, 0, 0.04); }
+.mat-rapide-actions { display: grid; gap: 0.5rem; }
+.mat-rapide-action { display: flex; align-items: center; gap: 0.8rem; width: 100%; text-align: left; padding: 0.8rem 1rem; border-radius: 10px; border: 1px solid rgba(0, 0, 0, 0.12); background: #fff; color: inherit; font: inherit; cursor: pointer; }
+.mat-rapide-action:disabled { opacity: 0.45; cursor: default; }
+.mat-rapide-action strong { display: block; }
+.mat-rapide-action small { display: block; opacity: 0.7; }
+.mat-rapide-icone { font-size: 1.5rem; flex: none; }
+.mat-form .cfg-bouton.choisi { outline: 2px solid currentColor; font-weight: 600; }

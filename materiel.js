@@ -25,10 +25,10 @@
  */
 const Materiel = (() => {
   const CLE_CACHE = 'avismur_materiel';
-  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret'];
+  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret', 'signalerMateriel'];
   const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle'];
   const STATUTS_DEFAUT = ['En service', 'En maintenance', 'En panne', 'Prêté', 'Réformé'];
-  const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Note', 'Autre'];
+  const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Envoi en maintenance', 'Note', 'Autre'];
   // Entrées écrites automatiquement dans la main courante : jamais retirées.
   const JOURNAL = ['Création', 'Modification'];
   // Champs communs à plusieurs appareils, que l'on peut répercuter (jamais les numéros propres à chacun).
@@ -229,6 +229,16 @@ const Materiel = (() => {
           }
           attente.add(id);
         });
+      } else if (e.action === 'signalerMateriel') {
+        // Action rapide (scan) : entrée de main courante et statut affichés tout de suite, même hors ligne.
+        const f = parId.get(d.materiel);
+        interventions.push({
+          id: `${e.id}-0`, materiel: d.materiel, date: d.date, type: d.type, description: d.description,
+          intervenant: d.destination || '', saisiPar: e.agent || '', attente: true, idFile: e.id,
+        });
+        if (f && d.statut === 'En maintenance' && f.statut !== 'Réformé' && !f.archive) f.statut = 'En maintenance';
+        if (f && d.statut === 'En panne' && (f.statut === 'En service' || f.statut === 'Prêté')) f.statut = 'En panne';
+        if (f) attente.add(f.id);
       } else if (e.action === 'supprimerIntervention') {
         interventions = interventions.filter((i) => i.id !== d.intervention);
       } else if (e.action === 'supprimerMateriel') {
@@ -669,6 +679,116 @@ const Materiel = (() => {
     nature === 'Note' ? null : el('label', { classe: 'mat-case-libelle' }, enPanne, el('span', { texte: 'Passer l\'appareil « En panne »' })),
     message, el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Enregistrer' })));
     d = fenetre(`${nature} · ${nomAppareil(f)}`, contenu);
+  }
+
+  // ---------- Action rapide : appareil scanné (n° biomed, n° de série, puce) ----------
+  /** Fenêtre ouverte depuis la barre du bas : identité, statut, dernier contenant, et trois actions pour tous. */
+  function ouvrirRapide(id) {
+    const { fiches: toutes, attente } = etat();
+    const f = toutes.find((x) => x.id === id);
+    if (!f) return;
+    const actif = !f.archive && f.statut !== 'Réformé';
+    const enMaintenance = f.statut === 'En maintenance';
+    const action = (icone, titre, detail, faire, desactive) => el('button', { type: 'button', classe: 'mat-rapide-action', disabled: desactive, surclick: faire },
+      el('span', { classe: 'mat-rapide-icone', 'aria-hidden': 'true', texte: icone }),
+      el('span', {}, el('strong', { texte: titre }), detail ? el('small', { texte: detail }) : null));
+    let d;
+    const contenu = el('div', { classe: 'mat-rapide' },
+      el('div', { classe: 'mat-rapide-tete' },
+        aPhoto(f) ? vignette(f, 'mat-rapide-photo') : null,
+        el('div', {},
+          el('p', { classe: 'mat-rapide-ids', texte: [f.numBiomed && `Biomed ${f.numBiomed}`, f.numSerie && `S/N ${f.numSerie}`].filter(Boolean).join(' · ') || 'Sans n° biomed ni n° de série' }),
+          el('p', {}, el('span', { classe: `mat-pastille statut-${normaliser(f.statut || 'En service').replace(/\W+/g, '-')}`, texte: f.archive ? 'Archivé' : (f.statut || 'En service') }),
+            attente.has(f.id) ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null))),
+      el('p', { classe: 'mat-rapide-lieu' }, el('span', { 'aria-hidden': 'true', texte: '📍 ' }),
+        el('strong', { texte: 'Dernier contenant : ' }), texteEmplacement(f) || 'jamais pointé dans un inventaire'),
+      el('div', { classe: 'mat-rapide-actions' },
+        action('⚠️', 'Signaler un problème', 'Panne, casse, dysfonctionnement…', () => { d.close(); rapideSignaler(f); }, !actif),
+        action('🔧', 'Envoyer en maintenance', enMaintenance ? 'Déjà en maintenance' : 'Biomédical, fournisseur…', () => { d.close(); rapideMaintenance(f); }, !actif || enMaintenance),
+        action('🕘', 'Consulter l\'historique', 'Main courante de l\'appareil', () => { d.close(); rapideHistorique(f.id); })));
+    d = fenetre(nomAppareil(f), contenu);
+  }
+
+  function boutonRetourRapide(d, f) {
+    return el('button', { type: 'button', classe: 'lien', texte: '← Retour', surclick: () => { d.close(); ouvrirRapide(f.id); } });
+  }
+
+  function rapideSignaler(f) {
+    const NATURES = [['Panne', 'Panne signalée'], ['Casse', 'Casse'], ['Problème', 'Problème']];
+    let nature = 'Problème';
+    const choix = el('div', { classe: 'mat-boutons', role: 'radiogroup', 'aria-label': 'Nature du problème' });
+    const enPanne = el('input', { type: 'checkbox' });
+    const majChoix = () => {
+      choix.querySelectorAll('button').forEach((b) => { const oui = b.dataset.v === nature; b.classList.toggle('choisi', oui); b.setAttribute('aria-checked', String(oui)); });
+      enPanne.checked = nature !== 'Problème' && (f.statut === 'En service' || f.statut === 'Prêté');
+    };
+    NATURES.forEach(([t, v]) => choix.append(el('button', { type: 'button', classe: 'cfg-bouton', role: 'radio', 'data-v': v, texte: t, surclick: () => { nature = v; majChoix(); } })));
+    const texte = el('textarea', { rows: '4', placeholder: 'Ce qui ne fonctionne pas, dans quelles circonstances…' });
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
+    const peutPanne = f.statut === 'En service' || f.statut === 'Prêté';
+    let d;
+    const contenu = el('form', {
+      classe: 'mat-form', novalidate: true,
+      sursubmit: (ev) => {
+        ev.preventDefault();
+        if (!texte.value.trim()) { message.textContent = 'Décrivez le problème en quelques mots.'; texte.focus(); return; }
+        d.close();
+        enfiler('signalerMateriel', { materiel: f.id, date: aujourdhui(), type: nature, description: texte.value.trim(), statut: enPanne.checked ? 'En panne' : '' });
+        ouvrirRapide(f.id);
+      },
+    },
+    el('p', { classe: 'mat-libelle', texte: 'Nature' }), choix,
+    champ('Description', texte),
+    peutPanne ? el('label', { classe: 'mat-case-libelle' }, enPanne, el('span', { texte: 'Appareil hors d\'usage : le passer « En panne »' })) : null,
+    message,
+    el('div', { classe: 'mat-boutons' }, boutonRetourRapide({ close: () => d.close() }, f), el('button', { type: 'submit', classe: 'principal', texte: 'Signaler' })));
+    d = fenetre(`Signaler un problème · ${nomAppareil(f)}`, contenu);
+    majChoix();
+  }
+
+  function rapideMaintenance(f) {
+    const motif = selectListe(['Panne / réparation', 'Maintenance préventive (révision)', 'Contrôle', 'Mise à jour logicielle', 'Autre'], 'Panne / réparation');
+    const destination = selectListe(['Service biomédical', 'Fournisseur / constructeur', 'Autre'], 'Service biomédical');
+    const texte = el('textarea', { rows: '3', placeholder: 'Précisions (n° de bon, interlocuteur, matériel de remplacement…)' });
+    let d;
+    const contenu = el('form', {
+      classe: 'mat-form', novalidate: true,
+      sursubmit: (ev) => {
+        ev.preventDefault();
+        d.close();
+        enfiler('signalerMateriel', {
+          materiel: f.id, date: aujourdhui(), type: 'Envoi en maintenance', statut: 'En maintenance', destination: destination.value,
+          description: [`Motif : ${motif.value}`, texte.value.trim()].filter(Boolean).join('\n'),
+        });
+        ouvrirRapide(f.id);
+      },
+    },
+    champ('Motif', motif), champ('Envoyé à', destination), champ('Précisions (facultatif)', texte),
+    el('p', { classe: 'aide-question', texte: `L'appareil passera « En maintenance » ; c'est consigné dans sa main courante.` }),
+    el('div', { classe: 'mat-boutons' }, boutonRetourRapide({ close: () => d.close() }, f), el('button', { type: 'submit', classe: 'principal', texte: 'Envoyer en maintenance' })));
+    d = fenetre(`Envoyer en maintenance · ${nomAppareil(f)}`, contenu);
+  }
+
+  /** Main courante en lecture seule (la fiche complète reste accessible). */
+  function rapideHistorique(id) {
+    const { fiches: toutes, interventions } = etat();
+    const f = toutes.find((x) => x.id === id);
+    if (!f) return;
+    const historique = interventions.filter((i) => i.materiel === f.id)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.saisiLe || '').localeCompare(String(a.saisiLe || '')));
+    let d;
+    const contenu = el('div', {},
+      historique.length ? el('ol', { classe: 'mat-historique' }, historique.map((i) => el('li', { classe: i.attente ? 'attente' : '' },
+        el('p', { classe: 'mat-histo-tete' }, el('strong', { texte: i.type === 'Évènement' && i.evenement ? i.evenement : i.type }),
+          i.maintenance ? el('span', { texte: ` · ${i.maintenance}` }) : null, el('span', { texte: ` · ${dateFr(i.date)}` }),
+          i.intervenant ? el('span', { texte: ` · ${i.intervenant}` }) : null,
+          i.attente ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null),
+        i.description ? el('p', { classe: 'mat-histo-texte', texte: i.description, style: 'white-space: pre-line' }) : null,
+        i.saisiPar ? el('p', { classe: 'mat-histo-note', texte: `Saisi par ${i.saisiPar}` }) : null)))
+        : el('p', { classe: 'mat-vide', texte: 'Aucune entrée pour le moment.' }),
+      el('div', { classe: 'mat-boutons' }, boutonRetourRapide({ close: () => d.close() }, f),
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Fiche complète', surclick: () => { d.close(); ouvrirFiche(f.id); } })));
+    d = fenetre(`Historique · ${nomAppareil(f)}`, contenu, { large: true });
   }
 
   // ---------- Fenêtres ----------
@@ -2010,6 +2130,11 @@ const Materiel = (() => {
     ouvrirPretDuCode(code) {
       const go = () => { const ref = refDuCode(code); if (ref) ouvrirReferencePret(ref); };
       if (donnees && donnees.prets) go(); else charger().then(go);
+    },
+    /** Action rapide (scan) : fenêtre statut / dernier contenant / signaler / maintenance / historique. */
+    ouvrirRapide(id) {
+      if (fiches().some((f) => f.id === id)) { ouvrirRapide(id); return; }
+      charger().then(() => { if (fiches().some((f) => f.id === id)) ouvrirRapide(id); });
     },
     /** Lien « #mat=<id> » (puce NFC) : ouvre la fiche de l'appareil. */
     ouvrirAppareil(id) {

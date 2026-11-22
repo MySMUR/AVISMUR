@@ -1116,7 +1116,7 @@ function aiguillerCodeLu(code) {
   const lienInterne = code.match(/#(inv|mat|info|pret)=[^\s#]+/);
   if (lienInterne) {
     const [lien, type] = lienInterne;
-    if (type === 'mat') ouvrirAppareilDuLien(lien);
+    if (type === 'mat') Materiel.ouvrirRapide(lien.slice(5));
     else if (type === 'pret') ouvrirPretDuLien(lien);
     else if (type === 'info') ouvrirInfoDuLien(lien);
     else if (accesInventaires()) { ouvrirVue('inventaires'); Inventaires.ouvrirScanne(decodeURIComponent(lien.slice(5))); }
@@ -1125,7 +1125,7 @@ function aiguillerCodeLu(code) {
     return;
   }
   const appareilLu = Materiel.identifier(code);
-  if (appareilLu) { ouvrirAppareilDuLien(`#mat=${appareilLu.id}`); return; }
+  if (appareilLu) { Materiel.ouvrirRapide(appareilLu.id); return; }
   avisRapide(`Code lu : « ${code.slice(0, 60)} » — aucun inventaire ni appareil correspondant.`);
 }
 function lireQrRapide() {
