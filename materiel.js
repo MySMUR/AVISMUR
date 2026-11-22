@@ -2070,18 +2070,6 @@ const Materiel = (() => {
   const adressePret = (ref) => `${location.origin}${location.pathname.replace(/index\.html$/, '')}#pret=${codeRef(ref)}`;
   const textePuce = (ref) => `SMUR Avignon\nMatériel de prêt ${ref}`;
 
-  function qrSvgPret(texte, classe = 'pret-qr') {
-    const q = qrcode(0, 'M');
-    q.addData(texte);
-    q.make();
-    const n = q.getModuleCount();
-    const marge = 4;
-    let trace = '';
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) trace += `M${c + marge} ${r + marge}h1v1h-1z`;
-    return el('svg:svg', { classe, viewBox: `0 0 ${n + 2 * marge} ${n + 2 * marge}`, role: 'img', 'aria-label': 'QR code' },
-      el('svg:rect', { width: '100%', height: '100%', fill: '#fff' }), el('svg:path', { d: trace, fill: '#000' }));
-  }
-
   const boutonQrNfc = (ref) => el('button', { type: 'button', classe: 'cfg-mini', texte: 'QR / NFC', title: `QR code et puce NFC de ${ref}`, surclick: () => ouvrirQrNfcPret(ref) });
 
   /** Écrit le lien et le texte de la référence sur une puce NTAG (Chrome Android). */
@@ -2108,19 +2096,46 @@ const Materiel = (() => {
     }
   }
 
+  // Étiquette commune à toutes les références de prêt, personnalisable comme celle des contenants
+  // (taille, couleur, négatif, lignes libres, logo). Réglage gardé sur l'appareil.
+  const CLE_ETIQUETTE_PRET = 'mysmur.materiel.etiquettePret';
+  const ETIQUETTE_PRET_DEFAUT = { largeur: 40, hauteur: 50, champ1: 'SMUR Avignon', champ2: 'Matériel de prêt' };
+  const E = () => Inventaires.etiquette;
+  function reglageEtiquettePret() {
+    let r = null;
+    try { r = JSON.parse(localStorage.getItem(CLE_ETIQUETTE_PRET)); } catch (e) { /* rien */ }
+    return E().normaliser({ ...ETIQUETTE_PRET_DEFAUT, ...(r || {}) });
+  }
+  function enregistrerEtiquettePret(r) {
+    try { localStorage.setItem(CLE_ETIQUETTE_PRET, JSON.stringify(r)); } catch (e) { /* mémoire pleine */ }
+  }
+  const objetPret = (ref) => ({ nom: ref, url: adressePret(ref) });
+
   /** QR code et encodage de la puce d'une référence. */
   function ouvrirQrNfcPret(ref) {
     const nfcDispo = 'NDEFReader' in window;
     const sortie = el('p', { classe: 'message', role: 'status' });
     const bouton = el('button', { type: 'button', classe: 'principal', texte: 'Encoder la puce NFC', disabled: !nfcDispo });
     bouton.addEventListener('click', () => ecrirePucePret(ref, bouton, sortie));
+    const apercu = el('div', { classe: 'inv-etiquette-apercu pret-etiquette-apercu' }, E().svg(objetPret(ref), reglageEtiquettePret()));
+    const regler = (champ, valeur) => {
+      const r = E().normaliser({ ...reglageEtiquettePret(), [champ]: valeur });
+      enregistrerEtiquettePret(r);
+      apercu.replaceChildren(E().svg(objetPret(ref), r));
+    };
     fenetre(`QR code et puce NFC · ${ref}`, el('div', { classe: 'mat-nfc pret-qrnfc' },
-      qrSvgPret(adressePret(ref), 'pret-qr pret-qr-grand'),
+      apercu,
       el('p', { classe: 'aide-question', texte: `Le QR code et la puce ouvrent ${ref} dans MySMUR : le prêt en cours, ou l'affectation d'un prêt si la référence est libre. Ils restent valables d'un prêt à l'autre.` }),
+      el('details', { classe: 'inv-details-reglages' }, el('summary', { texte: 'Format, couleur et texte de l\'étiquette' }),
+        E().controles(reglageEtiquettePret(), regler),
+        el('p', { classe: 'aide-question', texte: 'Réglage commun à toutes les références de prêt, gardé sur cet appareil.' })),
       el('pre', { classe: 'mat-apercu', texte: `${adressePret(ref)}\n\n${textePuce(ref)}` }),
       nfcDispo ? null : el('p', { classe: 'message erreur', texte: 'Écriture NFC impossible sur cet appareil : il faut Chrome sur un téléphone Android avec le NFC activé. Vous pouvez recopier le contenu ci-dessus avec une appli NFC (enregistrements « URL » et « Texte »).' }),
       el('p', { classe: 'aide-question', texte: 'L\'ancien contenu de la puce est effacé. Appuyez sur « Encoder », puis gardez la puce contre le dos du téléphone jusqu\'au message de confirmation.' }),
-      el('div', { classe: 'mat-boutons' }, bouton, el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer l\'étiquette', surclick: () => imprimerEtiquettesPrets([ref]) }), nfcDispo ? CibleNfc.lien() : null),
+      el('div', { classe: 'mat-boutons' }, bouton,
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer l\'étiquette', surclick: () => imprimerEtiquettesPrets([ref]) }),
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Aperçu taille réelle', surclick: () => E().apercuTailleReelle(objetPret(ref), reglageEtiquettePret()) }),
+        nfcDispo ? CibleNfc.lien() : null),
       sortie), { large: true });
   }
 
@@ -2143,18 +2158,9 @@ const Materiel = (() => {
         } }))));
   }
 
-  /** Planche A4 d'étiquettes 40 × 50 mm (QR, référence, « SMUR Avignon · Matériel de prêt »). */
+  /** Planche A4 des étiquettes de prêt, au format et à la couleur réglés (comme celles des contenants). */
   function imprimerEtiquettesPrets(refs) {
-    document.querySelectorAll('#inv-impression').forEach((n) => n.remove());
-    const page = el('div', { id: 'inv-impression', classe: 'imp-prets' }, refs.map((r) => el('div', { classe: 'imp-pret' },
-      qrSvgPret(adressePret(r), 'pret-qr'),
-      el('strong', { texte: r }),
-      el('span', { texte: 'SMUR Avignon · Matériel de prêt' }))));
-    document.body.append(page);
-    document.body.classList.add('impression-inventaire');
-    const nettoyer = () => { page.remove(); document.body.classList.remove('impression-inventaire'); window.removeEventListener('afterprint', nettoyer); };
-    window.addEventListener('afterprint', nettoyer);
-    window.print();
+    E().imprimer(refs.map(objetPret), reglageEtiquettePret());
   }
 
   /** Lien « #pret=… » : prêt en cours sur la référence, sinon affectation (ou simple avis). */

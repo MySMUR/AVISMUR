@@ -202,17 +202,7 @@ const Inventaires = (() => {
       ...(c.vrac === true ? { vrac: true } : {}),
       categorie: CATEGORIES_CONTENANT[c.categorie] ? c.categorie : '', // primaire, immobile ou mobile
       // Étiquette QR : largeur × hauteur imprimées (mm) et logo central (puce NFC au dos, croix SMUR ou aucun).
-      ...(c.etiquette ? { etiquette: (() => {
-        const mm = (v, d) => Math.min(150, Math.max(15, Math.round(Number(v) || d)));
-        const largeur = mm(c.etiquette.largeur || c.etiquette.taille, 40);
-        return { largeur, hauteur: mm(c.etiquette.hauteur || c.etiquette.taille, largeur),
-          logo: ['nfc', 'smur'].includes(c.etiquette.logo) ? c.etiquette.logo : '',
-          ...(/^#[0-9a-f]{6}$/i.test(c.etiquette.couleur || '') && c.etiquette.couleur.toLowerCase() !== '#1d4f9f' ? { couleur: c.etiquette.couleur.toLowerCase() } : {}),
-          ...(c.etiquette.negatif === true ? { negatif: true } : {}),
-          // Deux lignes libres (ex. nom et téléphone), imprimées en pied d'étiquette.
-          ...(String(c.etiquette.champ1 || '').trim() ? { champ1: String(c.etiquette.champ1).trim().slice(0, 40) } : {}),
-          ...(String(c.etiquette.champ2 || '').trim() ? { champ2: String(c.etiquette.champ2).trim().slice(0, 40) } : {}) };
-      })() } : {}),
+      ...(c.etiquette ? { etiquette: normEtiquette(c.etiquette) } : {}),
       ...(c.modele ? { modele: true } : {}),
       ...(c.desaffecte ? { desaffecte: c.desaffecte } : {}), // mobile dont la place a été prise : à retrouver
       // Caisses d'un véhicule désarmé (répertoire virtuel, Desarmement.gs) : véhicule, date, agent ; copie : contenant d'origine.
@@ -4437,32 +4427,27 @@ const Inventaires = (() => {
     ];
   }
 
-  /** QR code, lien, puce NFC, copie et suppression (administrateurs). */
-  function blocEtiquette(c) {
-    const url = adresse(c.id);
-    const etatNfc = el('p', { classe: 'message', role: 'status' });
-    const nfc = 'NDEFReader' in window
-      ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Écrire sur une puce NFC', surclick: () => ecrireNfc(url, etatNfc) })
-      : el('p', { classe: 'aide-question', texte: 'Puce NFC : l\'écriture depuis l\'appli demande Chrome sur Android. Sinon, enregistrez ce lien sur la puce avec une appli NFC (type « URL »).' });
-    // Étiquette : aperçu et réglages (taille imprimée, logo central), propres à ce contenant.
-    const apercu = el('div', { classe: 'inv-etiquette-apercu' }, etiquetteSvg(c));
-    const regler = (champ, valeur) => {
-      c.etiquette = normaliser({ etiquette: { ...reglageEtiquette(c), [champ]: valeur } }).etiquette;
-      marquer(c.id);
-      apercu.replaceChildren(etiquetteSvg(c));
-    };
-    const r0 = reglageEtiquette(c);
+  /**
+   * Réglages d'une étiquette (taille, couleur, négatif, lignes libres, logo). `regler(champ, valeur)` est appelé à
+   * chaque changement ; `format(l, h)` pour les formats courants (par défaut : regler largeur puis hauteur).
+   */
+  function controlesEtiquette(r0, regler, format) {
     const champMm = (champ, libelle) => el('label', {}, el('span', { texte: libelle }),
       el('input', { type: 'number', min: 15, max: 150, step: 1, valeur: r0[champ], inputmode: 'numeric', surchange: (e) => regler(champ, e.target.value) }));
     const formats = [[40, 40], [30, 30], [60, 30], [50, 25], [70, 35], [25, 50]];
-    const reglages = el('div', { classe: 'inv-etiquette-reglages' },
-      champMm('largeur', 'Largeur (mm)'), champMm('hauteur', 'Hauteur (mm)'),
-      el('div', { classe: 'inv-etiquette-couleurs' }, el('span', { texte: 'Couleur :' }),
-        ...PALETTE_ETIQUETTE.map((coul) => el('button', {
-          type: 'button', classe: `inv-pastille${(r0.couleur || COULEUR_DEFAUT_ETIQUETTE) === coul.toLowerCase() ? ' choisie' : ''}`,
-          style: `background:${coul}`, title: coul, 'aria-label': `Couleur ${coul}`,
-          surclick: () => { regler('couleur', coul); rendre({ garderPosition: true }); } })),
-        el('input', { type: 'color', valeur: r0.couleur || COULEUR_DEFAUT_ETIQUETTE, 'aria-label': 'Autre couleur', surchange: (e) => { regler('couleur', e.target.value); rendre({ garderPosition: true }); } }),
+    const largeur = champMm('largeur', 'Largeur (mm)'), hauteur = champMm('hauteur', 'Hauteur (mm)');
+    let pastilles = [];
+    const choisir = (coul) => {
+      regler('couleur', coul);
+      pastilles.forEach(([p, v]) => p.classList.toggle('choisie', v.toLowerCase() === coul.toLowerCase()));
+    };
+    pastilles = PALETTE_ETIQUETTE.map((coul) => [el('button', {
+      type: 'button', classe: `inv-pastille${(r0.couleur || COULEUR_DEFAUT_ETIQUETTE).toLowerCase() === coul.toLowerCase() ? ' choisie' : ''}`,
+      style: `background:${coul}`, title: coul, 'aria-label': `Couleur ${coul}`, surclick: () => choisir(coul) }), coul]);
+    return el('div', { classe: 'inv-etiquette-reglages' },
+      largeur, hauteur,
+      el('div', { classe: 'inv-etiquette-couleurs' }, el('span', { texte: 'Couleur :' }), ...pastilles.map(([p]) => p),
+        el('input', { type: 'color', valeur: r0.couleur || COULEUR_DEFAUT_ETIQUETTE, 'aria-label': 'Autre couleur', surchange: (e) => choisir(e.target.value) }),
         el('label', { classe: 'inv-negatif' }, el('input', { type: 'checkbox', checked: r0.negatif === true, surchange: (e) => regler('negatif', e.target.checked) }), el('span', { texte: 'Négatif' }))),
       el('label', {}, el('span', { texte: 'Ligne libre 1 (ex. nom)' }),
         el('input', { type: 'text', maxlength: 40, valeur: r0.champ1 || '', surchange: (e) => regler('champ1', e.target.value) })),
@@ -4473,9 +4458,49 @@ const Inventaires = (() => {
           ...[['', 'Aucun'], ['nfc', 'Pictogramme NFC sur le côté (puce au dos)'], ['smur', 'Croix SMUR au centre']].map(([v, t]) => el('option', { value: v, selected: r0.logo === v, texte: t })))),
       el('div', { classe: 'inv-etiquette-formats' }, el('span', { texte: 'Formats courants :' }),
         ...formats.map(([l, h]) => el('button', { type: 'button', classe: 'cfg-mini', texte: `${l}×${h}`, surclick: () => {
-          c.etiquette = normaliser({ etiquette: { ...reglageEtiquette(c), largeur: l, hauteur: h } }).etiquette;
+          if (format) { format(l, h); return; }
+          largeur.querySelector('input').value = l; hauteur.querySelector('input').value = h;
+          regler('largeur', l); regler('hauteur', h);
+        } }))));
+  }
+
+  /** Étiquette d'un objet hors inventaires (ex. référence de prêt) : { nom, url } et ses réglages. */
+  const objetEtiquette = (o, reglage) => ({ id: '', nom: o.nom, url: o.url, etiquette: normEtiquette(reglage || {}) });
+
+  /** Impression directe sur A4 portrait (marges 8 mm, espace 3 mm, traits de coupe) d'étiquettes d'objets. */
+  function imprimerEtiquettesObjets(objets, reglage) {
+    const o = { orientation: 'portrait', marge: 8, espace: 3, coupe: true, ...lireJson(CLE_IMPRESSION, {}) };
+    const pages = rangerEtiquettes(objets.map((x) => objetEtiquette(x, reglage)), o);
+    if (!pages.length) return;
+    const [pw, ph] = A4[o.orientation] || A4.portrait;
+    const regle = el('style', { id: 'imp-page-a4', texte: `@page { size: A4 ${o.orientation === 'paysage' ? 'landscape' : 'portrait'}; margin: 0; }` });
+    document.head.append(regle);
+    window.addEventListener('afterprint', () => regle.remove(), { once: true });
+    lancerImpression(pages.map((p) => el('div', { classe: 'imp-page', style: `width:${pw}mm;height:${ph}mm` },
+      ...p.etiquettes.map((e) => el('div', {
+        classe: `imp-etiquette${o.coupe ? ' imp-coupe' : ''}`,
+        style: `left:${o.marge + e.x}mm;top:${o.marge + e.y}mm;width:${e.w}mm;height:${e.h}mm;--demi-espace:${Math.min(o.espace / 2, 1.5)}mm`,
+      }, etiquetteSvg(e.c, e.r))))), 'imp-etiquettes');
+  }
+
+  /** QR code, lien, puce NFC, copie et suppression (administrateurs). */
+  function blocEtiquette(c) {
+    const url = adresse(c.id);
+    const etatNfc = el('p', { classe: 'message', role: 'status' });
+    const nfc = 'NDEFReader' in window
+      ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Écrire sur une puce NFC', surclick: () => ecrireNfc(url, etatNfc) })
+      : el('p', { classe: 'aide-question', texte: 'Puce NFC : l\'écriture depuis l\'appli demande Chrome sur Android. Sinon, enregistrez ce lien sur la puce avec une appli NFC (type « URL »).' });
+    // Étiquette : aperçu et réglages (taille imprimée, logo central), propres à ce contenant.
+    const apercu = el('div', { classe: 'inv-etiquette-apercu' }, etiquetteSvg(c));
+    const regler = (champ, valeur) => {
+      c.etiquette = normEtiquette({ ...reglageEtiquette(c), [champ]: valeur });
+      marquer(c.id);
+      apercu.replaceChildren(etiquetteSvg(c));
+    };
+    const reglages = el('div', {}, controlesEtiquette(reglageEtiquette(c), regler, (l, h) => {
+          c.etiquette = normEtiquette({ ...reglageEtiquette(c), largeur: l, hauteur: h });
           marquer(c.id); rendre({ garderPosition: true });
-        } }))),
+        }),
       c.modele ? el('p', { classe: 'aide-question', texte: 'Format répercuté sur les exemplaires avec les autres modifications de l\'inventaire type.' }) : null);
     return el('section', { classe: 'inv-groupe-reglages' }, el('h2', { texte: 'Étiquette QR et puce NFC' }),
       el('p', { classe: 'aide-question', texte: 'Le QR code et la puce NFC ouvrent directement ce contenant. Ils restent valables s\'il est renommé.' }),
@@ -6193,6 +6218,19 @@ const Inventaires = (() => {
     }
   }
 
+  /** Réglages d'étiquette QR normalisés : largeur × hauteur (mm), logo, couleur, négatif, deux lignes libres. */
+  function normEtiquette(e) {
+    const mm = (v, d) => Math.min(150, Math.max(15, Math.round(Number(v) || d)));
+    const largeur = mm(e.largeur || e.taille, 40);
+    return { largeur, hauteur: mm(e.hauteur || e.taille, largeur),
+      logo: ['nfc', 'smur'].includes(e.logo) ? e.logo : '',
+      ...(/^#[0-9a-f]{6}$/i.test(e.couleur || '') && e.couleur.toLowerCase() !== '#1d4f9f' ? { couleur: e.couleur.toLowerCase() } : {}),
+      ...(e.negatif === true ? { negatif: true } : {}),
+      // Deux lignes libres (ex. nom et téléphone), imprimées en pied d'étiquette.
+      ...(String(e.champ1 || '').trim() ? { champ1: String(e.champ1).trim().slice(0, 40) } : {}),
+      ...(String(e.champ2 || '').trim() ? { champ2: String(e.champ2).trim().slice(0, 40) } : {}) };
+  }
+
   // ---------- QR code, NFC, impression ----------
   function qrSvg(texte) {
     const q = qrcode(0, 'M');
@@ -6307,7 +6345,7 @@ const Inventaires = (() => {
     const k = paletteEtiquette(reglage);
     const W = reglage.largeur, H = reglage.hauteur, petit = Math.min(W, H);
     const q = qrcode(0, 'H');
-    q.addData(adresse(c.id));
+    q.addData(c.url || adresse(c.id));
     q.make();
     const n = q.getModuleCount();
     const primaire = c.categorie === 'immobile' ? chemin(c.id)[0] : null;
@@ -6969,5 +7007,13 @@ const Inventaires = (() => {
   /** Pour la check-list ambulancier : photo d'un véhicule (vignette de son contenant primaire) gardée sur l'appareil. */
   const photoVehicule = (id) => { const p = primaireDuVehicule(id); return p ? p.vignette || '' : ''; };
   return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate, scanRapide, ouvrirScanne, obtenirPhoto, enMemoire: (id) => Photos.enMemoire(id), photoVehicule,
-    stocks: () => stocks(), vehiculesArmables: () => vehiculesArmables(), peremptionsVehicule: (id) => peremptionsVehicule(id) };
+    stocks: () => stocks(), vehiculesArmables: () => vehiculesArmables(), peremptionsVehicule: (id) => peremptionsVehicule(id),
+    // Étiquettes QR personnalisables hors inventaires (références de prêt…).
+    etiquette: {
+      svg: (o, reglage) => { const c = objetEtiquette(o, reglage); return etiquetteSvg(c, reglageEtiquette(c)); },
+      controles: (reglage, regler) => controlesEtiquette(reglageEtiquette({ etiquette: normEtiquette(reglage || {}) }), regler),
+      normaliser: (reglage) => normEtiquette(reglage || {}),
+      apercuTailleReelle: (o, reglage) => apercuTailleReelle(objetEtiquette(o, reglage)),
+      imprimer: (objets, reglage) => imprimerEtiquettesObjets(objets, reglage),
+    } };
 })();
