@@ -73,6 +73,11 @@ const Ambulancier = (() => {
     if (parc.date !== aujourdhui() || !parc.vehicules || !parc.vehicules[id]) return null;
     return parc.vehicules[id];
   }
+  /** Position d'après le dernier état du parc connu, même s'il n'est pas du jour (classement des inventaires). */
+  function positionConnue(id) {
+    const parc = lireStockage(CLE_PARC);
+    return parc.vehicules && parc.vehicules[id] ? parc.vehicules[id] : null;
+  }
   // ---------- Check-lists du jour (serveur + celles faites sur cet appareil) ----------
   function statutDuJour(id) {
     const statuts = lireStockage(CLE_STATUTS);
@@ -925,7 +930,7 @@ const Ambulancier = (() => {
       poserPhotoVehicule(bloc, inv.photo);
       return bloc;
     },
-    initialiser, finChargement, positionDuJour, infosVehicule, etatVehicule, inventaireVehicule, estDZ, helico, cadran, carburantActuel, creerCarte: carte, noterEvenement,
+    initialiser, finChargement, positionDuJour, positionConnue, infosVehicule, etatVehicule, inventaireVehicule, estDZ, helico, cadran, carburantActuel, creerCarte: carte, noterEvenement,
     ouvrirChecklist: (id) => choisirVehicule(id),
     vehiculeChoisi: () => etat.vehicule,
     mode: () => modeAction,
