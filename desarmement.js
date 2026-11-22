@@ -212,6 +212,17 @@ const Desarmement = (() => {
     }
     ecrire(CLE_ARMEMENT, a);
     ecrire(CLE_DESARMEMENTS, d);
+    // Brouillon de fiche régulation du jour : il prime sur l'armement local (armement()), on l'aligne.
+    const b = lire(CLE_BROUILLON);
+    const vs = b && b.saisie && b.saisie.vehicules;
+    if (vs) {
+      [vehicule, contenu && contenu.destination === 'autre' && contenu.cible].filter((id) => id && vs[id]).forEach((id) => {
+        const versArme = id !== vehicule || arme;
+        vs[id].armement = versArme ? 'ARMÉ' : 'DÉSARMÉ';
+        if (id === vehicule) { if (versArme) delete vs[id].contenu; else if (contenu) vs[id].contenu = { destination: contenu.destination, cible: contenu.cible }; }
+      });
+      ecrire(CLE_BROUILLON, b);
+    }
   }
 
   /**
