@@ -3372,6 +3372,8 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .dsm-option { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0.8rem; border: 1px solid var(--trait); border-radius: var(--rayon); text-align: left; cursor: pointer; }
 .dsm-option input { width: 1.2rem; height: 1.2rem; margin: 0; }
 .dsm-choix[role="radiogroup"] .dsm-option { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 0.8rem; row-gap: 0.3rem; }
+.dsm-avertissement { margin: 0.6rem 0; padding: 0.6rem 0.8rem; border: 1px solid #c62828; border-left-width: 4px; border-radius: var(--rayon); background: #fdecea; color: #8e1b1b; font-weight: 600; }
+.dsm-option:disabled { opacity: 0.45; cursor: not-allowed; }
 .dsm-choix[role="radiogroup"] .dsm-option input { grid-row: 1 / 3; align-self: center; }
 .dsm-option:has(input:checked) { border-color: var(--rhone); box-shadow: 0 0 0 2px var(--rhone) inset; }
 .dsm-picto { display: flex; align-items: center; gap: 0.35rem; color: var(--encre); }

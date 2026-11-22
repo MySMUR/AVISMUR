@@ -720,6 +720,13 @@ const Inventaires = (() => {
   function primaireDuVehicule(id) {
     return Object.values(structure.contenants).find((c) => !c.supprime && vehiculeDuPrimaire(c) && vehiculeDuPrimaire(c).id === id) || null;
   }
+  /** Nombre de péremptions renseignées dans les tiroirs et placards (contenants immobiles) d'un véhicule. */
+  function peremptionsVehicule(id) {
+    const p = primaireDuVehicule(id);
+    if (!p) return 0;
+    return descendants(p.id).filter((c) => !c.supprime && c.categorie === 'immobile')
+      .reduce((n, c) => n + (c.articles || []).filter((a) => datePeremption(c.id, a.id)).length, 0);
+  }
   /**
    * Check-list ambulancier du jour d'un véhicule, vue depuis les inventaires : pastille (même couleur que la case
    * du véhicule) et texte court. null si l'appli n'a pas la check-list ambulancier.
@@ -6917,5 +6924,5 @@ const Inventaires = (() => {
   /** Pour la check-list ambulancier : photo d'un véhicule (vignette de son contenant primaire) gardée sur l'appareil. */
   const photoVehicule = (id) => { const p = primaireDuVehicule(id); return p ? p.vignette || '' : ''; };
   return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate, scanRapide, obtenirPhoto, enMemoire: (id) => Photos.enMemoire(id), photoVehicule,
-    stocks: () => stocks(), vehiculesArmables: () => vehiculesArmables() };
+    stocks: () => stocks(), vehiculesArmables: () => vehiculesArmables(), peremptionsVehicule: (id) => peremptionsVehicule(id) };
 })();
