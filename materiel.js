@@ -250,7 +250,8 @@ const Materiel = (() => {
           || [...parId.values()].find((x) => x.proprietaire && x.statut !== 'Réformé' && ((p.numBiomed && cle(x.numBiomed) === cle(p.numBiomed)) || (p.numSerie && cle(x.numSerie) === cle(p.numSerie))));
         const champs = { type: p.type, modele: p.modele, numBiomed: p.numBiomed, numSerie: p.numSerie, biomed: p.biomed !== false, pret: p.reference, proprietaire: p.proprietaire, idPret: p.id, archive: false };
         if (f) parId.set(f.id, { ...f, ...champs });
-        else parId.set(`pret-${p.id}`, { id: `pret-${p.id}`, statut: 'En service', maintenance: true, plans: [], provisoire: true, ...champs });
+        if (f && p.amenerBiomed && f.idPret !== p.id) parId.get(f.id).statut = 'En maintenance';
+        else if (!f) parId.set(`pret-${p.id}`, { id: `pret-${p.id}`, statut: p.amenerBiomed ? 'En maintenance' : 'En service', maintenance: true, plans: [], provisoire: true, ...champs });
         attente.add(f ? f.id : `pret-${p.id}`);
       } else if (e.action === 'rendrePret') {
         const f = [...parId.values()].find((x) => x.idPret === d.id);
@@ -1988,6 +1989,7 @@ const Materiel = (() => {
     const debut = el('input', { type: 'date', valeur: p ? p.debut : aujourdhui() });
     const retourPrevu = el('input', { type: 'date', valeur: p ? p.retourPrevu : '' });
     const remarques = el('textarea', { rows: '2', placeholder: 'Facultatif : accessoires fournis, état à l\'arrivée…' });
+    const amenerBiomed = el('input', { type: 'checkbox' });
     remarques.value = p ? p.remarques || '' : '';
     const message = el('p', { classe: 'message erreur', role: 'alert' });
     const champBiomed = champ('N° biomed', numBiomed);
@@ -2030,15 +2032,20 @@ const Materiel = (() => {
         if (retourPrevu.value && retourPrevu.value < debut.value) { message.textContent = 'Le retour prévu est avant le début du prêt.'; return; }
         if (etatPrets().ouverts.has(choixRef.value) && (!p || etatPrets().ouverts.get(choixRef.value).id !== p.id)) { message.textContent = `La référence ${choixRef.value} vient d'être occupée : choisissez-en une autre.`; return; }
         d.close();
-        enfiler('enregistrerPret', {
+        const nouveau = !p;
+        const aBiomed = nouveau && amenerBiomed.checked;
+        const charge = {
           pret: {
             id: p ? p.id : idFiche(), reference: choixRef.value, type: t, modele: modele.value.trim(),
             biomed: !sansBiomed.checked, numBiomed: sansBiomed.checked ? '' : numBiomed.value.trim(), numSerie: numSerie.value.trim(),
             proprietaire: proprietaire.value.trim(), contact: contact.value.trim(), raison: raison.value.trim(),
             debut: debut.value, retourPrevu: retourPrevu.value, remarques: remarques.value.trim(),
             photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
+            amenerBiomed: aBiomed,
           },
-        });
+        };
+        enfiler('enregistrerPret', charge);
+        if (nouveau) proposerPublicationPret(charge.pret);
       },
     },
     champ('Référence', choixRef),
@@ -2056,9 +2063,36 @@ const Materiel = (() => {
     el('div', { classe: 'pret-dates' }, champ('Début du prêt', debut), champ('Retour prévu', retourPrevu)),
     champ('Remarques', remarques),
     blocPhoto,
+    p ? null : el('label', { classe: 'mat-case-libelle' }, amenerBiomed, el('span', { texte: 'À amener au biomed (l\'appareil passe « En maintenance »)' })),
     message,
     el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: p ? 'Enregistrer' : 'Affecter le prêt' })));
     d = fenetre(p ? `Modifier le prêt · ${p.reference}` : `Nouveau prêt · ${ref}`, contenu);
+  }
+
+  /** Après l'affectation d'un prêt : proposer de publier une information sur le mur (formulaire pré-rempli). */
+  function proposerPublicationPret(p) {
+    if (typeof Infos === 'undefined' || !Infos.publier) return;
+    const nom = nomPret(p);
+    let d;
+    d = fenetre('Publier une information ?', el('div', {},
+      el('p', { texte: `Prêt enregistré sur ${p.reference}.` }),
+      el('p', { texte: 'Souhaitez-vous publier une information sur le mur pour prévenir l\'équipe ?' }),
+      el('div', { classe: 'mat-boutons' },
+        el('button', {
+          type: 'button', classe: 'principal', texte: 'Publier une information',
+          surclick: () => {
+            d.close();
+            Infos.publier({
+              types: ['information'], importance: 'normale',
+              titre: `Matériel de prêt : ${nom} (${p.reference})${p.amenerBiomed ? ' — à amener au biomed' : ''}`,
+              texte: [`Prêté par ${p.proprietaire} depuis le ${dateFr(p.debut)}.`, `Raison : ${p.raison}`,
+                p.retourPrevu ? `Retour prévu le ${dateFr(p.retourPrevu)}.` : '', p.remarques,
+                p.amenerBiomed ? 'Appareil à amener au service biomédical.' : ''].filter(Boolean).join('\n'),
+              pieces: p.photoDonnees ? [{ type: 'photo', nom: `${nom}.jpg`.slice(0, 80), donnees: p.photoDonnees }] : [],
+            });
+          },
+        }),
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Non merci', surclick: () => d.close() }))));
   }
 
   /** Matériel rendu : la référence est libérée, le prêt passe dans l'historique. */
