@@ -2291,14 +2291,10 @@ details.inv-tb-legende li { display: inline-flex; align-items: center; gap: 0.35
 .inv-aide-gommettes { margin: 0.4rem 0 0.2rem; font-size: 0.85rem; }
 
 /* ---------- Mur compact (téléphone) ---------- */
-.mur-publier {
-  position: fixed; right: max(1.1rem, env(safe-area-inset-right)); bottom: calc(1.1rem + env(safe-area-inset-bottom)); z-index: 40;
-  display: flex; align-items: center; justify-content: center; width: 3.6rem; height: 3.6rem; margin: 0; padding: 0;
-  color: #fff; background: var(--bleu); border: 0; border-radius: 50%; box-shadow: 0 4px 14px rgba(19, 41, 75, 0.35); cursor: pointer;
-}
-.mur-publier span { font-size: 2.1rem; line-height: 1; font-weight: 400; }
-body.fenetre-ouverte .mur-publier { display: none; }
-#zone-infos { padding-bottom: 5rem; }
+.mur-publier { display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; margin: 0 0 1rem; }
+.mur-publier span { font-size: 1.5rem; line-height: 1; font-weight: 400; }
+@media (min-width: 640px) { .mur-publier { width: auto; padding: 0.8rem 1.4rem; } }
+#zone-infos { padding-bottom: 1rem; }
 .mur-filtre-icone { gap: 0.35rem; padding-left: 0.7rem; padding-right: 0.7rem; }
 .info:not(.deplie) { padding-top: 0.2rem; padding-bottom: 0.2rem; }
 .info-titre { margin: 0; }

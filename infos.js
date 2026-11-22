@@ -302,9 +302,9 @@ const Infos = (() => {
 
     zone.innerHTML = '';
     ajouter(
-      // Bouton flottant, fixé en bas à droite de l'écran.
-      el('button', { type: 'button', classe: 'mur-publier', 'aria-label': 'Nouvelle information', title: 'Nouvelle information', surclick: () => formulaire() },
-        el('span', { 'aria-hidden': 'true', texte: '+' })),
+      // En haut du mur (le bas de l'écran est pris par la barre d'actions rapide).
+      el('button', { type: 'button', classe: 'principal mur-publier', surclick: () => formulaire() },
+        el('span', { 'aria-hidden': 'true', texte: '+' }), 'Publier une nouvelle information'),
       blocNotifications(),
       avis.texte ? el('p', { classe: `message ${avis.classe}`, role: 'status', texte: avis.texte }) : null,
       barreFiltres(visibles, aujourdhui, portee),
