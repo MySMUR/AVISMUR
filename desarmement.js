@@ -118,7 +118,18 @@ const Desarmement = (() => {
   const modeleDe = (id) => ((typeof VEHICULES !== 'undefined' ? VEHICULES : []).find((v) => v.id === id) || {}).modele || '';
   const compatibles = (a, b) => { const ma = modeleDe(a); const mb = modeleDe(b); return !ma || !mb || ma === mb; };
   const avertissement = () => el('p', { classe: 'dsm-avertissement', role: 'alert', hidden: true });
-  const texteBlocage = (id, n) => `⚠️ ${id} a déjà ${n} péremption${n > 1 ? 's' : ''} dans ses tiroirs et placards : transfert impossible. Videz ou mettez à jour les péremptions de ${id} dans les inventaires avant de transférer.`;
+  const pluriel = (n) => `${n} péremption${n > 1 ? 's' : ''}`;
+  const texteBlocage = (id, n) => `⚠️ ${id} a déjà ${pluriel(n)} dans ses tiroirs et placards. Si vous continuez, elles seront écrasées et définitivement perdues.`;
+  /** Case à cocher « écraser » : sans elle, pas de transfert vers un véhicule qui a déjà des péremptions. */
+  const caseEcraser = (surChange) => {
+    const box = el('input', { type: 'checkbox', surchange: surChange });
+    const texte = el('span');
+    const lab = el('label', { classe: 'dsm-ecraser', hidden: true }, box, texte);
+    return {
+      lab, box,
+      maj(id, n) { lab.hidden = !n; if (!n) box.checked = false; texte.textContent = n ? ` Écraser les ${pluriel(n)} de ${id} (perdues)` : ''; },
+    };
+  };
 
   /**
    * Que devient le contenu des tiroirs et placards de `vehicule` ?
@@ -137,13 +148,16 @@ const Desarmement = (() => {
           .map((v) => el('option', { valeur: v.id, texte: `${v.nom || v.id}${estDesarme(v.id) ? ' (désarmé)' : ''}` })));
       const ok = el('button', { type: 'button', classe: 'principal', texte: 'Valider', disabled: true });
       const alerte = avertissement();
+      let n = 0;
       const majOk = () => {
-        // Transfert vers un véhicule qui a déjà des péremptions : bloqué, sinon elles se mélangeraient.
-        const n = choix === 'autre' && liste.value ? peremptionsDe(liste.value) : 0;
+        // Transfert vers un véhicule qui a déjà des péremptions : seulement en acceptant de les écraser.
+        n = choix === 'autre' && liste.value ? peremptionsDe(liste.value) : 0;
         alerte.hidden = !n;
         alerte.textContent = n ? texteBlocage(liste.value, n) : '';
-        ok.disabled = !choix || (choix === 'autre' && !liste.value) || n > 0;
+        ecr.maj(liste.value, n);
+        ok.disabled = !choix || (choix === 'autre' && !liste.value) || (n > 0 && !ecr.box.checked);
       };
+      const ecr = caseEcraser(() => majOk());
       liste.addEventListener('change', majOk);
       corps.append(
         el('p', { texte: 'Où se trouve le contenu de ses tiroirs et placards ? Les péremptions suivront le contenu. Les sacs et le matériel ne sont pas concernés.' }),
@@ -154,26 +168,33 @@ const Desarmement = (() => {
             el('span', { classe: 'dsm-libelle', texte: LIBELLES[c] })))),
         liste,
         alerte,
+        ecr.lab,
         el('div', { classe: 'mat-boutons' }, ok));
-      ok.addEventListener('click', () => valider({ destination: choix, cible: choix === 'autre' ? liste.value : '' }));
+      ok.addEventListener('click', () => valider({ destination: choix, cible: choix === 'autre' ? liste.value : '', ...(n > 0 ? { ecraser: true } : {}) }));
     });
   }
 
-  /** Réarmement : le contenu vient-il de caisses ? Résout l'identifiant des caisses, '' (non) ou null (annulé). */
+  /**
+   * Réarmement : le contenu vient-il de caisses ? Résout { id, ecraser } (id '' : pas de ces caisses) ou null (annulé).
+   */
   function choisirStock({ vehicule, stocks }) {
     const tries = stocks.filter((s) => !s.vehicule || compatibles(s.vehicule, vehicule)).sort((a, b) => Number(b.vehicule === vehicule) - Number(a.vehicule === vehicule));
     // Aucune caisse de même type (VL / AR) : rien à proposer.
-    if (!tries.length) return Promise.resolve('');
+    if (!tries.length) return Promise.resolve({ id: '' });
     const n = peremptionsDe(vehicule);
     return fenetre(`${vehicule} armé`, (corps, valider) => {
       const alerte = avertissement();
-      // Le véhicule a déjà des péremptions : on ne peut pas y remettre celles des caisses.
-      if (n) { alerte.hidden = false; alerte.textContent = texteBlocage(vehicule, n); }
+      const boutons = tries.map((s) => el('button', { type: 'button', classe: 'cfg-bouton dsm-option', texte: s.nom, disabled: n > 0,
+        surclick: () => valider({ id: s.id, ...(n > 0 ? { ecraser: true } : {}) }) }));
+      // Le véhicule a déjà des péremptions : celles des caisses ne les remplacent qu'en acceptant de les écraser.
+      const ecr = caseEcraser(() => boutons.forEach((b) => { b.disabled = !ecr.box.checked; }));
+      if (n) { alerte.hidden = false; alerte.textContent = texteBlocage(vehicule, n); ecr.maj(vehicule, n); }
       corps.append(el('p', { texte: 'D\'où vient le contenu des tiroirs et placards ? Les péremptions des caisses seront remises dans le véhicule.' }),
         alerte,
+        ecr.lab,
         el('div', { classe: 'dsm-choix' },
-          tries.map((s) => el('button', { type: 'button', classe: 'cfg-bouton dsm-option', texte: s.nom, disabled: n > 0, surclick: () => valider(s.id) })),
-          el('button', { type: 'button', classe: 'cfg-bouton dsm-option', texte: 'D\'ailleurs (pas de ces caisses)', surclick: () => valider('') })));
+          boutons,
+          el('button', { type: 'button', classe: 'cfg-bouton dsm-option', texte: 'D\'ailleurs (pas de ces caisses)', surclick: () => valider({ id: '' }) })));
     });
   }
 
@@ -211,7 +232,8 @@ const Desarmement = (() => {
       if (stocks.length) {
         const r = await choisirStock({ vehicule, stocks });
         if (r === null) return false;
-        donnees.depuis = r;
+        donnees.depuis = r.id;
+        if (r.ecraser) donnees.ecraser = true;
       }
     }
     if (!App.mettreEnFile({ action: 'changerArmement', donnees })) return false;
