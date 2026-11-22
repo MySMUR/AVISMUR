@@ -303,6 +303,7 @@ const Regulation = (() => {
     zone.append(el('h1', { texte: 'Fiche régulation' }),
       el('p', { classe: 'consigne', texte: `État du parc et personnels présents sur 24 h — ${aujourdhui()}` }));
     if (exigee && !faite()) zone.append(el('p', { classe: 'message erreur', role: 'status', texte: 'La fiche régulation du jour n\'a pas encore été envoyée : remplissez-la et envoyez-la, la check-list des véhicules vient ensuite.' }));
+    if (Simulation.actif()) zone.append(el('p', { classe: 'message', role: 'note', texte: 'Mode simulation : rien n\'est réellement envoyé à la régulation. Vous pouvez remplir et « envoyer » la fiche librement, elle sera effacée en quittant la simulation.' }));
     if (faite() && App.ouvrirVue) zone.append(el('button', { type: 'button', classe: 'cfg-bouton reg-suite', texte: 'Fiche du jour envoyée : passer à la check-list', surclick: () => App.ouvrirVue('checklist-ambulancier') }));
     if (message.texte) zone.append(el('p', { classe: `message ${message.classe}`, role: 'status', texte: message.texte }));
     if (erreur) zone.append(el('p', { classe: `message ${donnees ? 'info' : 'erreur'}`, role: 'status', texte: erreur }));
