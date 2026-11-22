@@ -97,8 +97,10 @@ const Regulation = (() => {
       s.disponible = valeur;
       if (valeur === 'NON' && positions.includes('HS')) s.position = 'HS';
       if (valeur === 'OUI' && s.position === 'HS') s.position = '';
+      if (valeur === 'OUI') delete s.raison;
       garderBrouillon();
       rendre();
+      if (valeur === 'NON') demanderRaison(v, s);
     };
     // Armé : tout le matériel de prise en charge médicale à bord ; désarmé : véhicule vidé.
     // Indépendant de la disponibilité (armé et indisponible : contrôle au garage ; disponible et désarmé : VL en DSM).
@@ -123,6 +125,75 @@ const Regulation = (() => {
         type: 'text', classe: 'reg-commentaire', placeholder: 'Commentaire', valeur: s.commentaire || '', maxlength: '200',
         'aria-label': `Commentaire ${v.id}`, surinput: (e) => { s.commentaire = e.target.value; garderBrouillon(); },
       }));
+  }
+
+  // ---------- Raison de l'indisponibilité ----------
+  // Raisons qui relèvent du suivi mécanique (et motif du passage au garage correspondant).
+  const RAISONS_GARAGE = { 'Réparation': 'Réparation', 'Entretien': 'Entretien', 'Contrôle technique': 'Contrôle technique', 'Pneus': 'Pneus', 'Carrosserie': 'Carrosserie' };
+  const RAISONS = [...Object.keys(RAISONS_GARAGE), 'Panne (en attente de prise en charge)', 'Désinfection / nettoyage', 'Autre'];
+
+  /**
+   * Véhicule passé indisponible : on demande pourquoi. Réparation ou entretien → suivi mécanique
+   * (passage au garage pré-rempli). À l'issue, proposition de publier l'information sur le mur.
+   */
+  function demanderRaison(v, s) {
+    if (typeof Actions === 'undefined' || !Actions.dialogue) return;
+    const nom = v.id.length <= 4 ? v.id : v.libelle;
+    let raison = '';
+    let detail = '';
+    const msg = el('p', { classe: 'message', role: 'status' });
+    const puces = RAISONS.map((r, i) => {
+      const idR = `reg-raison-${i}`;
+      return [el('input', { type: 'radio', name: 'reg-raison', id: idR, value: r, surchange: () => { raison = r; } }), el('label', { for: idR, texte: r })];
+    }).flat();
+    const zoneDetail = el('textarea', { rows: '2', maxlength: '200', 'aria-label': 'Précisions', placeholder: 'Précisions (facultatif) : panne constatée, garage, retour prévu…', surinput: (e) => { detail = e.target.value.trim(); } });
+    Actions.dialogue(`${nom} indisponible`, [
+      el('fieldset', { classe: 'question' }, el('legend', { texte: 'Pour quelle raison ?' }), el('div', { classe: 'puces motifs' }, puces)),
+      el('div', { classe: 'champ' }, zoneDetail),
+      el('button', {
+        type: 'button', classe: 'principal', texte: 'Valider',
+        surclick: () => {
+          if (!raison) { msg.textContent = 'Choisissez une raison.'; msg.className = 'message erreur'; return; }
+          s.raison = raison;
+          // La raison part aussi dans le commentaire de la fiche (utile à la régulation), sans écraser un commentaire existant.
+          if (!String(s.commentaire || '').trim()) s.commentaire = [raison, detail].filter(Boolean).join(' : ').slice(0, 200);
+          garderBrouillon();
+          rendre();
+          suite(v, nom, raison, detail);
+        },
+      }),
+      el('button', { type: 'button', classe: 'lien', texte: 'Passer', surclick: () => Actions.fermer() }),
+      msg,
+    ]);
+  }
+
+  function suite(v, nom, raison, detail) {
+    const vehicule = (typeof VEHICULES !== 'undefined' && VEHICULES.find((x) => x.id === v.id)) || { id: v.id, nom };
+    const publier = () => proposerPublication(nom, raison, detail);
+    if (RAISONS_GARAGE[raison] && !vehicule.sansGarage && typeof Ambulancier !== 'undefined') {
+      // Suivi mécanique : la fenêtre du passage au garage remplace celle-ci ; la publication est proposée à sa fermeture.
+      Actions.ouvrirAction('garage', vehicule, Ambulancier.infosVehicule(v.id), Ambulancier.etatVehicule(vehicule),
+        { motifs: [RAISONS_GARAGE[raison]], commentaire: detail, apres: publier });
+      return;
+    }
+    Actions.fermer();
+    publier();
+  }
+
+  function proposerPublication(nom, raison, detail) {
+    if (typeof Infos === 'undefined' || !Infos.publier) return;
+    const titre = `${nom} indisponible : ${raison.toLowerCase()}`;
+    Actions.dialogue('Publier sur le mur ?', [
+      el('p', { texte: `Informer l'équipe : « ${titre} » ?` }),
+      el('button', {
+        type: 'button', classe: 'principal', texte: 'Publier sur le mur',
+        surclick: () => {
+          Actions.fermer();
+          Infos.publier({ types: ['vehicule', 'information'], importance: 'normale', titre, texte: detail });
+        },
+      }),
+      el('button', { type: 'button', classe: 'lien', texte: 'Non merci', surclick: () => Actions.fermer() }),
+    ]);
   }
 
   /** Armement actuel du véhicule : état global (changé par la fiche, les inventaires ou le menu du véhicule). */

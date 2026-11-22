@@ -6,6 +6,7 @@
 const Actions = (() => {
   let fond = null; // fenêtre ouverte
   let retourFocus = null;
+  let apresFermeture = null; // action à lancer une fois la fenêtre fermée (ex. proposer une publication sur le mur)
 
   const SVG = 'http://www.w3.org/2000/svg';
   function el(balise, attributs = {}, ...enfants) {
@@ -32,6 +33,9 @@ const Actions = (() => {
     fond = null;
     document.body.classList.remove('fenetre-ouverte');
     if (retourFocus && document.contains(retourFocus)) retourFocus.focus();
+    const apres = apresFermeture;
+    apresFermeture = null;
+    if (apres) apres();
   }
 
   /** Ouvre (ou remplace) le contenu de la fenêtre. */
@@ -259,21 +263,24 @@ const Actions = (() => {
   }
 
   // ---------- Garage ----------
-  function garage(v, info, etatV) {
+  // options (facultatif, depuis la fiche régulation) : { motifs: [pré-cochés], commentaire, apres() } —
+  // apres() est lancé à la fermeture de la fenêtre, que le passage soit enregistré ou non.
+  function garage(v, info, etatV, options = {}) {
     // Plusieurs motifs possibles (ex. carrosserie et pneus) : enregistrés « Carrosserie, Pneus ».
-    const motifs = new Set();
-    const saisie = { motif: '', motifs: [], commentaire: '' };
+    const motifs = new Set(options.motifs || []);
+    const saisie = { motif: '', motifs: [], commentaire: options.commentaire || '' };
+    if (options.apres) apresFermeture = options.apres;
     const idCom = id();
     const panneauGarage = fenetre(`${v.nom || v.id} · passage au garage`,
       info.dernierGarage ? el('p', { classe: 'aide-question', texte: `Dernier passage : ${date(info.dernierGarage.date)}${info.dernierGarage.motif ? ` (${info.dernierGarage.motif})` : ''}` }) : null,
       el('fieldset', { classe: 'question' }, el('legend', { texte: 'Motifs (plusieurs possibles)' }),
         el('div', { classe: 'puces motifs' }, ...['Entretien', 'Réparation', 'Contrôle technique', 'Pneus', 'Carrosserie', 'Autre'].flatMap((o) => {
           const i = id();
-          return [el('input', { type: 'checkbox', id: i, value: o, surchange: (e) => { if (e.target.checked) motifs.add(o); else motifs.delete(o); } }),
+          return [el('input', { type: 'checkbox', id: i, value: o, checked: motifs.has(o), surchange: (e) => { if (e.target.checked) motifs.add(o); else motifs.delete(o); } }),
             el('label', { for: i, texte: o })];
         }))),
       el('div', { classe: 'champ' }, el('label', { for: idCom, texte: 'Commentaire' }),
-        el('textarea', { id: idCom, rows: 3, surinput: (e) => { saisie.commentaire = e.target.value; } })),
+        (() => { const t = el('textarea', { id: idCom, rows: 3, surinput: (e) => { saisie.commentaire = e.target.value; } }); t.value = saisie.commentaire; return t; })()),
       el('button', { type: 'button', classe: 'principal', texte: 'Enregistrer le passage au garage', surclick: () => {
         const ordre = ['Entretien', 'Réparation', 'Contrôle technique', 'Pneus', 'Carrosserie', 'Autre'];
         saisie.motifs = ordre.filter((o) => motifs.has(o));
@@ -281,7 +288,7 @@ const Actions = (() => {
         saisie.motif = saisie.motifs.join(', ');
         if (App.envoyerEvenement('garage', v.id, saisie)) fermer();
       } }),
-      boutonRetour(v, info, etatV));
+      options.apres ? el('button', { type: 'button', classe: 'lien', texte: 'Plus tard', surclick: fermer }) : boutonRetour(v, info, etatV));
   }
 
   // ---------- Nettoyage ----------
@@ -505,11 +512,18 @@ const Actions = (() => {
 
   // silhouette, FACES et afficherPhotoServeur sont aussi utilisés par le tableau de bord du parc (parc.js).
   /** Ouvre directement un écran d'action (menu Véhicules > Carburant, Carrosserie, Suivi mécanique). */
-  function ouvrirAction(type, v, info, etatV) {
+  function ouvrirAction(type, v, info, etatV, options) {
     const ecrans = { plein: pleins, exterieur, garage };
-    if (ecrans[type]) ecrans[type](v, info, etatV);
+    if (ecrans[type]) ecrans[type](v, info, etatV, options);
     else ouvrir(v, info, etatV);
   }
 
-  return { ouvrir, ouvrirAction, proposerChecklist, fermer, silhouette, FACES, afficherPhotoServeur };
+  /** Fenêtre simple pour d'autres modules (ex. raison d'indisponibilité) ; apres() à la fermeture. */
+  function dialogue(titre, contenu, apres) {
+    const p = fenetre(titre, ...contenu);
+    apresFermeture = apres || null;
+    return p;
+  }
+
+  return { ouvrir, ouvrirAction, dialogue, proposerChecklist, fermer, silhouette, FACES, afficherPhotoServeur };
 })();
