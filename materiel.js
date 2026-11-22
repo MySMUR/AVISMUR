@@ -1542,6 +1542,8 @@ const Materiel = (() => {
         const textes = [serialNumber || ''];
         message.records.forEach((r) => { try { textes.push(new TextDecoder(r.encoding || 'utf-8').decode(r.data)); } catch (e) { /* ignoré */ } });
         const tout = textes.join('\n');
+        const lienPret = tout.match(/#pret=([A-Za-z0-9]{3,12})/);
+        if (lienPret && refDuCode(lienPret[1])) { d.close(); ouvrirReferencePret(refDuCode(lienPret[1])); return; }
         const lien = tout.match(/#mat=([a-z0-9]{6,20})/);
         const liste = fiches();
         const f = (lien && liste.find((x) => x.id === lien[1]))
@@ -1617,7 +1619,8 @@ const Materiel = (() => {
     const nbRetard = [...ouverts.values()].filter((p) => (etatRetour(p) || {}).retard).length;
     const nbAttente = [...ouverts.values(), ...clos].filter((p) => p.attente).length;
 
-    const entete = el('div', { classe: 'mat-entete' }, el('h1', { texte: 'Matériel de prêt' }));
+    const entete = el('div', { classe: 'mat-entete' }, el('h1', { texte: 'Matériel de prêt' }),
+      el('button', { type: 'button', classe: 'cfg-mini', texte: 'QR codes et puces NFC', surclick: ouvrirEtiquettesPrets }));
     const aide = el('p', { classe: 'aide-question pret-aide', texte: `${refs.length} références pour le matériel prêté au SMUR. Une fois le matériel rendu, la référence redevient disponible et le prêt reste dans l'historique.` });
     const compteur = (nombre, libelle, classe) => el('div', { classe: `mat-compteur pret-compteur ${classe}` }, el('strong', { texte: String(nombre) }), el('span', { texte: libelle }));
     const compteurs = el('div', { classe: 'mat-compteurs' },
@@ -1641,7 +1644,9 @@ const Materiel = (() => {
     if (!p) {
       return el('li', { classe: 'pret-carte libre' },
         el('div', { classe: 'pret-carte-tete' }, el('strong', { classe: 'pret-ref', texte: ref }), el('span', { classe: 'mat-pastille pret-libre', texte: 'Disponible' })),
-        peutPreter() ? el('button', { type: 'button', classe: 'cfg-bouton pret-affecter', texte: '+ Affecter un prêt', surclick: () => ouvrirPret(ref, null) }) : null);
+        el('div', { classe: 'mat-boutons' },
+          peutPreter() ? el('button', { type: 'button', classe: 'cfg-bouton pret-affecter', texte: '+ Affecter un prêt', surclick: () => ouvrirPret(ref, null) }) : null,
+          boutonQrNfc(ref)));
     }
     const retour = etatRetour(p);
     const jours = p.debut ? joursDepuis(p.debut) : null;
@@ -1659,7 +1664,8 @@ const Materiel = (() => {
         retour ? el('span', { classe: `mat-pastille rev-${retour.classe}`, texte: retour.texte }) : null),
       peutPreter() ? el('div', { classe: 'mat-boutons' },
         el('button', { type: 'button', classe: 'cfg-mini', texte: 'Modifier', surclick: () => ouvrirPret(ref, p) }),
-        el('button', { type: 'button', classe: 'cfg-mini pret-rendre', texte: 'Matériel rendu', surclick: () => ouvrirRetour(p) })) : null);
+        el('button', { type: 'button', classe: 'cfg-mini pret-rendre', texte: 'Matériel rendu', surclick: () => ouvrirRetour(p) }),
+        boutonQrNfc(ref)) : el('div', { classe: 'mat-boutons' }, boutonQrNfc(ref)));
   }
 
   /** Historique des prêts terminés, replié, avec recherche. */
@@ -1825,6 +1831,109 @@ const Materiel = (() => {
     el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Confirmer le retour' })));
     d = fenetre(`Matériel rendu · ${p.reference}`, contenu);
   }
+  // ---------- QR code et puce NFC des références de prêt ----------
+  // L'étiquette porte la RÉFÉRENCE (« PRÊT 03 »), pas le matériel : elle est fixée sur le matériel prêté pendant le prêt
+  // et resservira au prochain. Le lien « #pret=PRET03 » ouvre le prêt en cours (ou l'affectation si la référence est libre).
+  const codeRef = (ref) => ref.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  const refDuCode = (code) => references().find((r) => codeRef(r) === String(code || '').toUpperCase()) || null;
+  const adressePret = (ref) => `${location.origin}${location.pathname.replace(/index\.html$/, '')}#pret=${codeRef(ref)}`;
+  const textePuce = (ref) => `SMUR Avignon\nMatériel de prêt ${ref}`;
+
+  function qrSvgPret(texte, classe = 'pret-qr') {
+    const q = qrcode(0, 'M');
+    q.addData(texte);
+    q.make();
+    const n = q.getModuleCount();
+    const marge = 4;
+    let trace = '';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) trace += `M${c + marge} ${r + marge}h1v1h-1z`;
+    return el('svg:svg', { classe, viewBox: `0 0 ${n + 2 * marge} ${n + 2 * marge}`, role: 'img', 'aria-label': 'QR code' },
+      el('svg:rect', { width: '100%', height: '100%', fill: '#fff' }), el('svg:path', { d: trace, fill: '#000' }));
+  }
+
+  const boutonQrNfc = (ref) => el('button', { type: 'button', classe: 'cfg-mini', texte: 'QR / NFC', title: `QR code et puce NFC de ${ref}`, surclick: () => ouvrirQrNfcPret(ref) });
+
+  /** Écrit le lien et le texte de la référence sur une puce NTAG (Chrome Android). */
+  async function ecrirePucePret(ref, bouton, sortie) {
+    const delai = new AbortController();
+    const minuterie = setTimeout(() => delai.abort(), 30000);
+    bouton.disabled = true;
+    sortie.className = 'message';
+    sortie.textContent = 'Approchez la puce du dos du téléphone…';
+    const cacherCible = CibleNfc.montrer();
+    try {
+      await new NDEFReader().write({ records: [{ recordType: 'url', data: adressePret(ref) }, { recordType: 'text', lang: 'fr', data: textePuce(ref) }] }, { signal: delai.signal, overwrite: true });
+      sortie.textContent = `Puce effacée puis encodée pour ${ref}.`;
+      sortie.className = 'message succes';
+    } catch (e) {
+      sortie.textContent = e.name === 'AbortError' ? 'Aucune puce détectée. Réessayez en la gardant contre le téléphone.'
+        : (e.name === 'NotAllowedError' ? 'Autorisez le NFC pour cette application et vérifiez qu\'il est activé sur le téléphone.'
+          : `Écriture impossible (${e.name}). Puce verrouillée ou non compatible : seules les puces NTAG (213, 215, 216) sont prises en charge.`);
+      sortie.className = 'message erreur';
+    } finally {
+      clearTimeout(minuterie);
+      cacherCible();
+      bouton.disabled = false;
+    }
+  }
+
+  /** QR code et encodage de la puce d'une référence. */
+  function ouvrirQrNfcPret(ref) {
+    const nfcDispo = 'NDEFReader' in window;
+    const sortie = el('p', { classe: 'message', role: 'status' });
+    const bouton = el('button', { type: 'button', classe: 'principal', texte: 'Encoder la puce NFC', disabled: !nfcDispo });
+    bouton.addEventListener('click', () => ecrirePucePret(ref, bouton, sortie));
+    fenetre(`QR code et puce NFC · ${ref}`, el('div', { classe: 'mat-nfc pret-qrnfc' },
+      qrSvgPret(adressePret(ref), 'pret-qr pret-qr-grand'),
+      el('p', { classe: 'aide-question', texte: `Le QR code et la puce ouvrent ${ref} dans MySMUR : le prêt en cours, ou l'affectation d'un prêt si la référence est libre. Ils restent valables d'un prêt à l'autre.` }),
+      el('pre', { classe: 'mat-apercu', texte: `${adressePret(ref)}\n\n${textePuce(ref)}` }),
+      nfcDispo ? null : el('p', { classe: 'message erreur', texte: 'Écriture NFC impossible sur cet appareil : il faut Chrome sur un téléphone Android avec le NFC activé. Vous pouvez recopier le contenu ci-dessus avec une appli NFC (enregistrements « URL » et « Texte »).' }),
+      el('p', { classe: 'aide-question', texte: 'L\'ancien contenu de la puce est effacé. Appuyez sur « Encoder », puis gardez la puce contre le dos du téléphone jusqu\'au message de confirmation.' }),
+      el('div', { classe: 'mat-boutons' }, bouton, el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer l\'étiquette', surclick: () => imprimerEtiquettesPrets([ref]) }), nfcDispo ? CibleNfc.lien() : null),
+      sortie), { large: true });
+  }
+
+  /** Toutes les références : impression des étiquettes (cochées) et accès à l'encodage de chaque puce. */
+  function ouvrirEtiquettesPrets() {
+    const refs = references();
+    const cases = new Map(refs.map((r) => [r, el('input', { type: 'checkbox', coche: true })]));
+    let d;
+    d = fenetre('QR codes et puces NFC des prêts', el('div', { classe: 'mat-form' },
+      el('p', { classe: 'aide-question', texte: 'Une étiquette QR et une puce NFC par référence. On les fixe sur le matériel prêté pendant toute la durée du prêt, puis on les récupère au retour pour le prêt suivant.' }),
+      el('ul', { classe: 'pret-liste-etiquettes' }, refs.map((r) => el('li', {},
+        el('label', { classe: 'mat-case-libelle' }, cases.get(r), el('span', { texte: r })),
+        el('button', { type: 'button', classe: 'cfg-mini', texte: 'Puce NFC', surclick: () => { d.close(); ouvrirQrNfcPret(r); } })))),
+      el('div', { classe: 'mat-boutons' },
+        el('button', { type: 'button', classe: 'principal', texte: 'Imprimer les étiquettes cochées', surclick: () => {
+          const choix = refs.filter((r) => cases.get(r).checked);
+          if (!choix.length) return;
+          d.close();
+          imprimerEtiquettesPrets(choix);
+        } }))));
+  }
+
+  /** Planche A4 d'étiquettes 40 × 50 mm (QR, référence, « SMUR Avignon · Matériel de prêt »). */
+  function imprimerEtiquettesPrets(refs) {
+    document.querySelectorAll('#inv-impression').forEach((n) => n.remove());
+    const page = el('div', { id: 'inv-impression', classe: 'imp-prets' }, refs.map((r) => el('div', { classe: 'imp-pret' },
+      qrSvgPret(adressePret(r), 'pret-qr'),
+      el('strong', { texte: r }),
+      el('span', { texte: 'SMUR Avignon · Matériel de prêt' }))));
+    document.body.append(page);
+    document.body.classList.add('impression-inventaire');
+    const nettoyer = () => { page.remove(); document.body.classList.remove('impression-inventaire'); window.removeEventListener('afterprint', nettoyer); };
+    window.addEventListener('afterprint', nettoyer);
+    window.print();
+  }
+
+  /** Lien « #pret=… » : prêt en cours sur la référence, sinon affectation (ou simple avis). */
+  function ouvrirReferencePret(ref) {
+    const p = etatPrets().ouverts.get(ref);
+    if (p) { ouvrirDetailPret(p); return; }
+    if (peutPreter()) { ouvrirPret(ref, null); return; }
+    fenetre(ref, el('p', { texte: `${ref} est disponible : aucun matériel en prêt sur cette référence.` }));
+  }
+
   /** Modèles connus dans la base du matériel (suggestions). */
   const nomsModelesConnus = () => [...fiches().map((f) => f.modele), ...modeles().map((m) => m.modele)];
 
@@ -1884,6 +1993,11 @@ const Materiel = (() => {
     },
     /** Met à jour la liste gardée sur l'appareil, sans rien afficher (pour reconnaître les appareils scannés). */
     actualiser() { charger(); },
+    /** Lien « #pret=<code> » (QR code ou puce d'une référence de prêt). */
+    ouvrirPretDuCode(code) {
+      const go = () => { const ref = refDuCode(code); if (ref) ouvrirReferencePret(ref); };
+      if (donnees && donnees.prets) go(); else charger().then(go);
+    },
     /** Lien « #mat=<id> » (puce NFC) : ouvre la fiche de l'appareil. */
     ouvrirAppareil(id) {
       if (fiches().some((f) => f.id === id)) { ouvrirFiche(id); return; }

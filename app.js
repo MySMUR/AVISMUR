@@ -243,6 +243,7 @@ function afficherApplication(infos) {
   // Sinon : la page d'accueil, le mur d'informations.
   if (/^#info=/.test(location.hash)) ouvrirInfoDuLien(location.hash);
   else if (/^#mat=/.test(location.hash)) ouvrirAppareilDuLien(location.hash);
+  else if (/^#pret=/.test(location.hash)) ouvrirPretDuLien(location.hash);
   else ouvrirVue(/^#inv\b/.test(location.hash) ? vueDuLien() : 'accueil');
   Infos.demarrer();
   if (accesInventaires()) Materiel.actualiser(); // appareils reconnus au scan dans les inventaires, même hors ligne ensuite
@@ -958,9 +959,17 @@ window.addEventListener('hashchange', () => {
   if ($('ecran-checklist').hidden) return;
   if (/^#info=/.test(location.hash)) ouvrirInfoDuLien(location.hash);
   else if (/^#mat=/.test(location.hash)) ouvrirAppareilDuLien(location.hash);
+  else if (/^#pret=/.test(location.hash)) ouvrirPretDuLien(location.hash);
   else if (/^#inv\b/.test(location.hash)) ouvrirVue(vueDuLien());
   else if (!$('zone-inventaires').hidden) Inventaires.afficher({ gestion: gestionInventaires });
 });
+/** Lien « #pret=<code> » (QR code / puce d'une référence de prêt) : onglet Matériel de prêt, prêt ouvert. */
+function ouvrirPretDuLien(lien) {
+  const code = lien.slice(6);
+  history.replaceState(null, '', location.pathname + location.search);
+  ouvrirVue('materiel-prets');
+  if (vueCourante === 'materiel-prets') Materiel.ouvrirPretDuCode(code);
+}
 /** Lien « #mat=<id> » (puce NFC d'un appareil) : suivi du matériel, fiche ouverte, puis adresse nettoyée. */
 function ouvrirAppareilDuLien(lien) {
   const id = lien.slice(5);
@@ -1104,10 +1113,11 @@ function avisRapide(texte) {
   setTimeout(() => p.remove(), 4000);
 }
 function aiguillerCodeLu(code) {
-  const lienInterne = code.match(/#(inv|mat|info)=[^\s#]+/);
+  const lienInterne = code.match(/#(inv|mat|info|pret)=[^\s#]+/);
   if (lienInterne) {
     const [lien, type] = lienInterne;
     if (type === 'mat') ouvrirAppareilDuLien(lien);
+    else if (type === 'pret') ouvrirPretDuLien(lien);
     else if (type === 'info') ouvrirInfoDuLien(lien);
     else if (location.hash === lien) ouvrirVue(vueDuLien());
     else location.hash = lien;
