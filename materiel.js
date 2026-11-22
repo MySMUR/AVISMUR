@@ -1562,7 +1562,7 @@ const Materiel = (() => {
   // avec ou sans n° biomed. Matériel rendu : la référence redevient disponible, le prêt passe dans l'historique.
   // Backend : MaterielPrets.gs (onglet MaterielPrets). Hors ligne : même file d'attente que le reste du matériel.
   const REFERENCES_DEFAUT = Array.from({ length: 10 }, (_, i) => `PRÊT ${String(i + 1).padStart(2, '0')}`);
-  const RAISONS_PRET = ['Remplacement d\'un appareil en réparation', 'Remplacement pendant une révision', 'Essai / démonstration', 'Besoin ponctuel (renfort)'];
+  const RAISONS_PRET = ['Remplacement d\'un appareil en réparation', 'Remplacement pendant une révision', 'Essai / démonstration', 'Besoin ponctuel (renfort)', 'Prêt intra-hospitalier', 'Matériel à l\'essai'];
   let rechercheHistorique = '';
   const references = () => (donnees && donnees.referencesPret) || REFERENCES_DEFAUT;
   const peutPreter = () => Boolean(outils.peutPreter ? outils.peutPreter() : estAdmin());
