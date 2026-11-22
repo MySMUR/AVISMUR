@@ -735,6 +735,45 @@ const Parc = (() => {
   }
   const ICONES = { plein: '⛽', garage: '🔧', nettoyage: '🧽', exterieur: '🚐' };
 
+  // Défauts de carrosserie réparés pendant cette session (date), en attendant que le serveur les renvoie.
+  const reparesIci = {};
+
+  /** Liste des défauts du véhicule (en cours en rouge, réparés en vert avec la date) ; toucher une ligne ouvre le détail. */
+  function listeDefauts(entrees, e) {
+    const v = vehiculesActifs().find((x) => x.id === choisi);
+    const tous = {};
+    const repares = {};
+    entrees.forEach((en) => {
+      const d = en.detail || {};
+      (d.defauts || []).forEach((x) => { tous[x.id] = { ...x, date: en.date, agent: en.agent }; });
+      (d.repares || []).forEach((idR) => { repares[idR] = { repareLe: en.date, reparePar: en.agent }; });
+    });
+    // Défauts signalés sur cet appareil et pas encore revenus du serveur
+    Ambulancier.infosVehicule(choisi).defauts.forEach((d) => { if (!tous[d.id]) tous[d.id] = d; });
+    const liste = Object.values(tous).map((d) => {
+      const r = repares[d.id] || (reparesIci[d.id] ? { repareLe: reparesIci[d.id] } : null);
+      return { ...d, ...(r || {}), repare: Boolean(r) };
+    }).filter((d) => jourISO(d.date) >= e.du && jourISO(d.date) <= e.au).sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (!liste.length) return texte('Aucun défaut sur cette période.');
+    const nbOuverts = liste.filter((d) => !d.repare).length;
+    const apresReparation = (d) => () => {
+      reparesIci[d.id] = new Date().toISOString();
+      [...memo.keys()].filter((k) => k.startsWith(`${choisi}|exterieur|`)).forEach((k) => memo.delete(k));
+      Actions.fermer();
+      rendre();
+    };
+    return [texte(`${liste.length} défaut(s) · ${nbOuverts} en cours · ${liste.length - nbOuverts} réparé(s).`),
+      el('ul', { classe: 'defauts-liste parc-defauts-histo' }, ...liste.map((d) => el('li', {}, el('button', {
+        type: 'button', classe: `defaut-ligne${d.repare ? ' repare' : ''}`,
+        surclick: () => Actions.detailDefaut(v, d, d.repare, Actions.fermer, apresReparation(d)),
+      },
+      el('span', { classe: `repere ${d.repare ? 'repare' : 'connu'}`, 'aria-hidden': 'true', texte: d.repare ? '✓' : '!' }),
+      el('span', { classe: 'defaut-ligne-texte' },
+        el('strong', { texte: d.commentaire || 'Sans description' }),
+        el('small', { texte: `${Actions.FACES[d.face] || ''} · signalé le ${date(d.date)}${d.agent ? ` · ${d.agent}` : ''}` }),
+        d.repare ? el('small', { classe: 'repare-le', texte: `✓ Réparé le ${date(d.repareLe)}${d.reparePar ? ` · ${d.reparePar}` : ''}` }) : null)))))];
+  }
+
   function panneauListe(corps, type, conteneur = corps) {
     const cleEtat = `liste-${type}`;
     const aujourdhui = jourISO(new Date());
@@ -744,6 +783,11 @@ const Parc = (() => {
     function charger() {
       if (!e.du || !e.au || e.du > e.au) {
         zone.replaceChildren(texte('Choisissez une date de début et une date de fin.', 'avis-parc'));
+        return;
+      }
+      if (type === 'exterieur') {
+        // Tout l'historique est lu : un défaut signalé dans la période peut avoir été réparé après.
+        remplir(zone, () => plage('exterieur', new Date(2000, 0, 1), new Date(), 'tout'), (entrees) => listeDefauts(entrees, e));
         return;
       }
       remplir(zone, () => plage(type, debutJour(e.du), finJour(e.au)), (entrees) => {
@@ -786,7 +830,7 @@ const Parc = (() => {
       })));
       grille.append(el('figure', { classe: 'parc-face' }, el('figcaption', { texte: defauts.length ? `${libelle} (${defauts.length})` : libelle }), schema));
     });
-    corps.append(el('h3', { texte: 'Défauts connus (non réparés)' }), el('p', { classe: 'aide-question', texte: 'Touchez une pastille pour voir le détail et la photo.' }), grille, el('h3', { texte: 'Vérifications extérieures' }));
+    corps.append(el('h3', { texte: 'Défauts connus (non réparés)' }), el('p', { classe: 'aide-question', texte: 'Touchez une pastille pour voir le détail et la photo.' }), grille, el('h3', { texte: 'Défauts signalés et réparés' }));
     panneauListe(corps, 'exterieur');
   }
 

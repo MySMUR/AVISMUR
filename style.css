@@ -3501,3 +3501,9 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .vehicule.carte.mini .mini-texte strong { font-size: 1.05rem; line-height: 1.2; }
 .vehicule.carte.mini .carte-cl { display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vehicule.carte.mini .avertissement svg { width: 0.9rem; height: 0.9rem; }
+
+/* Tableau de bord : liste des défauts, rouge si en cours, vert si réparé */
+.parc-defauts-histo { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; max-width: 52rem; }
+.parc-defauts-histo .repere.connu { background: var(--erreur); }
+.defaut-ligne.repare { background: #E6F4F1; border-color: var(--rhone); }
+.defaut-ligne .repare-le { color: #136A62; font-weight: 700; }
