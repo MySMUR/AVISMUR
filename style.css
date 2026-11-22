@@ -3301,6 +3301,10 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 }
 .choix-simulation small { display: block; margin-top: 0.2rem; font-size: 0.82rem; color: #6E5235; }
 .choix-simulation:hover, .choix-simulation:focus-visible { border-color: var(--orange); background: #FFE7C4; outline: none; }
+.dialogue-simulation p { margin: 0 0 0.8rem; font-size: 0.92rem; }
+.dialogue-simulation .simulation-file { max-height: 40vh; overflow: auto; color: var(--encre); }
+.dialogue-simulation .simulation-file li { margin-bottom: 0.4rem; }
+.simulation-refus { color: #B3261E; }
 .choix-annuler { width: 100%; min-height: 2.6rem; font: inherit; color: var(--gris); background: none; border: 0; cursor: pointer; }
 
 /* ---------- Check-list ambulancier : véhicules en tuiles, comme les inventaires ---------- */

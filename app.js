@@ -370,8 +370,12 @@ function identifiantUnique() {
 }
 
 /** Envoie les check-lists en attente, dans l'ordre de saisie. Relancée à chaque reconnexion. */
+/**
+ * Envoie la file d'attente. Renvoie le bilan : `refusees` (id → motif du refus serveur), `reconnecter` (session expirée),
+ * `horsLigne` (réseau coupé), `occupe` (un envoi était déjà en cours).
+ */
 async function envoyerFileAttente() {
-  if (envoiEnCours) return;
+  if (envoiEnCours) return { refusees: new Map(), occupe: true };
   envoiEnCours = true;
   const nb = fileAttente.lire().length;
   const fin = nb ? chargement.debut(nb > 1 ? `Envoi de ${nb} enregistrements…` : 'Envoi en cours…') : () => {};
@@ -381,7 +385,9 @@ async function envoyerFileAttente() {
   let ficheEnvoyee = false;
   let erreurServeur = '';
   let avertissement = '';
-  const refusees = new Set();
+  const refusees = new Map();
+  let reconnecter = false;
+  let horsLigne = false;
   try {
     let suivante;
     while ((suivante = fileAttente.lire().find((e) => !refusees.has(e.id)))) {
@@ -422,17 +428,18 @@ async function envoyerFileAttente() {
         });
       } catch (err) {
         marquerReseau(false);
+        horsLigne = true;
         break; // réseau coupé : on garde tout et on réessaiera au retour du réseau
       }
       marquerReseau(true);
-      if (rep.reconnecter) break; // session expirée : les entrées restent, envoyées après reconnexion
+      if (rep.reconnecter) { reconnecter = true; break; } // session expirée : les entrées restent, envoyées après reconnexion
       if (rep.ok) {
         fileAttente.ecrire(fileAttente.lire().filter((e) => e.id !== suivante.id));
         envoyees += 1;
         if (rep.avertissement) avertissement = rep.avertissement;
       } else {
-        refusees.add(suivante.id);
         erreurServeur = rep.erreur || 'refus du serveur';
+        refusees.set(suivante.id, erreurServeur);
       }
     }
   } finally {
@@ -445,6 +452,7 @@ async function envoyerFileAttente() {
   if (infosEnvoyees) Infos.surEnvoi();
   if (materielEnvoye) Materiel.surEnvoi();
   if (ficheEnvoyee) Regulation.surEnvoi();
+  return { refusees, reconnecter, horsLigne };
 }
 
 function bilanEnvoi({ envoyees, restantes, erreurServeur, avertissement }) {

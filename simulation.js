@@ -159,6 +159,70 @@ const Simulation = (() => {
     });
   }
 
+  /** Libellé lisible d'un enregistrement de la file d'attente. */
+  function libelleEnAttente(e) {
+    const noms = {
+      saveChecklist: 'Check-list', enregistrerEvenement: 'Événement', majPeremption: 'Péremption', verifierInventaire: 'Inventaire',
+      deplacerContenant: 'Déplacement de contenant', ignorerDesaffectation: 'Désaffectation', envoyerFicheRegulation: 'Fiche régulation',
+      creerInfo: 'Information', terminerInfo: 'Information (fin)', commenterInfo: 'Commentaire',
+    };
+    const quoi = [noms[e.action] || e.action || 'Check-list', e.liste, e.vehicule || e.type, e.contenant].filter(Boolean).join(' · ');
+    const quand = e.date ? new Date(e.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    return { quoi, quand };
+  }
+
+  /**
+   * Des enregistrements n'ont pas pu partir : fenêtre qui les liste et explique pourquoi.
+   * Ceux refusés par le serveur ne partiront jamais : l'agent peut les supprimer pour continuer.
+   * Renvoie true si la file est vide ensuite (on peut entrer en simulation).
+   */
+  function debloquerFile(bilan) {
+    return new Promise((resoudre) => {
+      const file = fileAttente.lire();
+      const refusees = file.filter((e) => bilan.refusees && bilan.refusees.has(e.id));
+      const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      let cause = 'Ils n\'ont pas pu être envoyés au serveur.';
+      if (bilan.reconnecter) cause = 'Votre session a expiré : déconnectez-vous puis reconnectez-vous, ils partiront ensuite.';
+      else if (bilan.horsLigne) cause = 'Le réseau est coupé ou le serveur ne répond pas : réessayez dans un moment.';
+      else if (bilan.occupe) cause = 'Un envoi est déjà en cours : réessayez dans quelques secondes.';
+      else if (refusees.length) cause = 'Le serveur les a refusés : ils ne partiront pas tels quels.';
+      const lignes = file.map((e) => {
+        const { quoi, quand } = libelleEnAttente(e);
+        const motif = bilan.refusees && bilan.refusees.get(e.id);
+        return `<li><strong>${esc(quoi)}</strong>${quand ? ` <small>(${esc(quand)})</small>` : ''}${motif ? `<br><small class="simulation-refus">Refusé : ${esc(motif)}</small>` : ''}</li>`;
+      }).join('');
+      const d = document.createElement('dialog');
+      d.className = 'dialogue-simulation';
+      d.innerHTML = `<h2>Enregistrements en attente</h2>
+        <p>Le mode simulation ne peut démarrer qu'une fois envoyé ce qui attend sur cet appareil. ${esc(cause)}</p>
+        <ul class="simulation-file">${lignes}</ul>
+        ${refusees.length ? `<button type="button" data-choix="supprimer" class="choix-simulation"><strong>Supprimer ${refusees.length > 1 ? `les ${refusees.length} enregistrements refusés` : 'l\'enregistrement refusé'}</strong>
+          <small>Ils seront définitivement perdus. À refaire à la main si besoin.</small></button>` : ''}
+        <button type="button" data-choix="" class="choix-annuler">Fermer</button>`;
+      d.addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (b) d.close(b.dataset.choix);
+        else if (e.target === d) d.close('');
+      });
+      d.addEventListener('close', () => {
+        d.remove();
+        if (d.returnValue === 'supprimer') {
+          if (!window.confirm('Supprimer définitivement ces enregistrements refusés ?')) { resoudre(false); return; }
+          const ids = new Set(refusees.map((e) => e.id));
+          fileAttente.ecrire(fileAttente.lire().filter((e) => !ids.has(e.id)));
+          const reste = fileAttente.lire().length;
+          if (reste) signaler(`${reste} enregistrement(s) attendent encore d'être envoyés : le mode simulation sera disponible une fois qu'ils seront partis.`);
+          else signaler('Enregistrements refusés supprimés.', 'message');
+          resoudre(!reste);
+          return;
+        }
+        resoudre(false);
+      });
+      document.body.append(d);
+      d.showModal();
+    });
+  }
+
   async function entrer() {
     if (!navigator.onLine) {
       signaler('Pas de réseau : le mode simulation ne peut être activé qu\'en ligne.');
@@ -167,11 +231,8 @@ const Simulation = (() => {
     const mode = await choisirMode();
     if (!mode) return;
     // Ce qui attend sur l'appareil part d'abord pour de vrai.
-    await envoyerFileAttente();
-    if (fileAttente.lire().length) {
-      signaler('Des enregistrements attendent encore d\'être envoyés au serveur : le mode simulation sera disponible une fois qu\'ils seront partis.');
-      return;
-    }
+    const bilan = (await envoyerFileAttente()) || { refusees: new Map() };
+    if (fileAttente.lire().length && !(await debloquerFile(bilan))) return;
     const fin = chargement.debut('Préparation de la journée simulée…');
     let rep;
     try {
