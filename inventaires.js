@@ -698,6 +698,8 @@ const Inventaires = (() => {
   }
   /** Contenant primaire dont le véhicule est désarmé d'après la dernière fiche régulation. */
   function vehiculeDesarme(p) {
+    // Caisses d'un véhicule désarmé : inventaire normal (péremptions suivies), jamais grisé.
+    if (!p || p.stock) return false;
     const v = vehiculeDuPrimaire(p);
     if (!v) return false;
     if (typeof Desarmement !== 'undefined') return Desarmement.estDesarme(v.id);
@@ -1364,6 +1366,14 @@ const Inventaires = (() => {
       const vignette = (donnees) => { if (donnees) repere.append(el('img', { src: donnees, alt: '' })); };
       if (Photos.enMemoire(imageCarte)) vignette(Photos.enMemoire(imageCarte));
       else obtenirPhoto(imageCarte).then(vignette);
+    } else if (!numero && c.stock) {
+      // Caisses sans photo : pictogramme de caisse.
+      const ns = 'http://www.w3.org/2000/svg';
+      const ic = document.createElementNS(ns, 'svg');
+      ic.setAttribute('viewBox', '0 0 28 24'); ic.setAttribute('class', 'inv-picto-caisse'); ic.setAttribute('aria-hidden', 'true');
+      ic.innerHTML = '<rect x="2" y="5" width="24" height="17" rx="1.5" fill="currentColor" opacity=".18" stroke="currentColor" stroke-width="2"/>'
+        + '<path d="M2 11h24M9 5v4m10-4v4M10 15h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+      repere.append(ic);
     }
     // Check-list : un contenant mobile pas encore pointé aujourd'hui reste anonyme — l'agent doit le lire ou le scanner.
     if (!gestion && masquerMobile(c)) {
