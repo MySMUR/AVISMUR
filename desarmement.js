@@ -228,13 +228,16 @@ const Desarmement = (() => {
     const e = desarmements()[vehicule];
     if (!e || e.statut === 'attente') return repondre(vehicule);
     const date = e.depuis ? new Date(e.depuis).toLocaleDateString('fr-FR') : '';
-    await fenetre(`${vehicule} désarmé`, (corps, valider) => {
+    const choix = await fenetre(`${vehicule} désarmé`, (corps, valider) => {
       corps.append(
         el('p', {}, el('strong', { texte: resume(e) })),
         el('p', { classe: 'aide-question', texte: [date && `Désarmé le ${date}`, e.par && `par ${e.par}`].filter(Boolean).join(' ') + (e.traitePar && e.traitePar !== e.par ? ` · contenu renseigné par ${e.traitePar}` : '') }),
-        el('p', { classe: 'aide-question', texte: 'Pas d\'inventaire tant que le véhicule est désarmé. Pour le réarmer : fiche régulation ou menu du véhicule.' }),
-        el('div', { classe: 'mat-boutons' }, el('button', { type: 'button', classe: 'principal', texte: 'Fermer', surclick: () => valider(true) })));
+        el('p', { classe: 'aide-question', texte: 'Pas d\'inventaire tant que le véhicule est désarmé.' }),
+        el('div', { classe: 'mat-boutons' },
+          el('button', { type: 'button', classe: 'principal', texte: 'Réarmer', surclick: () => valider('rearmer') }),
+          el('button', { type: 'button', texte: 'Fermer', surclick: () => valider(null) })));
     });
+    if (choix === 'rearmer') return basculer(vehicule, true);
     return false;
   }
 

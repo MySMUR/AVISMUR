@@ -1436,7 +1436,7 @@ const Inventaires = (() => {
   /** Où est le contenu des tiroirs et placards du véhicule désarmé ; non renseigné : on le demande. */
   async function infoDesarme(vehicule) {
     if (typeof Desarmement === 'undefined') return;
-    if (await Desarmement.info(vehicule)) { avis = 'Contenu renseigné : les péremptions suivent.'; rendre({ garderPosition: true }); }
+    if (await Desarmement.info(vehicule)) { avis = Desarmement.estDesarme(vehicule) ? 'Contenu renseigné : les péremptions suivent.' : `${vehicule} réarmé${navigator.onLine ? '' : ' : envoi au retour du réseau'}.`; rendre({ garderPosition: true }); }
   }
 
   function listeTuiles(liste) {
