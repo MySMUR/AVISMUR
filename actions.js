@@ -447,7 +447,7 @@ const Actions = (() => {
   }
 
   /** Détail d'un défaut ; s'il est en cours, n'importe quel ambulancier peut le déclarer réparé. */
-  function detailDefaut(v, d, passe, revenir) {
+  function detailDefaut(v, d, passe, revenir, apresReparation = null) {
     const photo = el('div', { classe: 'photo-defaut' });
     const panneau = fenetre(`${v.nom || v.id} · défaut`,
       el('p', {}, el('strong', { texte: d.commentaire || 'Sans description' })),
@@ -455,7 +455,7 @@ const Actions = (() => {
       passe ? el('p', { classe: 'aide-question', texte: `Réparé le ${date(d.repareLe)}${d.reparePar ? ` (signalé par ${d.reparePar})` : ''}` }) : null,
       photo,
       passe ? null : el('button', { type: 'button', classe: 'principal', texte: '✓ Signaler comme réparé', surclick: () => {
-        if (App.envoyerEvenement('exterieur', v.id, { defauts: [], repares: [d.id], commentaire: '' })) revenir();
+        if (App.envoyerEvenement('exterieur', v.id, { defauts: [], repares: [d.id], commentaire: '' })) (apresReparation || revenir)();
         else message(panneau, 'Enregistrement impossible.', 'erreur');
       } }),
       el('button', { type: 'button', classe: 'lien', texte: '← Retour au schéma', surclick: revenir }));
@@ -539,5 +539,5 @@ const Actions = (() => {
     return p;
   }
 
-  return { ouvrir, ouvrirAction, dialogue, proposerChecklist, fermer, silhouette, FACES, afficherPhotoServeur };
+  return { ouvrir, ouvrirAction, dialogue, proposerChecklist, fermer, silhouette, FACES, afficherPhotoServeur, detailDefaut };
 })();

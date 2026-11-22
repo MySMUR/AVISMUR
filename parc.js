@@ -778,22 +778,15 @@ const Parc = (() => {
     Object.entries(Actions.FACES).forEach(([face, libelle]) => {
       const defauts = info.defauts.filter((d) => d.face === face);
       const schema = el('div', { classe: `schema schema-${face === 'gauche' || face === 'droite' ? 'cote' : 'face'} parc-schema` }, Actions.silhouette(face, v));
-      defauts.forEach((d, i) => schema.append(el('span', {
-        classe: 'repere connu', style: `left:${d.x * 100}%;top:${d.y * 100}%`, title: d.commentaire || 'Sans description', texte: String(i + 1),
+      // Pastilles rouges : toucher l'une ouvre le détail (description, photo) ; « réparé » la retire du tableau de bord.
+      defauts.forEach((d, i) => schema.append(el('button', {
+        type: 'button', classe: 'repere connu', style: `left:${d.x * 100}%;top:${d.y * 100}%`,
+        'aria-label': `Défaut ${i + 1} : ${d.commentaire || 'sans description'}`, title: d.commentaire || 'Sans description', texte: String(i + 1),
+        surclick: () => Actions.detailDefaut(v, d, false, Actions.fermer, () => { Actions.fermer(); rendre(); }),
       })));
-      const liste = el('ol', { classe: 'parc-defauts' });
-      defauts.forEach((d) => {
-        const photo = el('div', { classe: 'photo-defaut' });
-        const item = el('li', {}, el('span', { texte: `${d.commentaire || 'Sans description'} — ${jour(d.date)}${d.agent ? `, ${d.agent}` : ''}` }));
-        if (d.photoLocale) photo.append(el('img', { classe: 'photo-apercu', alt: 'Photo du défaut', src: d.photoLocale }));
-        else if (d.photo) Actions.afficherPhotoServeur(photo, d.photo);
-        item.append(photo);
-        liste.append(item);
-      });
-      grille.append(el('figure', { classe: 'parc-face' }, el('figcaption', { texte: defauts.length ? `${libelle} (${defauts.length})` : libelle }), schema,
-        defauts.length ? liste : texte('Rien à signaler.')));
+      grille.append(el('figure', { classe: 'parc-face' }, el('figcaption', { texte: defauts.length ? `${libelle} (${defauts.length})` : libelle }), schema));
     });
-    corps.append(el('h3', { texte: 'Défauts connus (non réparés)' }), grille, el('h3', { texte: 'Vérifications extérieures' }));
+    corps.append(el('h3', { texte: 'Défauts connus (non réparés)' }), el('p', { classe: 'aide-question', texte: 'Touchez une pastille pour voir le détail et la photo.' }), grille, el('h3', { texte: 'Vérifications extérieures' }));
     panneauListe(corps, 'exterieur');
   }
 

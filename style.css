@@ -1068,7 +1068,8 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .parc-face { margin: 0; }
 .parc-face figcaption { font-weight: 700; }
 .parc-schema { cursor: default; }
-.parc-schema .repere { cursor: help; }
+.parc-schema .repere, .tuile-faces .repere { cursor: pointer; }
+.parc-schema .repere.connu, .tuile-faces .repere.connu { background: var(--erreur); }
 .parc-defauts { margin: 0.4rem 0 0; padding-left: 1.4rem; font-size: 0.9rem; }
 .parc-defauts li { margin: 0.2rem 0; }
 .parc-defauts .photo-apercu { margin-top: 0.3rem; max-height: 10rem; }
