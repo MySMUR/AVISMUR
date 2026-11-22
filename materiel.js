@@ -25,7 +25,7 @@
  */
 const Materiel = (() => {
   const CLE_CACHE = 'avismur_materiel';
-  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret', 'signalerMateriel'];
+  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret', 'signalerMateriel', 'enregistrerEtiquettePret'];
   const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle'];
   const STATUTS_DEFAUT = ['En service', 'En maintenance', 'En panne', 'Prêté', 'Réformé'];
   const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Envoi en maintenance', 'Note', 'Réforme', 'Remise en service', 'Autre'];
@@ -2151,17 +2151,31 @@ const Materiel = (() => {
   }
 
   // Étiquette commune à toutes les références de prêt, personnalisable comme celle des contenants
-  // (taille, couleur, négatif, lignes libres, logo). Réglage gardé sur l'appareil.
-  const CLE_ETIQUETTE_PRET = 'mysmur.materiel.etiquettePret';
+  // (taille, couleur, négatif, lignes libres, logo). Réglage partagé par tous les appareils (backend,
+  // action « enregistrerEtiquettePret ») ; hors ligne, le dernier réglage en attente d'envoi fait foi.
+  const CLE_ETIQUETTE_PRET = 'mysmur.materiel.etiquettePret'; // ancien réglage local (repris s'il n'y a rien d'autre)
   const ETIQUETTE_PRET_DEFAUT = { largeur: 40, hauteur: 50, champ1: 'SMUR Avignon', champ2: 'Matériel de prêt' };
   const E = () => Inventaires.etiquette;
   function reglageEtiquettePret() {
-    let r = null;
-    try { r = JSON.parse(localStorage.getItem(CLE_ETIQUETTE_PRET)); } catch (e) { /* rien */ }
+    const attente = enAttente().filter((x) => x.action === 'enregistrerEtiquettePret').pop();
+    let r = attente ? attente.donnees.etiquette : (donnees && donnees.etiquettePret) || null;
+    if (!r) { try { r = JSON.parse(localStorage.getItem(CLE_ETIQUETTE_PRET)); } catch (e) { /* rien */ } }
     return E().normaliser({ ...ETIQUETTE_PRET_DEFAUT, ...(r || {}) });
   }
+  let minuterieEtiquette = null;
+  let etiquetteAEnvoyer = null;
+  /** Enregistre le réglage (regroupé : un seul envoi après une rafale de changements). */
   function enregistrerEtiquettePret(r) {
-    try { localStorage.setItem(CLE_ETIQUETTE_PRET, JSON.stringify(r)); } catch (e) { /* mémoire pleine */ }
+    etiquetteAEnvoyer = r;
+    if (donnees) { donnees.etiquettePret = r; ecrireCache(donnees); }
+    clearTimeout(minuterieEtiquette);
+    minuterieEtiquette = setTimeout(envoyerEtiquettePret, 1500);
+  }
+  function envoyerEtiquettePret() {
+    clearTimeout(minuterieEtiquette);
+    if (!etiquetteAEnvoyer) return;
+    outils.mettreEnFile({ action: 'enregistrerEtiquettePret', donnees: { etiquette: etiquetteAEnvoyer }, agent: '' });
+    etiquetteAEnvoyer = null;
   }
   const objetPret = (ref) => ({ nom: ref, url: adressePret(ref) });
 
@@ -2173,16 +2187,18 @@ const Materiel = (() => {
     bouton.addEventListener('click', () => ecrirePucePret(ref, bouton, sortie));
     const apercu = el('div', { classe: 'inv-etiquette-apercu pret-etiquette-apercu' }, E().svg(objetPret(ref), reglageEtiquettePret()));
     const regler = (champ, valeur) => {
-      const r = E().normaliser({ ...reglageEtiquettePret(), [champ]: valeur });
+      const avant = reglageEtiquettePret();
+      const brut = { champ1: avant.champ1 || '', champ2: avant.champ2 || '', [champ]: valeur };
+      const r = { ...E().normaliser({ ...avant, ...brut }), champ1: String(brut.champ1).trim().slice(0, 40), champ2: String(brut.champ2).trim().slice(0, 40) };
       enregistrerEtiquettePret(r);
       apercu.replaceChildren(E().svg(objetPret(ref), r));
     };
-    fenetre(`QR code et puce NFC · ${ref}`, el('div', { classe: 'mat-nfc pret-qrnfc' },
+    const d = fenetre(`QR code et puce NFC · ${ref}`, el('div', { classe: 'mat-nfc pret-qrnfc' },
       apercu,
       el('p', { classe: 'aide-question', texte: `Le QR code et la puce ouvrent ${ref} dans MySMUR : le prêt en cours, ou l'affectation d'un prêt si la référence est libre. Ils restent valables d'un prêt à l'autre.` }),
       el('details', { classe: 'inv-details-reglages' }, el('summary', { texte: 'Format, couleur et texte de l\'étiquette' }),
         E().controles(reglageEtiquettePret(), regler),
-        el('p', { classe: 'aide-question', texte: 'Réglage commun à toutes les références de prêt, gardé sur cet appareil.' })),
+        el('p', { classe: 'aide-question', texte: 'Réglage commun à toutes les références de prêt, partagé par tous les appareils.' })),
       el('pre', { classe: 'mat-apercu', texte: `${adressePret(ref)}\n\n${textePuce(ref)}` }),
       nfcDispo ? null : el('p', { classe: 'message erreur', texte: 'Écriture NFC impossible sur cet appareil : il faut Chrome sur un téléphone Android avec le NFC activé. Vous pouvez recopier le contenu ci-dessus avec une appli NFC (enregistrements « URL » et « Texte »).' }),
       el('p', { classe: 'aide-question', texte: 'L\'ancien contenu de la puce est effacé. Appuyez sur « Encoder », puis gardez la puce contre le dos du téléphone jusqu\'au message de confirmation.' }),
@@ -2191,6 +2207,7 @@ const Materiel = (() => {
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Aperçu taille réelle', surclick: () => E().apercuTailleReelle(objetPret(ref), reglageEtiquettePret()) }),
         nfcDispo ? CibleNfc.lien() : null),
       sortie), { large: true });
+    if (d) d.addEventListener('close', envoyerEtiquettePret);
   }
 
   /** Toutes les références : impression des étiquettes (cochées) et accès à l'encodage de chaque puce. */
@@ -2214,6 +2231,7 @@ const Materiel = (() => {
 
   /** Planche A4 des étiquettes de prêt, au format et à la couleur réglés (comme celles des contenants). */
   function imprimerEtiquettesPrets(refs) {
+    envoyerEtiquettePret();
     E().imprimer(refs.map(objetPret), reglageEtiquettePret());
   }
 
