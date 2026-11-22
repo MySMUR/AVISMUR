@@ -8,6 +8,7 @@ const Ambulancier = (() => {
   const CLE_BROUILLONS = 'avismur_brouillons_ambulancier';
   const CLE_RELEVES = 'avismur_derniers_releves';
   const CLE_PARC = 'avismur_etat_parc';
+  const CLE_DISPO_LOCALE = 'avismur_dispo_locale'; // { jour, vehicules: { id: 'OUI' | 'NON' } } choisis sur l'appareil
   const CLE_STATUTS = 'avismur_statuts_jour';
   const etat = { vehicule: null, reponses: {} };
   let chargementTermine = false;
@@ -70,8 +71,35 @@ const Ambulancier = (() => {
   /** Position du véhicule (« DZ », « HS », « 1er départ PRIMAIRE »…) si l'état du parc est celui du jour. */
   function positionDuJour(id) {
     const parc = lireStockage(CLE_PARC);
-    if (parc.date !== aujourdhui() || !parc.vehicules || !parc.vehicules[id]) return null;
-    return parc.vehicules[id];
+    const brut = parc.date === aujourdhui() && parc.vehicules ? parc.vehicules[id] || null : null;
+    // Disponibilité changée sur cet appareil (fiche régulation pas encore envoyée / reçue) : elle prime.
+    const local = lireStockage(CLE_DISPO_LOCALE);
+    const choix = local.jour === aujourdhui() && local.vehicules ? local.vehicules[id] : null;
+    if (!choix) return brut;
+    const p = brut || { position: '', disponible: 'OUI' };
+    const position = String(p.position || '');
+    if (choix === 'NON') return { ...p, disponible: 'NON', position: position || 'HS' };
+    return { ...p, disponible: 'OUI', position: position.trim().toUpperCase() === 'HS' ? '' : position };
+  }
+  /** Disponibilité choisie sur cet appareil (interrupteur), gardée jusqu'à ce que l'état du parc reçu la confirme. */
+  function noterDisponibilite(id, valeur) {
+    const local = lireStockage(CLE_DISPO_LOCALE);
+    const vehicules = local.jour === aujourdhui() ? { ...(local.vehicules || {}) } : {};
+    vehicules[id] = valeur === 'NON' ? 'NON' : 'OUI';
+    ecrireStockage(CLE_DISPO_LOCALE, { jour: aujourdhui(), vehicules });
+    rendreVehicules();
+    try { window.dispatchEvent(new CustomEvent('avismur-disponibilite')); } catch (e) { /* ancien navigateur */ }
+  }
+  /** Retire les choix locaux que l'état du parc reçu confirme. */
+  function oublierDisposConfirmees(parc) {
+    const local = lireStockage(CLE_DISPO_LOCALE);
+    if (local.jour !== aujourdhui() || !local.vehicules || !parc || parc.date !== aujourdhui() || !parc.vehicules) return;
+    const vehicules = { ...local.vehicules };
+    Object.keys(vehicules).forEach((id) => {
+      const p = parc.vehicules[id];
+      if (p && (estHS(p) ? 'NON' : 'OUI') === vehicules[id]) delete vehicules[id];
+    });
+    ecrireStockage(CLE_DISPO_LOCALE, { jour: aujourdhui(), vehicules });
   }
   /** Position d'après le dernier état du parc connu, même s'il n'est pas du jour (classement des inventaires). */
   function positionConnue(id) {
@@ -861,7 +889,7 @@ const Ambulancier = (() => {
           vehicules: { [e.vehicule]: { date: e.date, agent: e.agent || '', anomalies: e.anomalies || [], reponses: e.items || {} } },
         }));
     }
-    if (parc && parc.date) ecrireStockage(CLE_PARC, parc);
+    if (parc && parc.date) { ecrireStockage(CLE_PARC, parc); oublierDisposConfirmees(parc); }
     rendreVehicules();
     const champ = zoneQuestions && zoneQuestions.querySelector('.saisie-km');
     if (champ && document.activeElement !== champ) rendreQuestions();
@@ -930,7 +958,7 @@ const Ambulancier = (() => {
       poserPhotoVehicule(bloc, inv.photo);
       return bloc;
     },
-    initialiser, finChargement, positionDuJour, positionConnue, infosVehicule, etatVehicule, inventaireVehicule, estDZ, helico, cadran, carburantActuel, creerCarte: carte, noterEvenement,
+    initialiser, finChargement, positionDuJour, noterDisponibilite, positionConnue, infosVehicule, etatVehicule, inventaireVehicule, estDZ, helico, cadran, carburantActuel, creerCarte: carte, noterEvenement,
     ouvrirChecklist: (id) => choisirVehicule(id),
     vehiculeChoisi: () => etat.vehicule,
     mode: () => modeAction,

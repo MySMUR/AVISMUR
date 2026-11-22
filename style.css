@@ -1040,7 +1040,8 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .parc-etat.fait { background: #DDF3EF; border-color: var(--rhone); }
 .parc-etat.anomalie { background: #FFE9D2; border-color: var(--orange); }
 .parc-etat.indispo { background: #FDE3E1; border-color: var(--erreur); }
-.parc-boutons { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.parc-boutons { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.parc-inters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 1rem; margin-right: 0.5rem; }
 .parc-bloc { margin: 1.5rem 0 0; padding-top: 1rem; border-top: 2px solid var(--bleu); }
 .parc-bloc h2 { margin: 0 0 0.6rem; }
 

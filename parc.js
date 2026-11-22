@@ -306,8 +306,40 @@ const Parc = (() => {
         el('span', { classe: `parc-etat ${etatV.classe}`, texte: resumeEtat })),
       el('div', { classe: 'parc-boutons' },
         panneau ? el('button', { type: 'button', classe: 'cfg-bouton', texte: `← Fiche ${nomDe(v)}`, surclick: retourFiche }) : null,
+        interrupteursEtat(v, etatV),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: '← Vue d\'ensemble', surclick: retourEnsemble }),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Actions…', 'aria-haspopup': 'dialog', surclick: () => Actions.ouvrir(v, info, etatV) })));
+  }
+
+  // ---------- Fiche : interrupteurs Disponible / Armé ----------
+  /** Interrupteur (case à cocher en rôle « switch »), même aspect que la fiche régulation. */
+  function interrupteur(libelle, actif, surChange, classe, titre) {
+    return el('label', { classe: `reg-inter reg-inter-${classe}`, title: titre },
+      el('input', { type: 'checkbox', role: 'switch', checked: actif, surchange: (e) => surChange(e.target.checked, e.target) }),
+      el('span', { classe: 'reg-inter-piste', 'aria-hidden': 'true' }),
+      el('span', { texte: libelle }));
+  }
+  /**
+   * Disponible : passe par la fiche régulation du jour (raison demandée si indisponible) ; Armé : même action
+   * que partout ailleurs (Desarmement.basculer : question du contenu, file d'attente hors ligne).
+   */
+  function interrupteursEtat(v, etatV) {
+    const dispo = etatV.classe !== 'indispo';
+    const arme = typeof Desarmement === 'undefined' || !Desarmement.estDesarme(v.id);
+    return el('div', { classe: 'parc-inters' },
+      interrupteur(dispo ? 'Disponible' : 'Indisponible', dispo, (on, champ) => {
+        if (typeof Regulation === 'undefined' || !Regulation.changerDisponibilite || !Regulation.changerDisponibilite(v.id, on)) {
+          champ.checked = !on;
+          return;
+        }
+        rendre();
+      }, 'dispo', 'Disponibilité du véhicule (reportée dans la fiche régulation du jour)'),
+      typeDe(v) === 'AUTRE' ? null : interrupteur(arme ? 'Armé' : 'Désarmé', arme, async (on, champ) => {
+        if (typeof Desarmement === 'undefined') { champ.checked = !on; return; }
+        const ok = await Desarmement.basculer(v.id, on);
+        if (!ok) champ.checked = !on;
+        rendre();
+      }, 'arme', 'Armement du véhicule'));
   }
 
   function avecRecent(liste, candidat) {
@@ -696,6 +728,8 @@ const Parc = (() => {
     colonne = document.getElementById('parc-liste');
     centre = document.getElementById('parc-centre');
     document.addEventListener('parc-maj', rendre);
+    window.addEventListener('avismur-armement', rendre);
+    window.addEventListener('avismur-disponibilite', rendre);
     window.addEventListener('resize', ajusterHauteur);
   }
 

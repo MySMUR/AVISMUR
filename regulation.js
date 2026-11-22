@@ -90,18 +90,23 @@ const Regulation = (() => {
       el('span', { texte: libelle }));
   }
 
+  /** Change la disponibilité dans la fiche du jour (brouillon), sur l'appareil, puis demande la raison si indisponible. */
+  function appliquerDisponibilite(v, s, valeur) {
+    const positions = positionsPour(v);
+    s.disponible = valeur;
+    if (valeur === 'NON' && positions.includes('HS')) s.position = 'HS';
+    if (valeur === 'OUI' && s.position === 'HS') s.position = '';
+    if (valeur === 'OUI') delete s.raison;
+    garderBrouillon();
+    if (typeof Ambulancier !== 'undefined' && Ambulancier.noterDisponibilite) Ambulancier.noterDisponibilite(v.id, valeur);
+    rendre();
+    if (valeur === 'NON') demanderRaison(v, s);
+  }
+
   function ligneVehicule(v) {
     const s = saisie.vehicules[v.id] || (saisie.vehicules[v.id] = { disponible: 'OUI', position: '', commentaire: '' });
     const positions = positionsPour(v);
-    const bascule = (valeur) => {
-      s.disponible = valeur;
-      if (valeur === 'NON' && positions.includes('HS')) s.position = 'HS';
-      if (valeur === 'OUI' && s.position === 'HS') s.position = '';
-      if (valeur === 'OUI') delete s.raison;
-      garderBrouillon();
-      rendre();
-      if (valeur === 'NON') demanderRaison(v, s);
-    };
+    const bascule = (valeur) => appliquerDisponibilite(v, s, valeur);
     // Armé : tout le matériel de prise en charge médicale à bord ; désarmé : véhicule vidé.
     // Indépendant de la disponibilité (armé et indisponible : contrôle au garage ; disponible et désarmé : VL en DSM).
     // Armement : état global (desarmement.js), le même partout ; la fiche l'affiche et l'envoie tel quel.
@@ -357,6 +362,27 @@ const Regulation = (() => {
     initialiser(app) {
       App = app;
       zone = document.getElementById('zone-regulation');
+    },
+    /**
+     * Interrupteur « Disponible » d'ailleurs (fiche véhicule du tableau de bord) : modifie la fiche régulation
+     * du jour (brouillon, à envoyer). Renvoie false si aucune fiche n'est connue sur cet appareil.
+     */
+    changerDisponibilite(id, disponible) {
+      if (!donnees) donnees = lireStockage(CLE);
+      if (!donnees || !donnees.vehicules) {
+        if (typeof Actions !== 'undefined' && Actions.dialogue) {
+          Actions.dialogue('Fiche régulation indisponible', [
+            el('p', { texte: 'La fiche régulation n\'a jamais été chargée sur cet appareil : ouvrez-la une fois (réseau nécessaire) pour pouvoir changer la disponibilité.' }),
+            el('button', { type: 'button', classe: 'principal', texte: 'Fermer', surclick: () => Actions.fermer() })]);
+        }
+        return false;
+      }
+      if (!saisie) initialiserSaisie();
+      const v = donnees.vehicules.find((x) => x.id === id);
+      if (!v) return false;
+      const s = saisie.vehicules[id] || (saisie.vehicules[id] = { disponible: 'OUI', position: v.position || '', commentaire: '' });
+      appliquerDisponibilite(v, s, disponible ? 'OUI' : 'NON');
+      return true;
     },
     /** La fiche du jour est-elle envoyée (ou partie dans la file d'attente) ? */
     faiteAujourdhui: () => faite(),
