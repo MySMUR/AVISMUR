@@ -313,7 +313,7 @@ const Ambulancier = (() => {
     }
     const bloc = el('div', { classe: 'champ question' },
       el('label', { for: id, texte: q.libelle }), el('p', { classe: 'aide-question', texte: info }), ligne,
-      el('p', { classe: 'erreur-champ', 'aria-live': 'polite' }));
+      el('p', { classe: 'erreur-champ', 'aria-live': 'polite' }), el('div', { classe: 'avert-champ', 'aria-live': 'polite' }));
     verifierKm(bloc, champ.value);
     return bloc;
   }
@@ -324,10 +324,24 @@ const Ambulancier = (() => {
     return `Inférieur au dernier relevé (${km(precedent.km)}).`;
   }
 
+  // Kilométrages invraisemblables confirmés par l'utilisateur, par véhicule.
+  const kmConfirmes = {};
+  const kmEstConfirme = (valeur) => kmConfirmes[etat.vehicule] === String(valeur);
+
   function verifierKm(bloc, valeur) {
     const message = erreurKm(valeur);
     bloc.querySelector('.erreur-champ').textContent = message;
     bloc.querySelector('input').setAttribute('aria-invalid', String(Boolean(message)));
+    // Valeur aberrante : avertissement orange, à confirmer pour pouvoir enregistrer.
+    const avert = bloc.querySelector('.avert-champ');
+    const suspect = message ? '' : kmSuspect(valeur, releves.lire(etat.vehicule));
+    avert.textContent = '';
+    if (!suspect) return;
+    if (kmEstConfirme(valeur)) { avert.append(el('span', { texte: '✓ Kilométrage confirmé.' })); return; }
+    avert.append(el('span', { texte: `⚠ ${suspect}` }), el('button', {
+      type: 'button', classe: 'lien', texte: 'Je confirme ce kilométrage',
+      surclick: () => { kmConfirmes[etat.vehicule] = String(valeur); verifierKm(bloc, valeur); },
+    }));
   }
 
   function rendreQuestion(q) {
@@ -832,6 +846,7 @@ const Ambulancier = (() => {
       const vide = brute === undefined || brute === '';
       if (vide && (q.requis || q.type === 'niveau')) erreurs.push(q.affiche || q.libelle);
       if (q.type === 'kilometrage' && erreurKm(brute)) erreurs.push(`kilométrage ${erreurKm(brute).toLowerCase().replace(/\.$/, '')}`);
+      else if (q.type === 'kilometrage' && kmSuspect(brute, releves.lire(etat.vehicule)) && !kmEstConfirme(brute)) erreurs.push('kilométrage à confirmer (valeur inhabituelle)');
       if (q.type === 'fait') reponses[q.libelle] = brute === 'Fait' ? 'Fait' : '';
       else if (q.type === 'niveau' || q.type === 'kilometrage') reponses[q.libelle] = vide ? '' : Number(brute);
       else if (q.type === 'carburant') reponses[q.libelle] = vide ? '' : `${brute}/8`;

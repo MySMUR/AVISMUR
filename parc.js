@@ -228,7 +228,10 @@ const Parc = (() => {
     if (valeur === 'OK' || valeur === 'Fait') return { texte: '✓', classe: 'ok', titre: valeur };
     if (valeur === 'Manquant') return { texte: '✗', classe: 'mauvais', titre: 'Manquant' };
     if (typeof valeur === 'number') {
-      if (/kilom/i.test(libelle)) return { texte: Number(valeur).toLocaleString('fr-FR'), classe: '', titre: km(valeur) };
+      if (/kilom/i.test(libelle)) {
+        const suspect = kmSuspect(valeur);
+        return { texte: Number(valeur).toLocaleString('fr-FR'), classe: suspect ? 'attention' : '', titre: suspect ? `⚠ ${suspect}` : km(valeur) };
+      }
       return { texte: `${valeur}/10`, classe: valeur <= SEUILS_ANOMALIE.obus ? 'mauvais' : '', titre: `${valeur * 20} bars` };
     }
     const t = String(valeur);
@@ -368,7 +371,7 @@ const Parc = (() => {
       const c = f(x);
       return el('td', { classe: `${c.classe || ''}${classeColonne(x)}`.trim(), texte: c.texte, title: c.titre });
     })));
-    suivi('Dernier kilométrage', (x) => (x.info.releve ? { texte: Number(x.info.releve.km).toLocaleString('fr-FR'), titre: `Relevé du ${date(x.info.releve.date)}` } : { texte: '—', classe: 'na' }));
+    suivi('Dernier kilométrage', (x) => (x.info.releve ? { texte: Number(x.info.releve.km).toLocaleString('fr-FR'), classe: kmSuspect(x.info.releve.km) ? 'attention' : '', titre: `Relevé du ${date(x.info.releve.date)}${kmSuspect(x.info.releve.km) ? ` · ⚠ ${kmSuspect(x.info.releve.km)}` : ''}` } : { texte: '—', classe: 'na' }));
     suivi('Dernier plein', (x) => (x.v.sansPlein ? { texte: '—', classe: 'na' } : { texte: x.info.dernierPlein ? jour(x.info.dernierPlein.date) : 'jamais', titre: x.info.dernierPlein ? `${date(x.info.dernierPlein.date)} · ${x.info.dernierPlein.agent}` : '' }));
     suivi('Dernier garage', (x) => (x.v.sansGarage ? { texte: '—', classe: 'na' } : { texte: x.info.dernierGarage ? jour(x.info.dernierGarage.date) : 'jamais', titre: x.info.dernierGarage ? `${date(x.info.dernierGarage.date)} · ${x.info.dernierGarage.motif || ''}` : '' }));
     suivi('Nettoyage intérieur', (x) => (x.v.sansNettoyage ? { texte: '—', classe: 'na' } : { texte: x.info.dernierNettoyageInterieur ? jour(x.info.dernierNettoyageInterieur.date) : 'jamais' }));
@@ -490,8 +493,9 @@ const Parc = (() => {
     }
     const releve = info.releve || pointsKm[pointsKm.length - 1] || null;
     const tKm = tuile('km', '⏱', 'Kilométrage',
-      releve ? grand(km(releve.km)) : grand('Inconnu', 'attenue'),
+      releve ? grand(km(releve.km), kmSuspect(releve.km) ? 'alerte' : '') : grand('Inconnu', 'attenue'),
       releve ? petit(`relevé ${ilYa(releve.date)}`) : null,
+      releve && kmSuspect(releve.km) ? petit(`⚠ ${kmSuspect(releve.km)}`, 'alerte') : null,
       moyenne !== null ? petit(`≈ ${moyenne.toLocaleString('fr-FR')} km par jour récemment`) : null);
 
     // Pleins : jauge actuelle et dernier plein

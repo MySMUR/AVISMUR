@@ -255,6 +255,12 @@ const Actions = (() => {
           message(panneau, `Kilométrage inférieur au dernier relevé (${precedent.toLocaleString('fr-FR')} km).`, 'erreur');
           return;
         }
+        const suspect = kmSuspect(saisie.km, info.releve);
+        if (suspect && saisie.confirme !== saisie.km) {
+          saisie.confirme = saisie.km;
+          message(panneau, `${suspect} Si la valeur est bonne, appuyez de nouveau sur « Enregistrer le plein ».`, 'erreur');
+          return;
+        }
         if (App.envoyerEvenement('plein', v.id, { ...saisie, km: saisie.km ? Number(saisie.km) : '' })) {
           fermer();
         }

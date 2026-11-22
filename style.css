@@ -545,6 +545,9 @@ div.note-parc { padding: 0.6rem 0.8rem; }
 
 .erreur-champ { margin: 0.2rem 0 0; color: var(--erreur); font-weight: 700; }
 .erreur-champ:empty { display: none; }
+.avert-champ { margin: 0.2rem 0 0; padding: 0.4rem 0.6rem; color: #8A4B00; background: #FFE9D2; border-left: 4px solid var(--orange); border-radius: 0.3rem; font-weight: 700; }
+.avert-champ:empty { display: none; }
+.avert-champ .lien { display: block; margin-top: 0.3rem; }
 input[aria-invalid="true"] { border-color: var(--erreur); }
 
 textarea {

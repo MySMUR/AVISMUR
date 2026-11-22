@@ -40,6 +40,29 @@ const SEUILS_ANOMALIE = {
   plein: 5, // sur 8 : à ce niveau ou en dessous, pompe rouge sur la case du véhicule (plein à faire)
 };
 
+// Valeurs aberrantes : on avertit l'utilisateur, qui confirme s'il est sûr de lui (jamais de blocage définitif).
+const PLAUSIBLE = {
+  kmMax: 500000, // au-delà : compteur mal lu ou faute de frappe
+  kmMarge: 1000, // km autorisés d'un relevé à l'autre, en plus de…
+  kmParJour: 600, // …ce nombre de km par jour écoulé
+};
+
+/** Texte d'avertissement si un kilométrage est invraisemblable ('' sinon). `precedent` : { km, date } du dernier relevé. */
+function kmSuspect(valeur, precedent) {
+  const n = Number(valeur);
+  if (!(n > 0)) return '';
+  const fr = (x) => Number(x).toLocaleString('fr-FR');
+  if (n > PLAUSIBLE.kmMax) return `${fr(n)} km paraît trop élevé : vérifiez le compteur.`;
+  if (precedent && precedent.km > 0 && n > precedent.km) {
+    const jours = Math.max(1, Math.ceil((Date.now() - new Date(precedent.date)) / 86400000));
+    const ecart = n - precedent.km;
+    if (ecart > PLAUSIBLE.kmMarge + PLAUSIBLE.kmParJour * jours) {
+      return `+${fr(ecart)} km depuis le dernier relevé (${jours} jour${jours > 1 ? 's' : ''}) : vérifiez le compteur.`;
+    }
+  }
+  return '';
+}
+
 let VEHICULES = [
   { id: 'F21', modele: 'VML' },
   { id: 'F22', modele: 'VML' },
