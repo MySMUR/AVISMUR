@@ -3470,3 +3470,9 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .mat-rapide-icone { font-size: 1.5rem; flex: none; }
 .mat-form .cfg-bouton.choisi { outline: 2px solid currentColor; font-weight: 600; }
 .mat-histo-photo { display: block; max-width: 220px; max-height: 220px; margin: 0.4rem 0; border-radius: 8px; object-fit: contain; }
+
+/* Matériel de prêt dans le suivi du matériel : fond violet, traité comme notre matériel. */
+.mat-ligne.pret { background: #EEEDFE; }
+.mat-ligne.pret.choisie { background: #E2E0FC; }
+.mat-ligne.pret .mat-num { background: #534AB7; color: #fff; }
+.mat-pret-info { display: block; font-size: 0.85em; font-weight: 600; color: #3C3489; }

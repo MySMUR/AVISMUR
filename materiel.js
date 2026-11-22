@@ -242,6 +242,19 @@ const Materiel = (() => {
         if (f && d.statut === 'En maintenance' && f.statut !== 'Réformé' && !f.archive) f.statut = 'En maintenance';
         if (f && d.statut === 'En panne' && (f.statut === 'En service' || f.statut === 'Prêté')) f.statut = 'En panne';
         if (f) attente.add(f.id);
+      } else if (e.action === 'enregistrerPret' && d.pret) {
+        // Matériel de prêt : sa fiche apparaît (ou se met à jour) dans le suivi du matériel, même hors ligne.
+        const p = d.pret;
+        const cle = (v) => normaliser(v).replace(/[^A-Z0-9]/g, '');
+        const f = [...parId.values()].find((x) => x.idPret === p.id)
+          || [...parId.values()].find((x) => x.proprietaire && x.statut !== 'Réformé' && ((p.numBiomed && cle(x.numBiomed) === cle(p.numBiomed)) || (p.numSerie && cle(x.numSerie) === cle(p.numSerie))));
+        const champs = { type: p.type, modele: p.modele, numBiomed: p.numBiomed, numSerie: p.numSerie, biomed: p.biomed !== false, pret: p.reference, proprietaire: p.proprietaire, idPret: p.id, archive: false };
+        if (f) parId.set(f.id, { ...f, ...champs });
+        else parId.set(`pret-${p.id}`, { id: `pret-${p.id}`, statut: 'En service', maintenance: true, plans: [], provisoire: true, ...champs });
+        attente.add(f ? f.id : `pret-${p.id}`);
+      } else if (e.action === 'rendrePret') {
+        const f = [...parId.values()].find((x) => x.idPret === d.id);
+        if (f) { parId.set(f.id, { ...f, pret: '', archive: true }); attente.add(f.id); }
       } else if (e.action === 'supprimerIntervention') {
         interventions = interventions.filter((i) => i.id !== d.intervention);
       } else if (e.action === 'supprimerMateriel') {
@@ -432,13 +445,14 @@ const Materiel = (() => {
     return liste.filter((f) => {
       if (filtre.statut !== 'archives' && !enService(f)) return false;
       if (filtre.statut === 'archives' && !f.archive && f.statut !== 'Réformé') return false;
-      if (filtre.statut && !['actifs', 'archives', 'tous'].includes(filtre.statut) && f.statut !== filtre.statut) return false;
+      if (filtre.statut === 'prets' && !f.pret) return false;
+      if (filtre.statut && !['actifs', 'archives', 'tous', 'prets'].includes(filtre.statut) && f.statut !== filtre.statut) return false;
       if (filtre.type && f.type !== filtre.type) return false;
       if (filtre.alerte === 'retard' && !etatRevision(f).retard) return false;
       if (filtre.alerte === 'bientot' && !etatRevision(f).bientot) return false;
       if (filtre.alerte === 'traceur' && !f.traceur) return false;
       if (t) {
-        const botte = normaliser([f.type, f.modele, f.numInterne, f.numBiomed, f.numSerie, f.nomTraceur, f.remarques, f.versionLogiciel, f.emplacement].join(' '));
+        const botte = normaliser([f.type, f.modele, f.numInterne, f.numBiomed, f.numSerie, f.nomTraceur, f.remarques, f.versionLogiciel, f.emplacement, f.pret, f.proprietaire, f.pret && 'pret'].join(' '));
         if (!t.split(/\s+/).every((mot) => botte.includes(mot))) return false;
       }
       return true;
@@ -494,7 +508,7 @@ const Materiel = (() => {
       el('option', { value: '', texte: 'Tous les types' }),
       types().map((t) => el('option', { value: t, texte: t, selected: filtre.type === t })));
     const choixStatut = el('select', { 'aria-label': 'Statut', surchange: (e) => { filtre.statut = e.target.value; rendre(); } },
-      [['actifs', 'En service, panne, maintenance'], ['tous', 'Tout le matériel (hors réformés)'], ...statuts().filter((s) => s !== 'Réformé').map((s) => [s, s]), ['archives', 'Réformés et archivés']]
+      [['actifs', 'En service, panne, maintenance'], ['tous', 'Tout le matériel (hors réformés)'], ...statuts().filter((s) => s !== 'Réformé').map((s) => [s, s]), ['prets', 'Matériel de prêt'], ['archives', 'Réformés et archivés']]
         .map(([v, t]) => el('option', { value: v, texte: t, selected: filtre.statut === v })));
     // Recherche toujours visible ; type, statut et traceur repliés derrière « Filtres » (nombre de filtres actifs).
     const nbFiltres = [filtre.type, filtre.statut && filtre.statut !== 'actifs', filtre.alerte === 'traceur'].filter(Boolean).length;
@@ -588,7 +602,7 @@ const Materiel = (() => {
     const derniere = historique[0];
     const ouvert = deplies.has(f.id);
     const admin = estAdmin();
-    const actif = !f.archive && f.statut !== 'Réformé';
+    const actif = !f.archive && f.statut !== 'Réformé' && !f.provisoire;
     const actions = el('span', { classe: 'mat-actions' },
       admin && actif && f.maintenance !== false && (f.plans || []).length
         ? icone('acquitter', `Acquitter une maintenance : ${nomAppareil(f)}`, () => { const p = planPrioritaire(f); ouvrirIntervention([f.id], { type: 'Révision', plan: p && p.id }); }) : null,
@@ -597,18 +611,19 @@ const Materiel = (() => {
         if (deplies.has(f.id)) deplies.delete(f.id); else deplies.add(f.id);
         rendreListe();
       }, { 'aria-expanded': String(ouvert), classe: `mat-icone mat-icone-deplier${ouvert ? ' ouvert' : ''}` }));
-    return el('li', { classe: `mat-ligne${selection.has(f.id) ? ' choisie' : ''}${ouvert ? ' depliee' : ''}` },
-      admin ? el('input', {
+    return el('li', { classe: `mat-ligne${f.pret ? ' pret' : ''}${selection.has(f.id) ? ' choisie' : ''}${ouvert ? ' depliee' : ''}` },
+      admin && !f.provisoire ? el('input', {
         type: 'checkbox', classe: 'mat-case', coche: selection.has(f.id), 'aria-label': `Sélectionner ${nomAppareil(f)}`,
         surchange: (e) => { if (e.target.checked) selection.add(f.id); else selection.delete(f.id); rendre(); },
       }) : null,
-      el('button', { type: 'button', classe: 'mat-ouvrir', surclick: () => ouvrirFiche(f.id) },
-        el('span', { classe: 'mat-num', texte: f.numInterne || '?' }),
+      el('button', { type: 'button', classe: 'mat-ouvrir', surclick: () => (f.provisoire ? (etatPrets().ouverts.get(f.pret) && ouvrirDetailPret(etatPrets().ouverts.get(f.pret))) : ouvrirFiche(f.id)) },
+        el('span', { classe: 'mat-num', texte: f.pret ? f.pret.replace(/^PR[ÊE]T\s*0?/i, 'P') : (f.numInterne || '?'), title: f.pret ? `Matériel de prêt ${f.pret}` : undefined }),
         // Photo propre à l'appareil, sinon celle de son matériel type (répercutée sur tous les appareils liés).
         aPhoto(f) ? vignette(f, 'mat-vignette') : null,
         el('span', { classe: 'mat-corps' },
           el('span', { classe: 'mat-nom' }, el('strong', { texte: nomAppareil(f) }),
             f.traceur ? el('span', { classe: 'mat-traceur', title: `Traceur GeoTraceSMUR${f.nomTraceur ? ` : ${f.nomTraceur}` : ''}`, texte: '📡' }) : null),
+          f.pret ? el('span', { classe: 'mat-pret-info', texte: `Prêt ${f.pret} · ${f.proprietaire || 'propriétaire non renseigné'}` }) : null,
           el('span', { classe: 'mat-ids', texte: [f.numBiomed && `Biomed ${f.numBiomed}`, f.numSerie && `S/N ${f.numSerie}`].filter(Boolean).join(' · ') || 'N° biomed et série non renseignés' }),
           f.emplacement ? el('span', { classe: 'mat-emplacement', texte: `📍 ${texteEmplacement(f)}` }) : null,
           derniere ? el('span', { classe: 'mat-derniere', texte: `Dernière entrée : ${(derniere.type === 'Évènement' && derniere.evenement ? derniere.evenement : derniere.type).toLowerCase()} le ${dateFr(derniere.date)}` }) : null),
@@ -626,6 +641,7 @@ const Materiel = (() => {
     const plans = f.maintenance === false ? [] : (f.plans || []);
     return el('div', { classe: 'mat-detail' },
       el('dl', { classe: 'mat-infos' },
+        f.pret ? info('Matériel de prêt', `${f.pret} · ${f.proprietaire || '—'}`) : null,
         info('Matériel type', f.modeleType ? nomModele(modeleDe(f.modeleType)) : 'Matériel unique'),
         info('Dernier emplacement', texteEmplacement(f) || 'Jamais pointé dans un inventaire'),
         info('Statut', f.statut),
@@ -645,7 +661,8 @@ const Materiel = (() => {
         el('ul', { classe: 'mat-detail-histo' }, historique.slice(0, 3).map((i) => el('li', {},
           el('strong', { texte: i.type === 'Évènement' && i.evenement ? i.evenement : i.type }),
           ` · ${dateFr(i.date)}${i.maintenance ? ` · ${i.maintenance}` : ''}${i.description ? ` — ${i.description.split('\n')[0].slice(0, 120)}` : ''}`)))) : null,
-      el('div', { classe: 'mat-boutons' }, el('button', { type: 'button', classe: 'cfg-mini', texte: 'Ouvrir la fiche complète', surclick: () => ouvrirFiche(f.id) })));
+      f.provisoire ? el('p', { classe: 'aide-question', texte: 'Fiche créée à l\'envoi du prêt au serveur : maintenances et signalements possibles ensuite.' })
+        : el('div', { classe: 'mat-boutons' }, el('button', { type: 'button', classe: 'cfg-mini', texte: 'Ouvrir la fiche complète', surclick: () => ouvrirFiche(f.id) })));
   }
 
   /** Icône « évènement ou note » : évènements ponctuels du matériel type, ou note casse / panne / problème. */
@@ -908,6 +925,7 @@ const Materiel = (() => {
     const contenu = el('div', { classe: 'mat-fiche' },
       aPhoto(f) ? vignette(f, 'mat-photo') : null,
       el('dl', { classe: 'mat-infos' },
+        f.pret ? ligneInfo('Matériel de prêt', `${f.pret} · propriétaire : ${f.proprietaire || '—'}`) : null,
         ligneInfo('Matériel type', f.modeleType ? nomModele(modeleDe(f.modeleType)) : 'Non (matériel unique)'),
         ligneInfo('Dernier emplacement', texteEmplacement(f) || 'Jamais pointé dans un inventaire'),
         ligneInfo('Type', f.type), ligneInfo('Modèle', f.modele), ligneInfo('N° interne SMUR', f.numInterne),
@@ -1944,7 +1962,9 @@ const Materiel = (() => {
     const boutons = !p.renduLe && peutPreter() ? el('div', { classe: 'mat-boutons' },
       el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Modifier', surclick: () => { d.close(); ouvrirPret(p.reference, p); } }),
       el('button', { type: 'button', classe: 'principal', texte: 'Matériel rendu', surclick: () => { d.close(); ouvrirRetour(p); } })) : null;
-    d = fenetre(`${p.reference} · ${nomPret(p)}`, el('div', { classe: 'mat-form' }, aPhoto(p) ? vignette(p, 'mat-photo') : null, detailPret(p), boutons));
+    const fiche = etat().fiches.find((x) => x.idPret === p.id && !x.provisoire);
+    const lienFiche = fiche ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Maintenance et main courante', surclick: () => { d.close(); ouvrirFiche(fiche.id); } }) : null;
+    d = fenetre(`${p.reference} · ${nomPret(p)}`, el('div', { classe: 'mat-form' }, aPhoto(p) ? vignette(p, 'mat-photo') : null, detailPret(p), lienFiche, boutons));
   }
 
   /** Nouveau prêt sur une référence libre (p null), ou modification d'un prêt en cours. */
