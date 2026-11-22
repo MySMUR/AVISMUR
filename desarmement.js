@@ -80,6 +80,44 @@ const Desarmement = (() => {
     inconnu: 'Je ne sais pas',
   };
 
+  // Pictogrammes des choix : véhicule de profil, nez à gauche, coffre à droite.
+  const NS = 'http://www.w3.org/2000/svg';
+  function svg(vb, contenu, classe) {
+    const n = document.createElementNS(NS, 'svg');
+    n.setAttribute('viewBox', vb);
+    n.setAttribute('class', classe);
+    n.setAttribute('aria-hidden', 'true');
+    n.innerHTML = contenu;
+    return n;
+  }
+  function vehiculeSvg(ouvert, miroir) {
+    const corps = ouvert
+      // Coffre ouvert : caisse évidée à l'arrière, hayon relevé.
+      ? '<path d="M40 22H4v-8l7-8h29" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'
+        + '<path d="M4 22v-8l7-8h26v16z" fill="currentColor" opacity=".18"/>'
+        + '<path d="M40 6l7-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'
+        + '<path d="M40 7v15" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 2"/>'
+      : '<path d="M4 22v-8l7-8h29v16z" fill="currentColor" opacity=".18"/>'
+        + '<path d="M4 22v-8l7-8h29v16z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'
+        + '<path d="M36 8v12" stroke="currentColor" stroke-width="1.2"/>';
+    const reste = '<path d="M12 8.5 8 13.5h9v-5z" fill="currentColor"/>'
+      + '<circle cx="13" cy="23" r="3.5" fill="#fff" stroke="currentColor" stroke-width="2"/>'
+      + '<circle cx="33" cy="23" r="3.5" fill="#fff" stroke="currentColor" stroke-width="2"/>';
+    const g = miroir ? `<g transform="translate(48 0) scale(-1 1)">${corps}${reste}</g>` : corps + reste;
+    return svg('-1 -2 50 30', g, 'dsm-picto-vl');
+  }
+  const flecheSvg = () => svg('0 0 24 16', '<path d="M2 8h17m-5-5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>', 'dsm-picto-fleche');
+  const interditSvg = () => svg('0 0 24 24', '<circle cx="12" cy="12" r="9" fill="none" stroke="#c0392b" stroke-width="2.6"/><path d="M5.6 18.4 18.4 5.6" stroke="#c0392b" stroke-width="2.6"/>', 'dsm-picto-signe');
+  const caisseSvg = () => svg('0 0 28 24', '<rect x="2" y="5" width="24" height="17" rx="1.5" fill="currentColor" opacity=".18" stroke="currentColor" stroke-width="2"/>'
+    + '<path d="M2 11h24M9 5v4m10-4v4M10 15h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>', 'dsm-picto-signe');
+  const inconnuSvg = () => svg('0 0 24 24', '<text x="12" y="20" text-anchor="middle" font-size="22" font-weight="700" fill="currentColor" font-family="sans-serif">?</text>', 'dsm-picto-signe');
+  const PICTOS = {
+    vehicule: () => [vehiculeSvg(false), interditSvg()],
+    stock: () => [vehiculeSvg(true), flecheSvg(), caisseSvg()],
+    autre: () => [vehiculeSvg(true), flecheSvg(), vehiculeSvg(true, true)],
+    inconnu: () => [vehiculeSvg(true), flecheSvg(), inconnuSvg()],
+  };
+
   /** Texte court du devenir du contenu (entrée de DESARMEMENTS). */
   function resume(e) {
     if (!e) return '';
@@ -113,7 +151,8 @@ const Desarmement = (() => {
         el('div', { classe: 'dsm-choix', role: 'radiogroup' },
           ['vehicule', 'stock', 'autre', ...(inconnu ? ['inconnu'] : [])].filter((c) => c !== 'autre' || autres.length).map((c) => el('label', { classe: 'dsm-option' },
             el('input', { type: 'radio', name: nom, valeur: c, surchange: () => { choix = c; liste.hidden = c !== 'autre'; majOk(); } }),
-            el('span', { texte: LIBELLES[c] })))),
+            el('span', { classe: 'dsm-picto' }, PICTOS[c]()),
+            el('span', { classe: 'dsm-libelle', texte: LIBELLES[c] })))),
         liste,
         el('div', { classe: 'mat-boutons' }, ok));
       ok.addEventListener('click', () => valider({ destination: choix, cible: choix === 'autre' ? liste.value : '' }));
