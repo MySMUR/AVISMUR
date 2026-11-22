@@ -2972,7 +2972,7 @@ const Inventaires = (() => {
       })));
   }
   /** Véhicules qui s'arment et se désarment (VML, UMH). */
-  const vehiculesArmables = () => listeVehicules().filter((v) => /^(VML|UMH)$/i.test(String(v.modele || ''))).map((v) => ({ id: v.id, nom: v.nom || v.id }));
+  const vehiculesArmables = () => listeVehicules().filter((v) => !v.inactif && /^(VML|UMH)$/i.test(String(v.modele || ''))).map((v) => ({ id: v.id, nom: v.nom || v.id }));
   const estEtudiantApp = () => App && App.role && App.role() === 'etudiant-iade';
   /** Caisses existantes (réarmement depuis des caisses). */
   const stocks = () => Object.values(structure.contenants).filter((c) => !c.supprime && c.stock && c.categorie === 'primaire' && !c.parent)
