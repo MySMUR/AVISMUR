@@ -237,7 +237,7 @@ const Materiel = (() => {
         const f = parId.get(d.materiel);
         interventions.push({
           id: `${e.id}-0`, materiel: d.materiel, date: d.date, type: d.type, description: d.description,
-          intervenant: d.destination || '', saisiPar: e.agent || '', attente: true, idFile: e.id,
+          intervenant: d.destination || '', photoDonnees: d.photoDonnees || '', saisiPar: e.agent || '', attente: true, idFile: e.id,
         });
         if (f && d.statut === 'En maintenance' && f.statut !== 'Réformé' && !f.archive) f.statut = 'En maintenance';
         if (f && d.statut === 'En panne' && (f.statut === 'En service' || f.statut === 'Prêté')) f.statut = 'En panne';
@@ -717,36 +717,83 @@ const Materiel = (() => {
   }
 
   function rapideSignaler(f) {
-    const NATURES = [['Panne', 'Panne signalée'], ['Casse', 'Casse'], ['Problème', 'Problème']];
-    let nature = 'Problème';
-    const choix = el('div', { classe: 'mat-boutons', role: 'radiogroup', 'aria-label': 'Nature du problème' });
-    const enPanne = el('input', { type: 'checkbox' });
-    const majChoix = () => {
-      choix.querySelectorAll('button').forEach((b) => { const oui = b.dataset.v === nature; b.classList.toggle('choisi', oui); b.setAttribute('aria-checked', String(oui)); });
-      enPanne.checked = nature !== 'Problème' && (f.statut === 'En service' || f.statut === 'Prêté');
-    };
-    NATURES.forEach(([t, v]) => choix.append(el('button', { type: 'button', classe: 'cfg-bouton', role: 'radio', 'data-v': v, texte: t, surclick: () => { nature = v; majChoix(); } })));
+    const NATURES = [['Panne', 'Panne signalée'], ['Casse', 'Casse'], ['Dysfonctionnement', 'Problème']];
+    let nature = '';
+    const choix = el('div', { classe: 'mat-boutons', role: 'radiogroup', 'aria-label': 'Type de problème' });
+    const majChoix = () => choix.querySelectorAll('button').forEach((b) => { const oui = b.dataset.v === nature; b.classList.toggle('choisi', oui); b.setAttribute('aria-checked', String(oui)); });
+    NATURES.forEach(([t, v]) => choix.append(el('button', { type: 'button', classe: 'cfg-bouton', role: 'radio', 'aria-checked': 'false', 'data-v': v, texte: t, surclick: () => { nature = v; majChoix(); } })));
     const texte = el('textarea', { rows: '4', placeholder: 'Ce qui ne fonctionne pas, dans quelles circonstances…' });
+    const dejaMaintenance = f.statut === 'En maintenance';
+    const biomed = el('input', { type: 'checkbox', disabled: dejaMaintenance });
     const message = el('p', { classe: 'message erreur', role: 'alert' });
-    const peutPanne = f.statut === 'En service' || f.statut === 'Prêté';
+
+    // Photo facultative (prise sur place ou choisie dans la galerie), recadrable.
+    let photo = '';
+    const apercu = el('img', { classe: 'mat-photo', alt: 'Photo du problème', hidden: true });
+    const boutonRetirer = el('button', { type: 'button', classe: 'cfg-bouton danger', texte: 'Retirer', hidden: true, surclick: () => { photo = ''; majPhoto(); } });
+    const boutonRecadrer = el('button', { type: 'button', classe: 'cfg-bouton', texte: '✂ Recadrer', hidden: true, surclick: () => { if (photo) prendrePhoto(photo); } });
+    const majPhoto = () => { apercu.hidden = !photo; if (photo) apercu.src = photo; boutonRetirer.hidden = !photo; boutonRecadrer.hidden = !photo; };
+    const prendrePhoto = async (source) => {
+      try { const x = await reduirePhoto(source); if (x) { photo = x; message.textContent = ''; } } catch (err) { message.textContent = 'Photo illisible ou trop lourde.'; }
+      majPhoto();
+    };
+    const fichierPhoto = el('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
+    fichierPhoto.addEventListener('change', () => { const x = fichierPhoto.files[0]; fichierPhoto.value = ''; if (x) prendrePhoto(x); });
+
     let d;
     const contenu = el('form', {
       classe: 'mat-form', novalidate: true,
       sursubmit: (ev) => {
         ev.preventDefault();
+        if (!nature) { message.textContent = 'Choisissez le type de problème.'; return; }
         if (!texte.value.trim()) { message.textContent = 'Décrivez le problème en quelques mots.'; texte.focus(); return; }
+        const envoiBiomed = biomed.checked && !dejaMaintenance;
+        const description = texte.value.trim();
+        const ok = enfiler('signalerMateriel', {
+          materiel: f.id, date: aujourdhui(), type: nature, description,
+          statut: envoiBiomed ? 'En maintenance' : '', destination: envoiBiomed ? 'Service biomédical' : '', photoDonnees: photo,
+        });
+        if (!ok) { message.textContent = 'Impossible d\'enregistrer sur cet appareil (mémoire pleine ?).'; return; }
         d.close();
-        enfiler('signalerMateriel', { materiel: f.id, date: aujourdhui(), type: nature, description: texte.value.trim(), statut: enPanne.checked ? 'En panne' : '' });
-        ouvrirRapide(f.id);
+        proposerPublicationProbleme(f, NATURES.find(([, v]) => v === nature)[0], description, envoiBiomed, photo);
       },
     },
-    el('p', { classe: 'mat-libelle', texte: 'Nature' }), choix,
+    el('p', { classe: 'mat-libelle', texte: 'Type de problème' }), choix,
     champ('Description', texte),
-    peutPanne ? el('label', { classe: 'mat-case-libelle' }, enPanne, el('span', { texte: 'Appareil hors d\'usage : le passer « En panne »' })) : null,
+    el('div', { classe: 'mat-photo-bloc' }, el('p', { classe: 'mat-libelle', texte: 'Photo (facultatif)' }), apercu,
+      el('div', { classe: 'mat-boutons' },
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: '📷 Prendre ou choisir une photo', surclick: () => fichierPhoto.click() }), boutonRecadrer, boutonRetirer, fichierPhoto)),
+    el('label', { classe: 'mat-case-libelle' }, biomed,
+      el('span', { texte: dejaMaintenance ? 'Appareil déjà en maintenance' : 'Envoyer au biomed (l\'appareil passe « En maintenance »)' })),
     message,
     el('div', { classe: 'mat-boutons' }, boutonRetourRapide({ close: () => d.close() }, f), el('button', { type: 'submit', classe: 'principal', texte: 'Signaler' })));
     d = fenetre(`Signaler un problème · ${nomAppareil(f)}`, contenu);
-    majChoix();
+  }
+
+  /** Après un signalement : proposer de publier une information sur le mur (formulaire pré-rempli, photo jointe). */
+  function proposerPublicationProbleme(f, nature, description, envoiBiomed, photo) {
+    const nom = nomAppareil(f);
+    const titre = `${nom} : ${nature.toLowerCase()}${envoiBiomed ? ' — envoyé au biomed' : ''}`;
+    if (typeof Infos === 'undefined' || !Infos.publier) { ouvrirRapide(f.id); return; }
+    let d;
+    const contenu = el('div', {},
+      el('p', { texte: 'Problème enregistré dans la main courante de l\'appareil.' }),
+      el('p', { texte: `Souhaitez-vous publier une information sur le mur pour prévenir l'équipe ?` }),
+      el('div', { classe: 'mat-boutons' },
+        el('button', {
+          type: 'button', classe: 'principal', texte: 'Publier une information',
+          surclick: () => {
+            d.close();
+            const lieu = texteEmplacement(f);
+            Infos.publier({
+              types: ['panne', 'information'], importance: 'importante', titre,
+              texte: [description, lieu ? `Dernier contenant : ${lieu}` : '', envoiBiomed ? 'Appareil envoyé au service biomédical.' : ''].filter(Boolean).join('\n'),
+              pieces: photo ? [{ type: 'photo', nom: `${nom}.jpg`.slice(0, 80), donnees: photo }] : [],
+            });
+          },
+        }),
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Non merci', surclick: () => d.close() })));
+    d = fenetre('Publier une information ?', contenu);
   }
 
   function rapideMaintenance(f) {
@@ -772,6 +819,14 @@ const Materiel = (() => {
     d = fenetre(`Envoyer en maintenance · ${nomAppareil(f)}`, contenu);
   }
 
+  /** Photo jointe à une entrée de main courante (signalement). */
+  function photoEntree(i) {
+    const img = el('img', { classe: 'mat-histo-photo', alt: 'Photo jointe', loading: 'lazy' });
+    if (i.photoDonnees) img.src = i.photoDonnees;
+    else imageDe({ photo: i.photo }).then((src) => { if (src) img.src = src; else img.remove(); });
+    return img;
+  }
+
   /** Main courante en lecture seule (la fiche complète reste accessible). */
   function rapideHistorique(id) {
     const { fiches: toutes, interventions } = etat();
@@ -787,6 +842,7 @@ const Materiel = (() => {
           i.intervenant ? el('span', { texte: ` · ${i.intervenant}` }) : null,
           i.attente ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null),
         i.description ? el('p', { classe: 'mat-histo-texte', texte: i.description, style: 'white-space: pre-line' }) : null,
+        i.photo || i.photoDonnees ? photoEntree(i) : null,
         i.saisiPar ? el('p', { classe: 'mat-histo-note', texte: `Saisi par ${i.saisiPar}` }) : null)))
         : el('p', { classe: 'mat-vide', texte: 'Aucune entrée pour le moment.' }),
       el('div', { classe: 'mat-boutons' }, boutonRetourRapide({ close: () => d.close() }, f),

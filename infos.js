@@ -730,7 +730,7 @@ const Infos = (() => {
   // ---------- Publication ----------
   /**
    * Formulaire de publication. `prerempli` (facultatif, depuis un autre module) :
-   * { types: [ids de type préférés, dans l'ordre], importance, titre, texte, surPublie() }.
+   * { types: [ids de type préférés, dans l'ordre], importance, titre, texte, pieces, surPublie() }.
    */
   function formulaire(prerempli = {}) {
     const actifs = typesActifs();
@@ -750,7 +750,7 @@ const Infos = (() => {
     const champFin = el('input', { id: ids.fin, type: 'date', min: jour() });
     const noteNotif = el('p', { classe: 'info-note' });
     const message = el('p', { classe: 'message', role: 'status' });
-    const pieces = [];
+    const pieces = (prerempli.pieces || []).slice(); // ex. photo d'un signalement de matériel
 
     const majNote = () => {
       const debut = champDebut.value || jour();
