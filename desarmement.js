@@ -180,6 +180,8 @@ const Desarmement = (() => {
   /** Réarmement : le contenu vient-il de caisses ? Résout l'identifiant des caisses, '' (non) ou null (annulé). */
   function choisirStock({ vehicule, stocks }) {
     const tries = stocks.filter((s) => !s.vehicule || compatibles(s.vehicule, vehicule)).sort((a, b) => Number(b.vehicule === vehicule) - Number(a.vehicule === vehicule));
+    // Aucune caisse de même type (VL / AR) : rien à proposer.
+    if (!tries.length) return Promise.resolve('');
     const n = peremptionsDe(vehicule);
     return fenetre(`${vehicule} armé`, (corps, valider) => {
       const alerte = avertissement();
