@@ -1107,6 +1107,9 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .parc-panneau-corps { overflow-y: auto; padding-right: 0.4rem; }
 .parc-panneau-corps h3 { margin: 1rem 0 0.5rem; }
 .parc-barre { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.6rem 1.5rem; margin-bottom: 0.8rem; padding: 0.6rem 0.8rem; background: var(--ciel); border-radius: var(--rayon); }
+.parc-barre-jours { align-items: center; }
+.parc-barre-jours .cfg-mini:disabled { opacity: 0.45; cursor: default; }
+.parc-jour-affiche { text-transform: capitalize; }
 .parc-groupe { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .parc-champ-date { display: inline-flex; align-items: center; gap: 0.35rem; }
 .parc-champ-date label { margin: 0; font-weight: 700; }

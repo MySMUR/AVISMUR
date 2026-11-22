@@ -20,6 +20,8 @@ const Parc = (() => {
   let jetonHisto = 0;
   const memo = new Map(); // historiques détaillés déjà chargés (véhicule|type|période)
   const etatPanneau = {}; // jour affiché, mode du kilométrage… (gardés en changeant de pavé)
+  let jourTableau = null; // jour affiché dans le tableau d'ensemble (AAAA-MM-JJ) ; null = aujourd'hui
+  const joursCharges = new Map(); // jour passé → { statuts: { id: check-list }, erreur } ou promesse en cours
 
   // ---------- Utilitaires ----------
   const SVG = 'http://www.w3.org/2000/svg';
@@ -228,12 +230,78 @@ const Parc = (() => {
     el('span', { classe: 'parc-th-position' }, ...position)));
   }
 
+  // ---------- Tableau d'ensemble : navigation entre les jours ----------
+  /** Check-lists d'un jour passé, véhicule par véhicule (dernière du jour), via historiquePlage. */
+  function chargerJour(j) {
+    if (joursCharges.has(j)) return;
+    const promesse = Promise.all(vehiculesActifs().map(async (v) => {
+      const rep = await appeler('historiquePlage', { vehicule: v.id, type: 'checklist', depuis: debutJour(j).toISOString(), jusqua: finJour(j).toISOString() });
+      if (!rep.ok) throw new Error(rep.erreur || 'Erreur du serveur.');
+      const duJour = (rep.historique || []).filter((e) => jourISO(e.date) === j).sort((a, b) => new Date(b.date) - new Date(a.date));
+      return [v.id, duJour[0] || null];
+    })).then((paires) => ({ statuts: Object.fromEntries(paires) }))
+      .catch((e) => ({ erreur: /fetch|network|réseau/i.test(String(e && e.message)) || !navigator.onLine
+        ? 'Check-lists des jours précédents indisponibles hors ligne.' : `Lecture impossible : ${e.message}` }));
+    joursCharges.set(j, promesse);
+    promesse.then((r) => {
+      if (r.erreur) joursCharges.delete(j); // nouvel essai au prochain affichage
+      else joursCharges.set(j, r);
+      if (r.erreur) erreurJour = r.erreur;
+      if (!choisi && jourTableau === j) rendreCentre();
+    });
+  }
+  let erreurJour = '';
+
+  function choisirJour(j) {
+    const aujourdhui = jourISO(new Date());
+    if (!j || j > aujourdhui) return;
+    jourTableau = j === aujourdhui ? null : j;
+    erreurJour = '';
+    rendreCentre();
+  }
+
+  function barreJours(j) {
+    const aujourdhui = jourISO(new Date());
+    return el('div', { classe: 'parc-barre parc-barre-jours' },
+      el('div', { classe: 'parc-groupe' },
+        el('button', { type: 'button', classe: 'cfg-mini', texte: '‹ Jour précédent', surclick: () => choisirJour(decalerJour(j, -1)) }),
+        champDate('Jour', j, choisirJour),
+        el('button', { type: 'button', classe: 'cfg-mini', texte: 'Jour suivant ›', disabled: j >= aujourdhui, surclick: () => choisirJour(decalerJour(j, 1)) }),
+        el('button', { type: 'button', classe: 'cfg-mini', texte: 'Aujourd\'hui', disabled: j >= aujourdhui, surclick: () => choisirJour(aujourdhui) })),
+      j < aujourdhui ? el('strong', { classe: 'parc-jour-affiche', texte: debutJour(j).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) }) : null);
+  }
+
   function rendreTableau() {
-    // Les véhicules indisponibles n'ont pas de check-list : ils ne figurent pas dans le tableau.
-    const infos = vehiculesActifs()
-      .map((v) => ({ v, info: Ambulancier.infosVehicule(v.id), etatV: Ambulancier.etatVehicule(v) }))
-      .filter((x) => x.etatV.classe !== 'indispo');
+    const aujourdhui = jourISO(new Date());
+    if (jourTableau && jourTableau >= aujourdhui) jourTableau = null;
+    const j = jourTableau || aujourdhui;
+    const passe = Boolean(jourTableau);
     centre.innerHTML = '';
+    centre.append(barreJours(j));
+    let statutsPasses = null;
+    if (passe) {
+      const charge = joursCharges.get(j);
+      if (!charge || typeof charge.then === 'function') {
+        if (erreurJour && !charge) { centre.append(el('p', { classe: 'message erreur', role: 'status', texte: erreurJour })); return; }
+        centre.append(texte('Chargement des check-lists…', 'aide-question'));
+        chargerJour(j);
+        return;
+      }
+      statutsPasses = charge.statuts;
+    }
+    // Aujourd'hui : les véhicules indisponibles n'ont pas de check-list, ils ne figurent pas dans le tableau.
+    // Jour passé : tous les véhicules, avec la dernière check-list faite ce jour-là.
+    const infos = vehiculesActifs()
+      .map((v) => {
+        if (!passe) return { v, info: Ambulancier.infosVehicule(v.id), etatV: Ambulancier.etatVehicule(v) };
+        const statut = statutsPasses[v.id] || null;
+        const nb = statut ? (statut.anomalies || []).length : 0;
+        return {
+          v, info: { statut },
+          etatV: { classe: !statut ? 'a-faire' : (nb ? 'anomalie' : 'fait'), texte: !statut ? 'Pas de check-list' : `CL du ${date(statut.date)}${statut.agent ? ` · ${statut.agent}` : ''}`, position: null },
+        };
+      })
+      .filter((x) => passe || x.etatV.classe !== 'indispo');
     if (!infos.length) {
       centre.append(texte('Aucun véhicule disponible.', ''));
       return;
@@ -248,7 +316,7 @@ const Parc = (() => {
       el('th', { classe: 'parc-libelle', scope: 'row', texte: libelle }), ...cellules);
     const section = (titre) => el('tr', { classe: 'parc-section' }, el('th', { colspan: String(colonnes), scope: 'colgroup', texte: titre }));
 
-    corps.append(ligne('Anomalies du jour', infos.map((x) => {
+    corps.append(ligne(passe ? 'Anomalies' : 'Anomalies du jour', infos.map((x) => {
       const liste = x.info.statut ? x.info.statut.anomalies : null;
       if (!liste) return el('td', { classe: `vide${classeColonne(x)}` });
       return liste.length
@@ -271,8 +339,10 @@ const Parc = (() => {
       })));
     });
     if (!lignes.length) {
-      corps.append(el('tr', {}, el('td', { colspan: String(colonnes), classe: 'parc-vide', texte: 'Aucune check-list faite aujourd\'hui pour l\'instant.' })));
+      corps.append(el('tr', {}, el('td', { colspan: String(colonnes), classe: 'parc-vide', texte: passe ? 'Aucune check-list ce jour-là.' : 'Aucune check-list faite aujourd\'hui pour l\'instant.' })));
     }
+    if (!passe) ajouterSuivi();
+    function ajouterSuivi() {
 
     corps.append(section('Suivi'));
     const suivi = (libelle, f) => corps.append(ligne(libelle, infos.map((x) => {
@@ -285,16 +355,17 @@ const Parc = (() => {
     suivi('Nettoyage intérieur', (x) => (x.v.sansNettoyage ? { texte: '—', classe: 'na' } : { texte: x.info.dernierNettoyageInterieur ? jour(x.info.dernierNettoyageInterieur.date) : 'jamais' }));
     suivi('Nettoyage extérieur', (x) => (x.v.sansNettoyage ? { texte: '—', classe: 'na' } : { texte: x.info.dernierNettoyageExterieur ? jour(x.info.dernierNettoyageExterieur.date) : 'jamais' }));
     suivi('Défauts de carrosserie connus', (x) => (x.v.sansExterieur ? { texte: '—', classe: 'na' } : { texte: String(x.info.defauts.length), classe: x.info.defauts.length ? 'attention' : '' }));
+    }
 
     // Colonnes de même largeur : tableau à disposition fixe, colonne des libellés plus large.
     const table = el('table', { classe: 'parc-tableau', style: `min-width:calc(13rem + ${vehicules.length} * 6.2rem)` },
       el('colgroup', {}, el('col', { classe: 'parc-col-libelle' }), ...vehicules.map(() => el('col'))),
-      el('thead', {}, el('tr', {}, el('th', { classe: 'parc-libelle', scope: 'col', texte: 'Check-list du jour' }), ...infos.map((x) => enteteVehicule(x.v, x.etatV)))),
+      el('thead', {}, el('tr', {}, el('th', { classe: 'parc-libelle', scope: 'col', texte: passe ? `Check-lists du ${j.split('-').reverse().join('/')}` : 'Check-list du jour' }), ...infos.map((x) => enteteVehicule(x.v, x.etatV)))),
       corps);
     const masques = vehiculesActifs().length - infos.length;
     centre.append(
       el('div', { classe: 'parc-tableau-zone', tabindex: '0', role: 'region', 'aria-label': 'Tableau des check-lists du jour', 'data-hauteur': '' }, table),
-      texte(`Cliquez sur un véhicule (à gauche ou en tête de colonne) pour voir sa fiche.${masques ? ` Véhicules indisponibles non affichés : ${masques}.` : ''}`, 'aide-question parc-note'));
+      texte(`Cliquez sur un véhicule (à gauche ou en tête de colonne) pour voir sa fiche.${!passe && masques ? ` Véhicules indisponibles non affichés : ${masques}.` : ''}`, 'aide-question parc-note'));
   }
 
   // ---------- Fiche : en-tête ----------
