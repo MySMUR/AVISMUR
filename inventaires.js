@@ -2800,6 +2800,7 @@ const Inventaires = (() => {
    */
   let recherchePrimaire = '';
   let toutAfficherRecherche = false;
+  let masquerTypes = false; // gestion : inventaires types (et leur contenu) masqués des résultats
   function encadreRecherche(tous) {
     const panneau = el('section', { id: 'inv-panneau-recherche', classe: 'inv-panneau-recherche', 'aria-label': 'Chercher un inventaire', hidden: !rechercheOuverte });
     if (!rechercheOuverte) return panneau;
@@ -2815,7 +2816,7 @@ const Inventaires = (() => {
       const mots = cle(recherche).split(' ').filter(Boolean);
       if (!mots.length || cle(recherche).length < 2) return;
       // Sur le nom du contenant lui-même : « sac rouge » trouve les sacs rouges, pas tout ce qu'ils contiennent.
-      const trouves = tous.filter((c) => !c.emplacement && mots.every((m) => cle(c.nom).includes(m)))
+      const trouves = tous.filter((c) => !c.emplacement && !(gestion && masquerTypes && (c.modele || dansUnModele(c.id))) && mots.every((m) => cle(c.nom).includes(m)))
         .sort((a, b) => (dansPrimaire(b) - dansPrimaire(a)) || a.nom.localeCompare(b.nom, 'fr'));
       trouves.slice(0, toutAfficherRecherche ? trouves.length : 12).forEach((c) => {
         const verifiable = gestion || dansPrimaire(c);
@@ -2833,7 +2834,7 @@ const Inventaires = (() => {
           surclick: () => { toutAfficherRecherche = true; filtrer(); },
         }, el('strong', { texte: `Afficher les ${trouves.length - 12} autres résultats` }))));
       }
-      if (!trouves.length) resultats.append(el('li', { classe: 'aide-question', texte: 'Aucun inventaire à ce nom.' }));
+      if (!trouves.length) resultats.append(el('li', { classe: 'aide-question', texte: masquerTypes && gestion ? 'Aucun inventaire à ce nom (types masqués).' : 'Aucun inventaire à ce nom.' }));
     };
     const choix = gestion || !primaires.length ? null : el('div', { classe: 'inv-recherche-primaire' },
       el('span', { classe: 'inv-libelle-recherche', id: groupe, texte: 'Vous êtes dans :' }),
@@ -2846,10 +2847,14 @@ const Inventaires = (() => {
       el('p', { classe: 'aide-question', texte: recherchePrimaire
         ? 'Les inventaires de ce contenant s\'ouvrent pour être vérifiés ; ceux d\'ailleurs, en consultation.'
         : 'Sans contenant primaire choisi, l\'inventaire trouvé s\'ouvre en consultation seule.' }));
-    panneau.append(choix,
-      el('label', { for: champ, classe: 'invisible', texte: 'Nom de l\'inventaire' }),
+    const caseTypes = idChamp();
+    const filtreTypes = gestion ? el('label', { for: caseTypes, classe: 'inv-filtre-types' },
+      el('input', { type: 'checkbox', id: caseTypes, checked: masquerTypes, surchange: (e) => { masquerTypes = e.target.checked; toutAfficherRecherche = false; filtrer(); } }),
+      ' Masquer les inventaires types') : null;
+    panneau.append(...[choix,
+      el('label', { for: champ, classe: 'invisible', texte: 'Nom de l\'inventaire' })].filter(Boolean),
       el('input', { id: champ, type: 'search', classe: 'inv-recherche-champ', valeur: recherche, autocomplete: 'off', placeholder: 'F25, sac rouge, ampoulier…', surinput: (e) => { recherche = e.target.value; toutAfficherRecherche = false; filtrer(); } }),
-      resultats);
+      ...(filtreTypes ? [filtreTypes] : []), resultats);
     filtrer();
     return panneau;
   }

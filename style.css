@@ -2168,6 +2168,8 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .inv-recherche-primaire { margin-bottom: 0.5rem; }
 .inv-recherche-primaire .aide-question { margin: 0.3rem 0 0; }
 .inv-recherche-champ { width: 100%; min-height: 3rem; font-size: 1.05rem; }
+.inv-filtre-types { display: flex; align-items: center; gap: .5rem; margin: .5rem 0; font-size: .95rem; cursor: pointer; }
+.inv-filtre-types input { width: 1.25rem; height: 1.25rem; }
 .inv-tag-consultation { color: #5B3A00; border-color: #F0C27F; background: #FFF1DC; }
 .inv-consultation .inv-liste-modele li.perime { color: var(--erreur); }
 .inv-consultation .inv-liste-modele li.proche { color: #8A4B00; }
