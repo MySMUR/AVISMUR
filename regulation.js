@@ -91,6 +91,12 @@ const Regulation = (() => {
   }
 
   /** Change la disponibilité dans la fiche du jour (brouillon), sur l'appareil, puis demande la raison si indisponible. */
+  /** Envoi immédiat au Sheet (file d'attente hors ligne) et affichage tout de suite sur l'appareil. */
+  function enregistrerDisponibilite(id, valeur) {
+    if (!App.mettreEnFile || !App.mettreEnFile({ action: 'changerDisponibilite', donnees: { vehicule: id, disponible: valeur } })) return false;
+    if (typeof Ambulancier !== 'undefined' && Ambulancier.noterDisponibilite) Ambulancier.noterDisponibilite(id, valeur);
+    return true;
+  }
   function appliquerDisponibilite(v, s, valeur) {
     const positions = positionsPour(v);
     s.disponible = valeur;
@@ -98,7 +104,7 @@ const Regulation = (() => {
     if (valeur === 'OUI' && s.position === 'HS') s.position = '';
     if (valeur === 'OUI') delete s.raison;
     garderBrouillon();
-    if (typeof Ambulancier !== 'undefined' && Ambulancier.noterDisponibilite) Ambulancier.noterDisponibilite(v.id, valeur);
+    enregistrerDisponibilite(v.id, valeur);
     rendre();
     if (valeur === 'NON') demanderRaison(v, s);
   }
@@ -365,18 +371,11 @@ const Regulation = (() => {
     },
     /**
      * Interrupteur « Disponible » d'ailleurs (fiche véhicule du tableau de bord) : modifie la fiche régulation
-     * du jour (brouillon, à envoyer). Renvoie false si aucune fiche n'est connue sur cet appareil.
+     * du jour (brouillon) et enregistre tout de suite dans le Sheet. Renvoie false si rien n'a pu être enregistré.
      */
     changerDisponibilite(id, disponible) {
       if (!donnees) donnees = lireStockage(CLE);
-      if (!donnees || !donnees.vehicules) {
-        if (typeof Actions !== 'undefined' && Actions.dialogue) {
-          Actions.dialogue('Fiche régulation indisponible', [
-            el('p', { texte: 'La fiche régulation n\'a jamais été chargée sur cet appareil : ouvrez-la une fois (réseau nécessaire) pour pouvoir changer la disponibilité.' }),
-            el('button', { type: 'button', classe: 'principal', texte: 'Fermer', surclick: () => Actions.fermer() })]);
-        }
-        return false;
-      }
+      if (!donnees || !donnees.vehicules) return enregistrerDisponibilite(id, disponible ? 'OUI' : 'NON');
       if (!saisie) initialiserSaisie();
       const v = donnees.vehicules.find((x) => x.id === id);
       if (!v) return false;
