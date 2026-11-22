@@ -290,7 +290,7 @@ const Regulation = (() => {
     ecrireStockage(CLE, donnees);
     localStorage.removeItem(CLE_BROUILLON);
     message = {
-      texte: navigator.onLine ? 'Fiche envoyée à la régulation (PDF par mail).' : 'Hors ligne : la fiche partira au retour du réseau.',
+      texte: Simulation.actif() ? 'Simulation : fiche « envoyée » sans rien transmettre à la régulation.' : navigator.onLine ? 'Fiche envoyée à la régulation (PDF par mail).' : 'Hors ligne : la fiche partira au retour du réseau.',
       classe: 'succes',
     };
     rendre();
