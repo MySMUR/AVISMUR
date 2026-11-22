@@ -700,7 +700,18 @@ const Inventaires = (() => {
   function vehiculeDesarme(p) {
     const v = vehiculeDuPrimaire(p);
     if (!v) return false;
+    if (typeof Desarmement !== 'undefined') return Desarmement.estDesarme(v.id);
     try { return (JSON.parse(localStorage.getItem('avismur_armement')) || {})[v.id] === 'DÉSARMÉ'; } catch (e) { return false; }
+  }
+  /** Famille d'un contenant primaire sur la page des inventaires : VML, AR (UMH), HELICO (F00), LOCAUX. */
+  function famillePrimaire(p) {
+    const v = vehiculeDuPrimaire(p);
+    const modele = String((v && (listeVehicules().find((x) => x.id === v.id) || v).modele) || '').toUpperCase();
+    if (modele === 'VML') return 'VML';
+    if (modele === 'UMH') return 'AR';
+    if (v && (modele === 'F00' || /HELI|F00/i.test(v.id))) return 'HELICO';
+    if (v && modele === 'COUVEUSE') return 'AR';
+    return 'LOCAUX';
   }
   /** Contenant primaire relié à ce véhicule (inventaires gardés sur l'appareil), ou null. */
   function primaireDuVehicule(id) {
@@ -1748,10 +1759,13 @@ const Inventaires = (() => {
     // Véhicule désarmé : tuile grise hachurée, pas d'inventaire ; au toucher, où est passé le contenu des tiroirs.
     const primaires = tous.filter((c) => c.categorie === 'primaire' && !c.stock && !dansUnModele(c.id))
       .sort((x, y) => x.ordre - y.ordre || x.nom.localeCompare(y.nom, 'fr'));
-    noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Contenants primaires' }));
-    noeuds.push(primaires.length
-      ? listeTuiles(primaires)
-      : el('p', { classe: 'aide-question', texte: estAdmin() ? (gestion ? 'Aucun contenant primaire : ouvrez un inventaire et choisissez la catégorie « Primaire ».' : 'Aucun contenant primaire : menu > Administration > Gestion des inventaires.') : 'Aucun contenant primaire pour l\'instant : utilisez la loupe ci-dessus.' }));
+    // Classés par famille : VML, AR (UMH), hélicoptère (F00), locaux (tout ce qui n'est pas un véhicule).
+    const familles = [['VML', 'VML'], ['AR', 'AR'], ['HELICO', 'Hélicoptère'], ['LOCAUX', 'Locaux']];
+    familles.forEach(([cle, titre]) => {
+      const liste = primaires.filter((c) => famillePrimaire(c) === cle);
+      if (liste.length) noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: titre }), listeTuiles(liste));
+    });
+    if (!primaires.length) noeuds.push(el('p', { classe: 'aide-question', texte: estAdmin() ? (gestion ? 'Aucun contenant primaire : ouvrez un inventaire et choisissez la catégorie « Primaire ».' : 'Aucun contenant primaire : menu > Administration > Gestion des inventaires.') : 'Aucun contenant primaire pour l\'instant : utilisez la loupe ci-dessus.' }));
     // Caisses : contenu des tiroirs et placards d'un véhicule désarmé, rangé au SMUR (répertoire virtuel des péremptions).
     const caisses = tous.filter((c) => c.categorie === 'primaire' && c.stock && !c.parent);
     if (caisses.length) {

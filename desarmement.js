@@ -33,8 +33,28 @@ const Desarmement = (() => {
   const lire = (cle) => { try { return JSON.parse(localStorage.getItem(cle)) || {}; } catch (e) { return {}; } };
   const ecrire = (cle, v) => { try { localStorage.setItem(cle, JSON.stringify(v)); } catch (e) { /* stockage plein */ } };
 
-  const armement = () => lire(CLE_ARMEMENT);
-  const desarmements = () => lire(CLE_DESARMEMENTS);
+  // Fiche régulation du jour pas encore envoyée (brouillon) : ce qu'elle dit de l'armement compte déjà.
+  const CLE_BROUILLON = 'avismur_fiche_regulation_brouillon';
+  const brouillon = () => {
+    const b = lire(CLE_BROUILLON);
+    return b && b.jour === new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }) && b.saisie && b.saisie.vehicules ? b.saisie.vehicules : {};
+  };
+  const armement = () => {
+    const a = lire(CLE_ARMEMENT);
+    Object.entries(brouillon()).forEach(([id, s]) => { if (s && s.armement) a[id] = s.armement; });
+    return a;
+  };
+  const desarmements = () => {
+    const d = lire(CLE_DESARMEMENTS);
+    Object.entries(brouillon()).forEach(([id, s]) => {
+      if (!s || s.armement !== 'DÉSARMÉ' || (d[id] && d[id].statut === 'traite')) return;
+      const c = s.contenu;
+      d[id] = c && c.destination && c.destination !== 'inconnu'
+        ? { ...(d[id] || {}), statut: 'traite', destination: c.destination, cible: c.cible }
+        : { ...(d[id] || {}), statut: 'attente' };
+    });
+    return d;
+  };
   const estDesarme = (id) => armement()[id] === 'DÉSARMÉ';
 
   /** Fenêtre modale : `remplir(corps, valider)` construit le contenu ; résout la valeur passée à valider, ou null. */
@@ -113,8 +133,8 @@ const Desarmement = (() => {
 
   /** Note tout de suite sur l'appareil (hors ligne compris) ce qui part au serveur. */
   function noterLocal(vehicule, arme, contenu) {
-    const a = armement();
-    const d = desarmements();
+    const a = lire(CLE_ARMEMENT);
+    const d = lire(CLE_DESARMEMENTS);
     a[vehicule] = arme ? 'ARMÉ' : 'DÉSARMÉ';
     if (arme) delete d[vehicule];
     else {
