@@ -2157,13 +2157,15 @@ const Materiel = (() => {
   const ETIQUETTE_PRET_DEFAUT = { largeur: 40, hauteur: 50, champ1: 'SMUR Avignon', champ2: 'Matériel de prêt' };
   const E = () => Inventaires.etiquette;
   function reglageEtiquettePret() {
+    // Ordre : réglage en cours de saisie, puis dernier réglage en attente d'envoi, puis celui du serveur.
     const attente = enAttente().filter((x) => x.action === 'enregistrerEtiquettePret').pop();
-    let r = attente ? attente.donnees.etiquette : (donnees && donnees.etiquettePret) || null;
+    let r = etiquetteAEnvoyer || etiquetteEnvoyee || (attente ? attente.donnees.etiquette : null) || (donnees && donnees.etiquettePret) || null;
     if (!r) { try { r = JSON.parse(localStorage.getItem(CLE_ETIQUETTE_PRET)); } catch (e) { /* rien */ } }
     return E().normaliser({ ...ETIQUETTE_PRET_DEFAUT, ...(r || {}) });
   }
   let minuterieEtiquette = null;
-  let etiquetteAEnvoyer = null;
+  let etiquetteAEnvoyer = null; // réglage modifié, pas encore mis en file
+  let etiquetteEnvoyee = null; // dernier réglage mis en file par cet appareil (jusqu'à la relecture du serveur)
   /** Enregistre le réglage (regroupé : un seul envoi après une rafale de changements). */
   function enregistrerEtiquettePret(r) {
     etiquetteAEnvoyer = r;
@@ -2175,6 +2177,7 @@ const Materiel = (() => {
     clearTimeout(minuterieEtiquette);
     if (!etiquetteAEnvoyer) return;
     outils.mettreEnFile({ action: 'enregistrerEtiquettePret', donnees: { etiquette: etiquetteAEnvoyer }, agent: '' });
+    etiquetteEnvoyee = etiquetteAEnvoyer;
     etiquetteAEnvoyer = null;
   }
   const objetPret = (ref) => ({ nom: ref, url: adressePret(ref) });
@@ -2196,7 +2199,7 @@ const Materiel = (() => {
     const d = fenetre(`QR code et puce NFC · ${ref}`, el('div', { classe: 'mat-nfc pret-qrnfc' },
       apercu,
       el('p', { classe: 'aide-question', texte: `Le QR code et la puce ouvrent ${ref} dans MySMUR : le prêt en cours, ou l'affectation d'un prêt si la référence est libre. Ils restent valables d'un prêt à l'autre.` }),
-      el('details', { classe: 'inv-details-reglages' }, el('summary', { texte: 'Format, couleur et texte de l\'étiquette' }),
+      el('details', { classe: 'inv-details-reglages', open: true }, el('summary', { texte: 'Format, couleur et texte de l\'étiquette' }),
         E().controles(reglageEtiquettePret(), regler),
         el('p', { classe: 'aide-question', texte: 'Réglage commun à toutes les références de prêt, partagé par tous les appareils.' })),
       el('pre', { classe: 'mat-apercu', texte: `${adressePret(ref)}\n\n${textePuce(ref)}` }),
@@ -2270,6 +2273,7 @@ const Materiel = (() => {
     },
     /** Appelé par app.js quand la file d'attente a été envoyée : relit la base. */
     surEnvoi() {
+      etiquetteEnvoyee = null; // le serveur a reçu le réglage : on le relit avec le reste
       charger(); // même masqué : les modifications envoyées doivent rejoindre le cache local
     },
     actions: ACTIONS,
