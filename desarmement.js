@@ -33,28 +33,10 @@ const Desarmement = (() => {
   const lire = (cle) => { try { return JSON.parse(localStorage.getItem(cle)) || {}; } catch (e) { return {}; } };
   const ecrire = (cle, v) => { try { localStorage.setItem(cle, JSON.stringify(v)); } catch (e) { /* stockage plein */ } };
 
-  // Fiche régulation du jour pas encore envoyée (brouillon) : ce qu'elle dit de l'armement compte déjà.
-  const CLE_BROUILLON = 'avismur_fiche_regulation_brouillon';
-  const brouillon = () => {
-    const b = lire(CLE_BROUILLON);
-    return b && b.jour === new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }) && b.saisie && b.saisie.vehicules ? b.saisie.vehicules : {};
-  };
-  const armement = () => {
-    const a = lire(CLE_ARMEMENT);
-    Object.entries(brouillon()).forEach(([id, s]) => { if (s && s.armement) a[id] = s.armement; });
-    return a;
-  };
-  const desarmements = () => {
-    const d = lire(CLE_DESARMEMENTS);
-    Object.entries(brouillon()).forEach(([id, s]) => {
-      if (!s || s.armement !== 'DÉSARMÉ' || (d[id] && d[id].statut === 'traite')) return;
-      const c = s.contenu;
-      d[id] = c && c.destination && c.destination !== 'inconnu'
-        ? { ...(d[id] || {}), statut: 'traite', destination: c.destination, cible: c.cible }
-        : { ...(d[id] || {}), statut: 'attente' };
-    });
-    return d;
-  };
+  // Armement : état unique, commun à toute l'app (fiche régulation, inventaires, menu du véhicule).
+  // Tout changement passe par basculer() : noté tout de suite sur l'appareil et envoyé au serveur.
+  const armement = () => lire(CLE_ARMEMENT);
+  const desarmements = () => lire(CLE_DESARMEMENTS);
   const estDesarme = (id) => armement()[id] === 'DÉSARMÉ';
 
   /** Fenêtre modale : `remplir(corps, valider)` construit le contenu ; résout la valeur passée à valider, ou null. */
@@ -212,26 +194,16 @@ const Desarmement = (() => {
     }
     ecrire(CLE_ARMEMENT, a);
     ecrire(CLE_DESARMEMENTS, d);
-    // Brouillon de fiche régulation du jour : il prime sur l'armement local (armement()), on l'aligne.
-    const b = lire(CLE_BROUILLON);
-    const vs = b && b.saisie && b.saisie.vehicules;
-    if (vs) {
-      [vehicule, contenu && contenu.destination === 'autre' && contenu.cible].filter((id) => id && vs[id]).forEach((id) => {
-        const versArme = id !== vehicule || arme;
-        vs[id].armement = versArme ? 'ARMÉ' : 'DÉSARMÉ';
-        if (id === vehicule) { if (versArme) delete vs[id].contenu; else if (contenu) vs[id].contenu = { destination: contenu.destination, cible: contenu.cible }; }
-      });
-      ecrire(CLE_BROUILLON, b);
-    }
+    try { window.dispatchEvent(new CustomEvent('avismur-armement')); } catch (e) { /* ancien navigateur */ }
   }
 
   /**
    * Dans la journée : désarmer (avec la question) ou réarmer un véhicule. Résout true si enregistré.
    */
-  async function basculer(vehicule, versArme) {
+  async function basculer(vehicule, versArme, options = {}) {
     const donnees = { vehicule, arme: versArme };
     if (!versArme) {
-      const r = await choisir({ vehicule, vehicules: App.vehicules ? App.vehicules() : [], inconnu: true });
+      const r = await choisir({ vehicule, vehicules: options.vehicules || (App.vehicules ? App.vehicules() : []), inconnu: true });
       if (!r) return false;
       Object.assign(donnees, r);
     } else {
@@ -285,6 +257,7 @@ const Desarmement = (() => {
       if (enAttente) return;
       if (armementServeur && typeof armementServeur === 'object') ecrire(CLE_ARMEMENT, armementServeur);
       if (desarmementsServeur && typeof desarmementsServeur === 'object') ecrire(CLE_DESARMEMENTS, desarmementsServeur);
+      try { window.dispatchEvent(new CustomEvent('avismur-armement')); } catch (e) { /* ancien navigateur */ }
     },
     armement, desarmements, estDesarme, resume, info, choisir, choisirStock, basculer, repondre, LIBELLES,
     /** Véhicules désarmés dont le contenu reste à localiser. */
