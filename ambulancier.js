@@ -925,7 +925,7 @@ const Ambulancier = (() => {
       poserPhotoVehicule(bloc, inv.photo);
       return bloc;
     },
-    initialiser, finChargement, infosVehicule, etatVehicule, inventaireVehicule, estDZ, helico, cadran, carburantActuel, creerCarte: carte, noterEvenement,
+    initialiser, finChargement, positionDuJour, infosVehicule, etatVehicule, inventaireVehicule, estDZ, helico, cadran, carburantActuel, creerCarte: carte, noterEvenement,
     ouvrirChecklist: (id) => choisirVehicule(id),
     vehiculeChoisi: () => etat.vehicule,
     mode: () => modeAction,
