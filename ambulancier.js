@@ -449,7 +449,7 @@ const Ambulancier = (() => {
     let derniereCL = i.derniereCL || null;
     if (statut && (!derniereCL || new Date(statut.date) >= new Date(derniereCL.date))) derniereCL = statut;
     return {
-      statut, derniereCL, dernierPlein: i.dernierPlein || null, dernierGarage: i.dernierGarage || null,
+      statut, derniereCL, dernierPlein: i.dernierPlein || null, dernierGarage: i.dernierGarage || null, prochainCT: i.prochainCT || null,
       derniereVerifExterieure: i.derniereVerifExterieure || null, defauts: i.defauts || [], releve: releves.lire(id),
       dernierNettoyageInterieur: i.dernierNettoyageInterieur || null, dernierNettoyageExterieur: i.dernierNettoyageExterieur || null,
     };
@@ -953,6 +953,7 @@ const Ambulancier = (() => {
       if (detail.km) releves.fusionner({ [vehicule]: { km: Number(detail.km), date } });
     } else if (type === 'garage') {
       i.dernierGarage = { ...base, motif: detail.motif, commentaire: detail.commentaire };
+      if (detail.prochainCT) i.prochainCT = { date: detail.prochainCT, saisi: date, agent: base.agent };
     } else if (type === 'nettoyage') {
       if (detail.interieur) i.dernierNettoyageInterieur = { ...base, commentaire: detail.commentaire };
       if (detail.exterieur) i.dernierNettoyageExterieur = { ...base, commentaire: detail.commentaire };

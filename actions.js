@@ -271,14 +271,21 @@ const Actions = (() => {
     const saisie = { motif: '', motifs: [], commentaire: options.commentaire || '' };
     if (options.apres) apresFermeture = options.apres;
     const idCom = id();
+    // Prochain contrôle technique : date connue pré-remplie ; cocher « Contrôle technique » propose dans un an.
+    const idCT = id();
+    const ctConnu = (info.prochainCT && info.prochainCT.date) || '';
+    const champCT = el('input', { type: 'date', id: idCT, value: ctConnu });
+    const dansUnAn = () => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d.toLocaleDateString('fr-CA'); };
+    const proposerCT = (coche) => { if (coche && (!champCT.value || champCT.value === ctConnu)) champCT.value = dansUnAn(); };
     const panneauGarage = fenetre(`${v.nom || v.id} · passage au garage`,
       info.dernierGarage ? el('p', { classe: 'aide-question', texte: `Dernier passage : ${date(info.dernierGarage.date)}${info.dernierGarage.motif ? ` (${info.dernierGarage.motif})` : ''}` }) : null,
       el('fieldset', { classe: 'question' }, el('legend', { texte: 'Motifs (plusieurs possibles)' }),
         el('div', { classe: 'puces motifs' }, ...['Entretien', 'Réparation', 'Contrôle technique', 'Pneus', 'Carrosserie', 'Autre'].flatMap((o) => {
           const i = id();
-          return [el('input', { type: 'checkbox', id: i, value: o, checked: motifs.has(o), surchange: (e) => { if (e.target.checked) motifs.add(o); else motifs.delete(o); } }),
+          return [el('input', { type: 'checkbox', id: i, value: o, checked: motifs.has(o), surchange: (e) => { if (e.target.checked) motifs.add(o); else motifs.delete(o); if (o === 'Contrôle technique') proposerCT(e.target.checked); } }),
             el('label', { for: i, texte: o })];
         }))),
+      el('div', { classe: 'champ' }, el('label', { for: idCT, texte: 'Prochain contrôle technique' }), champCT),
       el('div', { classe: 'champ' }, el('label', { for: idCom, texte: 'Commentaire' }),
         (() => { const t = el('textarea', { id: idCom, rows: 3, surinput: (e) => { saisie.commentaire = e.target.value; } }); t.value = saisie.commentaire; return t; })()),
       el('button', { type: 'button', classe: 'principal', texte: 'Enregistrer le passage au garage', surclick: () => {
@@ -286,6 +293,7 @@ const Actions = (() => {
         saisie.motifs = ordre.filter((o) => motifs.has(o));
         if (!saisie.motifs.length) { message(panneauGarage, 'Choisissez au moins un motif.', 'erreur'); return; }
         saisie.motif = saisie.motifs.join(', ');
+        if (champCT.value && champCT.value !== ctConnu) saisie.prochainCT = champCT.value;
         if (App.envoyerEvenement('garage', v.id, saisie)) fermer();
       } }),
       options.apres ? el('button', { type: 'button', classe: 'lien', texte: 'Plus tard', surclick: fermer }) : boutonRetour(v, info, etatV));

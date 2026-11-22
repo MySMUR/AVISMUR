@@ -447,6 +447,14 @@ const Parc = (() => {
   const grand = (t, classe = '') => el('span', { classe: `tuile-grand ${classe}`.trim(), texte: t });
   const petit = (t, classe = '') => el('span', { classe: `tuile-petit ${classe}`.trim(), texte: t });
 
+  // Prochain contrôle technique : en rouge s'il est dépassé ou à moins de 30 jours.
+  function ligneCT(ct) {
+    if (!ct || !ct.date) return petit('Prochain CT : non renseigné', 'attenue');
+    const j = Math.round((debutJour(ct.date) - debutJour(jourISO(new Date()))) / 86400000);
+    const quand = j < 0 ? `dépassé de ${-j} j` : (j === 0 ? 'aujourd\'hui' : (j < 60 ? `dans ${j} j` : `dans ${Math.round(j / 30.4)} mois`));
+    return petit(`Prochain CT : ${jour(debutJour(ct.date))} (${quand})`, j <= 30 ? 'alerte' : '');
+  }
+
   function rendreFiche() {
     const v = vehiculesActifs().find((x) => x.id === choisi);
     if (!v) { retourEnsemble(); return; }
@@ -498,7 +506,8 @@ const Parc = (() => {
     const tGarage = v.sansGarage ? null : tuile('garage', '🔧', 'Garage',
       garages[0] ? grand(ilYa(garages[0].date)) : grand('Aucun passage', 'attenue'),
       garages[0] ? petit(`${jour(garages[0].date)} · ${(garages[0].detail && garages[0].detail.motif) || ''}`) : null,
-      garages[1] ? petit(`Précédent : ${jour(garages[1].date)} · ${(garages[1].detail && garages[1].detail.motif) || ''}`) : null);
+      garages[1] ? petit(`Précédent : ${jour(garages[1].date)} · ${(garages[1].detail && garages[1].detail.motif) || ''}`) : null,
+      ligneCT(info.prochainCT));
 
     // Carrosserie : côtés gauche et droit en miniature
     const tCarrosserie = v.sansExterieur ? null : tuile('carrosserie', '🚐', 'Carrosserie',
