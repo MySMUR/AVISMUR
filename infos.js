@@ -25,6 +25,7 @@ const Infos = (() => {
   const CLE_MUR = 'avismur_infos';
   const CLE_FILTRE = 'avismur_infos_filtre';
   const CLE_PUSH = 'avismur_push_cle';
+  const CLE_VUES = 'avismur_infos_vues'; // informations déjà vues sur cet appareil, par agent (clochette de la barre du bas)
   const METIERS = [
     { id: 'ambulancier', libelle: 'Ambulanciers' },
     { id: 'iade', libelle: 'IADE' },
@@ -194,6 +195,35 @@ const Infos = (() => {
       chargementEnCours = false;
     }
     if (estVisible() && !saisieEnCours()) rendre();
+    if (estVisible() && vue === 'mur') marquerVues(); else signalerCompteur();
+  }
+
+  // ---------- Clochette (barre d'actions rapide) ----------
+  // Non lues : informations en cours qui me concernent, publiées par un autre, pas encore vues sur cet appareil.
+  function lireVues() {
+    try { return (JSON.parse(localStorage.getItem(CLE_VUES)) || {})[agent()] || []; } catch (e) { return []; }
+  }
+  function nonLues() {
+    if (!agent()) return 0;
+    const vues = new Set(lireVues());
+    const aujourdhui = jour();
+    return infosAffichees().filter((i) => !i.enAttente && i.auteur !== agent() && pourMoi(i)
+      && statut(i, aujourdhui) === 'encours' && !vues.has(i.id)).length;
+  }
+  function signalerCompteur() {
+    document.dispatchEvent(new CustomEvent('infos-compteur', { detail: nonLues() }));
+  }
+  /** Mur affiché : tout ce qui est en cours est considéré comme vu. */
+  function marquerVues() {
+    if (!agent()) return;
+    try {
+      const toutes = JSON.parse(localStorage.getItem(CLE_VUES)) || {};
+      const ids = new Set(toutes[agent()] || []);
+      infosAffichees().forEach((i) => { if (i.id) ids.add(i.id); });
+      toutes[agent()] = [...ids].slice(-500);
+      localStorage.setItem(CLE_VUES, JSON.stringify(toutes));
+    } catch (e) { /* stockage indisponible */ }
+    signalerCompteur();
   }
 
   const estVisible = () => zone && !zone.hidden;
@@ -976,6 +1006,9 @@ const Infos = (() => {
   return {
     /** Publication depuis un autre module (ex. contenant mobile à retrouver) : formulaire pré-rempli. */
     publier(prerempli) { formulaire(prerempli); },
+    /** Nombre d'informations non lues (clochette) ; relit le mur en ligne. */
+    nonLues,
+    actualiserCompteur() { signalerCompteur(); charger(); },
     initialiser(fonctions) {
       App = fonctions;
       zone = document.getElementById('zone-infos');
@@ -987,6 +1020,7 @@ const Infos = (() => {
       if (idCible) cible = idCible;
       zone.hidden = false;
       rendre();
+      marquerVues();
       charger();
     },
     afficherTypes() {
@@ -1007,6 +1041,7 @@ const Infos = (() => {
     demarrer() {
       lireCache();
       abonner();
+      signalerCompteur();
     },
     /** Après un envoi de la file d'attente : relire le mur. */
     surEnvoi() {

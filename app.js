@@ -1126,6 +1126,28 @@ document.querySelectorAll('#barre-scan [data-scan]').forEach((b) => b.addEventLi
   if (b.dataset.scan === 'qr') lireQrRapide();
   else Inventaires.scanRapide(b.dataset.scan);
 }));
+// NFC : seulement là où la lecture est possible (Chrome sur Android).
+document.querySelector('#barre-scan [data-scan="nfc"]').hidden = !('NDEFReader' in window);
+// Maison : retour à l'accueil. Clochette : le mur d'informations, en haut de la page.
+function allerAccueil() {
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  ouvrirVue('accueil');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+$('barre-accueil').addEventListener('click', allerAccueil);
+$('barre-notifications').addEventListener('click', allerAccueil);
+document.addEventListener('infos-compteur', (e) => {
+  const n = Number(e.detail) || 0;
+  const pastille = document.querySelector('#barre-notifications .barre-compteur');
+  pastille.hidden = n === 0;
+  pastille.textContent = n > 99 ? '99+' : String(n);
+  $('barre-notifications').setAttribute('aria-label', n ? `Notifications : ${n} non lue${n > 1 ? 's' : ''}` : 'Notifications');
+});
+// Relire le mur régulièrement (et au retour au premier plan) pour tenir la clochette à jour.
+setInterval(() => { if (document.body.classList.contains('connecte') && navigator.onLine) Infos.actualiserCompteur(); }, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && document.body.classList.contains('connecte') && navigator.onLine) Infos.actualiserCompteur();
+});
 
 // ----- Numéro de version (pied du menu) : « avismur-vNNN » de sw.js.
 // En ligne, lu sur le site (c'est la version dont les fichiers sont chargés) ; hors ligne, nom du cache de l'appareil.
