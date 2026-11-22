@@ -1650,6 +1650,7 @@ const Materiel = (() => {
         el('strong', { classe: 'pret-ref', texte: ref }),
         el('span', { classe: 'mat-pastille pret-occupe', texte: p.attente ? 'En attente d\'envoi' : 'En prêt' })),
       el('button', { type: 'button', classe: 'pret-ouvrir', surclick: () => ouvrirDetailPret(p) },
+        aPhoto(p) ? vignette(p, 'mat-vignette pret-vignette') : null,
         el('span', { classe: 'pret-nom', texte: nomPret(p) }),
         el('span', { classe: 'pret-ids', texte: [p.biomed === false ? 'Sans n° biomed' : (p.numBiomed ? `Biomed ${p.numBiomed}` : 'N° biomed non renseigné'), p.numSerie && `S/N ${p.numSerie}`].filter(Boolean).join(' · ') }),
         el('span', { classe: 'pret-ligne', texte: `Propriétaire : ${p.proprietaire || '—'}` }),
@@ -1706,7 +1707,7 @@ const Materiel = (() => {
     const boutons = !p.renduLe && peutPreter() ? el('div', { classe: 'mat-boutons' },
       el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Modifier', surclick: () => { d.close(); ouvrirPret(p.reference, p); } }),
       el('button', { type: 'button', classe: 'principal', texte: 'Matériel rendu', surclick: () => { d.close(); ouvrirRetour(p); } })) : null;
-    d = fenetre(`${p.reference} · ${nomPret(p)}`, el('div', { classe: 'mat-form' }, detailPret(p), boutons));
+    d = fenetre(`${p.reference} · ${nomPret(p)}`, el('div', { classe: 'mat-form' }, aPhoto(p) ? vignette(p, 'mat-photo') : null, detailPret(p), boutons));
   }
 
   /** Nouveau prêt sur une référence libre (p null), ou modification d'un prêt en cours. */
@@ -1738,6 +1739,29 @@ const Materiel = (() => {
     majBiomed();
     champAvecScan(numBiomed, 'Scanner l\'étiquette biomed', (v) => { numBiomed.value = v; });
 
+    // Photo du matériel prêté : une nouvelle photo remplace l'ancienne ; « Retirer » la supprime.
+    let photo = { id: p ? p.photo || '' : '', donnees: p ? p.photoDonnees || '' : '' };
+    const apercu = el('img', { classe: 'mat-photo', alt: 'Photo du matériel prêté', hidden: true });
+    const afficherApercu = async () => {
+      const src = photo.donnees || (photo.id ? await imageDe({ photo: photo.id }) : '');
+      apercu.hidden = !src;
+      if (src) apercu.src = src;
+      boutonRetirer.hidden = !src;
+      boutonRecadrer.hidden = !src;
+    };
+    const prendrePhoto = async (source) => {
+      try { const x = await reduirePhoto(source); if (!x) return; photo = { id: '', donnees: x }; message.textContent = ''; } catch (err) { message.textContent = 'Photo illisible ou trop lourde.'; }
+      afficherApercu();
+    };
+    const fichierPhoto = el('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
+    fichierPhoto.addEventListener('change', () => { const f = fichierPhoto.files[0]; fichierPhoto.value = ''; if (f) prendrePhoto(f); });
+    const boutonRetirer = el('button', { type: 'button', classe: 'cfg-bouton danger', texte: 'Retirer la photo', hidden: true, surclick: () => { photo = { id: '', donnees: '' }; afficherApercu(); } });
+    const boutonRecadrer = el('button', { type: 'button', classe: 'cfg-bouton', texte: '✂ Recadrer', hidden: true, surclick: () => { if (apercu.src) prendrePhoto(apercu.src); } });
+    const blocPhoto = el('div', { classe: 'mat-photo-bloc' }, el('p', { classe: 'mat-libelle', texte: 'Photo du matériel' }), apercu,
+      el('div', { classe: 'mat-boutons' },
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Prendre ou choisir une photo', surclick: () => fichierPhoto.click() }), boutonRecadrer, boutonRetirer, fichierPhoto));
+    afficherApercu();
+
     let d;
     const contenu = el('form', {
       classe: 'mat-form', novalidate: true,
@@ -1755,6 +1779,7 @@ const Materiel = (() => {
             biomed: !sansBiomed.checked, numBiomed: sansBiomed.checked ? '' : numBiomed.value.trim(), numSerie: numSerie.value.trim(),
             proprietaire: proprietaire.value.trim(), contact: contact.value.trim(), raison: raison.value.trim(),
             debut: debut.value, retourPrevu: retourPrevu.value, remarques: remarques.value.trim(),
+            photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
           },
         });
       },
@@ -1773,6 +1798,7 @@ const Materiel = (() => {
     el('datalist', { id: idListeRaisons }, [...new Set([...RAISONS_PRET, ...tous.map((x) => x.raison).filter(Boolean)])].map((v) => el('option', { value: v }))),
     el('div', { classe: 'pret-dates' }, champ('Début du prêt', debut), champ('Retour prévu', retourPrevu)),
     champ('Remarques', remarques),
+    blocPhoto,
     message,
     el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: p ? 'Enregistrer' : 'Affecter le prêt' })));
     d = fenetre(p ? `Modifier le prêt · ${p.reference}` : `Nouveau prêt · ${ref}`, contenu);
