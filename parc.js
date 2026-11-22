@@ -164,9 +164,28 @@ const Parc = (() => {
   // ---------- Colonne de gauche ----------
   function rendreColonne() {
     colonne.innerHTML = '';
-    vehiculesActifs().forEach((v) => colonne.append(Ambulancier.creerCarte(v, {
-      compacte: true, choisi: choisi === v.id, surClic: () => selectionner(v.id),
-    })));
+    // Classés par catégorie : VL, AR, puis le reste (DZ, couveuse, chariot ménage…).
+    const groupes = [['VL', []], ['AR', []], ['Autres', []]];
+    vehiculesActifs().forEach((v) => {
+      const t = typeDe(v);
+      groupes[t === 'VML' ? 0 : (t === 'UMH' && v.modele !== 'F00' ? 1 : 2)][1].push(v);
+    });
+    groupes.filter(([, liste]) => liste.length).forEach(([nom, liste]) => {
+      colonne.append(el('h3', { classe: 'parc-groupe', texte: nom }));
+      liste.forEach((v) => colonne.append(Ambulancier.creerCarte(v, {
+        mini: true, choisi: choisi === v.id, surClic: () => selectionner(v.id),
+      })));
+    });
+    ajusterColonnes();
+  }
+
+  /** Une seule colonne si tout tient sur la hauteur de l'écran, sinon deux (même largeur chacune). */
+  function ajusterColonnes() {
+    if (!colonne) return;
+    colonne.classList.remove('deux-colonnes');
+    requestAnimationFrame(() => {
+      if (colonne.scrollHeight > colonne.clientHeight + 2) colonne.classList.add('deux-colonnes');
+    });
   }
 
   // ---------- Tableau d'ensemble ----------
@@ -801,7 +820,7 @@ const Parc = (() => {
     document.addEventListener('parc-maj', rendre);
     window.addEventListener('avismur-armement', rendre);
     window.addEventListener('avismur-disponibilite', rendre);
-    window.addEventListener('resize', ajusterHauteur);
+    window.addEventListener('resize', () => { ajusterHauteur(); ajusterColonnes(); });
   }
 
   return { initialiser, afficher, masquer };

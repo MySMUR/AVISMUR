@@ -491,12 +491,12 @@ const Ambulancier = (() => {
    * Options (tableau de bord du parc) : `compacte` (sans cadran ni garage), `choisi` (case sélectionnée)
    * et `surClic` (remplace l'ouverture du menu d'actions).
    */
-  function carte(v, { compacte = false, choisi, surClic } = {}) {
+  function carte(v, { compacte = false, mini = false, choisi, surClic } = {}) {
     const etatV = etatVehicule(v);
     const info = infosVehicule(v.id);
     const estChoisi = choisi === undefined ? etat.vehicule === v.id : choisi;
     const bouton = el('button', {
-      type: 'button', classe: `vehicule carte ${etatV.classe}${estChoisi ? ' choisi' : ''}${compacte ? ' compacte' : ''}`,
+      type: 'button', classe: `vehicule carte ${etatV.classe}${estChoisi ? ' choisi' : ''}${compacte || mini ? ' compacte' : ''}${mini ? ' mini' : ''}`,
       'data-vehicule': v.id,
       ...(surClic ? { 'aria-pressed': String(estChoisi) } : { 'aria-haspopup': 'dialog' }),
     });
@@ -504,6 +504,24 @@ const Ambulancier = (() => {
     bouton.addEventListener('click', surClic || (() => (modeAction
       ? Actions.ouvrirAction(modeAction, v, info, etatV)
       : Actions.ouvrir(v, info, etatV))));
+
+    // Version mini (colonne du tableau de bord du parc) : vignette, indicatif et statut de la CL du jour.
+    if (mini) {
+      const inv = inventaireVehicule(v.id);
+      const photo = el('span', { classe: 'carte-photo', 'aria-hidden': 'true' });
+      if (inv && inv.photo) poserPhotoVehicule(photo, inv.photo);
+      else if (v.picto === 'nourrisson') photo.append(nourrisson());
+      const nb = etatV.statut ? etatV.statut.anomalies.length : 0;
+      let texte = 'CL à faire';
+      if (etatV.classe === 'indispo') texte = 'Non disponible';
+      else if (etatV.statut) texte = `CL faite ${heure(etatV.statut.date)}${nb ? ` · ${nb} anomalie${nb > 1 ? 's' : ''}` : ''}`;
+      bouton.title = `${v.nom || v.id} : ${texte}`;
+      bouton.append(photo, el('span', { classe: 'mini-texte' },
+        el('strong', { texte: v.nom || v.id }),
+        el('span', { classe: 'carte-cl' }, etatV.classe === 'indispo' ? null : el('span', { classe: 'pastille-etat', 'aria-hidden': 'true' }),
+          nb ? el('span', { classe: 'avertissement' }, triangle()) : null, el('span', { texte }))));
+      return bouton;
+    }
 
     // En-tête : indicatif, type, icône, position du jour
     const position = el('span', { classe: 'position' });

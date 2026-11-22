@@ -974,9 +974,9 @@ body.fenetre-ouverte { overflow: hidden; }
 
 /* ---------- Tableau de bord du parc (ordinateur, menu « Véhicules ») ---------- */
 body.connecte.parc-ouvert .feuille { max-width: 108rem; }
-.vue-parc { display: grid; grid-template-columns: 17rem minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+.vue-parc { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1.5rem; align-items: start; }
 .parc-liste {
-  display: grid; gap: 0.55rem; padding: 4px;
+  display: grid; grid-template-columns: 17rem; gap: 0.4rem; padding: 4px; align-content: start;
   position: sticky; top: 0.75rem; max-height: calc(100vh - 6rem); overflow-y: auto;
 }
 .parc-centre { min-width: 0; }
@@ -3485,3 +3485,15 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .mat-ligne.pret.choisie { background: #E2E0FC; }
 .mat-ligne.pret .mat-num { background: #534AB7; color: #fff; }
 .mat-pret-info { display: block; font-size: 0.85em; font-weight: 600; color: #3C3489; }
+
+/* Colonne du tableau de bord du parc : cases mini (vignette, indicatif, CL du jour), classées VL / AR / autres. */
+.parc-liste.deux-colonnes { grid-template-columns: repeat(2, 17rem); }
+.parc-groupe { grid-column: 1 / -1; margin: 0.35rem 0 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gris); }
+.parc-groupe:first-child { margin-top: 0; }
+.vehicule.carte.mini { flex-direction: row; align-items: center; gap: 0.6rem; padding: 0.35rem 0.5rem; }
+.vehicule.carte.mini .carte-photo { flex: 0 0 4.2rem; height: 2.6rem; margin: 0; display: flex; align-items: center; justify-content: center; }
+.vehicule.carte.mini .carte-photo svg { width: 1.8rem; height: 1.8rem; }
+.vehicule.carte.mini .mini-texte { display: flex; flex-direction: column; min-width: 0; text-align: left; }
+.vehicule.carte.mini .mini-texte strong { font-size: 1.05rem; line-height: 1.2; }
+.vehicule.carte.mini .carte-cl { display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vehicule.carte.mini .avertissement svg { width: 0.9rem; height: 0.9rem; }
