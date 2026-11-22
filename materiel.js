@@ -1248,7 +1248,7 @@ const Materiel = (() => {
    * Ouvre la caméra arrière et renvoie le premier QR code / code-barres lu.
    * Écran affiché dans un <dialog> modal : il passe au-dessus de la fiche en cours d'édition.
    */
-  async function scannerCode(surLu) {
+  async function scannerCode(surLu, brut = false) {
     const video = el('video', { playsinline: '', muted: '', autoplay: '' });
     video.muted = true;
     const lecture = el('p', { classe: 'lecture', role: 'status', texte: 'Ouverture de la caméra…' });
@@ -1280,7 +1280,7 @@ const Materiel = (() => {
         if (fini) return;
         try {
           const r = await det.detect(video);
-          if (r.length && r[0].rawValue) { const v = valeurCode(r[0].rawValue); fermer(); if (v) surLu(v); return; }
+          if (r.length && r[0].rawValue) { const v = brut ? String(r[0].rawValue).trim() : valeurCode(r[0].rawValue); fermer(); if (v) surLu(v); return; }
         } catch (e) { /* image suivante */ }
         setTimeout(boucle, 250);
       };
@@ -1830,6 +1830,9 @@ const Materiel = (() => {
 
   // ---------- Interface publique ----------
   return {
+    /** Lecture d'un QR code / code-barres par la caméra (barre d'actions rapide) : texte brut lu. */
+    scanDisponible,
+    scanner(surLu) { scannerCode(surLu, true); },
     demarrer(o) {
       outils = o;
       zone = document.getElementById('zone-materiel');

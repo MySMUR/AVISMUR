@@ -1909,20 +1909,26 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 
 /* Barre du bas : QR code et NFC (téléphone, agent connecté) */
 .barre-scan { display: none; }
-/* Téléphone : QR code et NFC en deux pastilles rondes en bas à droite (plus de bandeau pleine largeur). */
-@media (max-width: 760px) {
-  body.connecte.vue-inv-checklist .barre-scan {
-    display: flex; gap: 0.6rem; position: fixed; right: 0.9rem; bottom: calc(0.9rem + env(safe-area-inset-bottom)); z-index: 50;
+/* Barre d'actions rapide : bandeau pleine largeur en bas de l'écran (téléphone et tablette), sur tous les écrans connectés. */
+@media (max-width: 1024px) {
+  body.connecte .barre-scan {
+    display: flex; justify-content: center; align-items: center; gap: 0.75rem;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    padding: 0.45rem 1rem calc(0.45rem + env(safe-area-inset-bottom));
+    background: #fff; border-top: 1px solid var(--trait, #d5dbe5); box-shadow: 0 -2px 10px rgb(19 41 75 / 0.12);
   }
-  body.connecte.vue-inv-checklist { padding-bottom: calc(4.4rem + env(safe-area-inset-bottom)); }
+  body.connecte { padding-bottom: calc(4.6rem + env(safe-area-inset-bottom)); }
   body.camera-ouverte .barre-scan, body.fenetre-ouverte .barre-scan, body.inv-avec-valider .barre-scan { display: none !important; }
-  body.connecte.vue-inv-checklist.inv-avec-valider { padding-bottom: env(safe-area-inset-bottom); }
+  body.connecte.inv-avec-valider { padding-bottom: env(safe-area-inset-bottom); }
   .barre-scan button {
-    display: flex; align-items: center; justify-content: center; width: 3.3rem; height: 3.3rem; padding: 0; border-radius: 50%;
-    border: none; background: var(--bleu, #1d4e9e); color: #fff; box-shadow: 0 3px 10px rgb(19 41 75 / 0.3);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.1rem;
+    min-width: 4.5rem; height: 3.4rem; padding: 0.2rem 0.9rem; border-radius: 0.8rem;
+    border: none; background: transparent; color: var(--bleu, #1d4e9e); font: inherit; font-size: 0.75rem; font-weight: 600; cursor: pointer;
   }
-  .barre-scan span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .barre-scan button.barre-action-principale { background: var(--bleu, #1d4e9e); color: #fff; box-shadow: 0 3px 10px rgb(19 41 75 / 0.3); }
   .barre-scan svg { width: 1.6rem; height: 1.6rem; }
+  /* NFC : seulement dans les check-lists d'inventaire (lecture Chrome Android). */
+  body:not(.vue-inv-checklist) .barre-scan .barre-action-nfc { display: none; }
 }
 .barre-scan-avis { position: fixed; left: 1rem; right: 1rem; bottom: calc(5rem + env(safe-area-inset-bottom)); z-index: 60; margin: 0; padding: 0.75rem 1rem; border-radius: 0.6rem; background: #263238; color: #fff; text-align: center; }
 

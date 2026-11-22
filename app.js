@@ -1091,8 +1091,41 @@ document.addEventListener('visibilitychange', () => {
   }).catch(() => { /* hors ligne : on réessaiera à la prochaine requête */ });
 });
 
-// Barre du bas (téléphone) : QR code et NFC toujours à portée de pouce.
-document.querySelectorAll('#barre-scan [data-scan]').forEach((b) => b.addEventListener('click', () => Inventaires.scanRapide(b.dataset.scan)));
+// ----- Barre d'actions rapide (bas de l'écran, téléphone et tablette) -----
+// QR code : partout. Dans une check-list d'inventaire, la lecture garde son comportement (identification sur place) ;
+// ailleurs, le code lu est aiguillé : lien d'inventaire, d'appareil ou d'info, sinon n° biomed / n° de série d'un appareil.
+function avisRapide(texte) {
+  document.querySelectorAll('.barre-scan-avis').forEach((p) => p.remove());
+  const p = document.createElement('p');
+  p.className = 'barre-scan-avis';
+  p.setAttribute('role', 'status');
+  p.textContent = texte;
+  document.body.append(p);
+  setTimeout(() => p.remove(), 4000);
+}
+function aiguillerCodeLu(code) {
+  const lienInterne = code.match(/#(inv|mat|info)=[^\s#]+/);
+  if (lienInterne) {
+    const [lien, type] = lienInterne;
+    if (type === 'mat') ouvrirAppareilDuLien(lien);
+    else if (type === 'info') ouvrirInfoDuLien(lien);
+    else if (location.hash === lien) ouvrirVue(vueDuLien());
+    else location.hash = lien;
+    return;
+  }
+  const appareilLu = Materiel.identifier(code);
+  if (appareilLu) { ouvrirAppareilDuLien(`#mat=${appareilLu.id}`); return; }
+  avisRapide(`Code lu : « ${code.slice(0, 60)} » — aucun inventaire ni appareil correspondant.`);
+}
+function lireQrRapide() {
+  if (document.body.classList.contains('vue-inv-checklist')) { Inventaires.scanRapide('qr'); return; }
+  if (!Materiel.scanDisponible()) { avisRapide('Lecture de QR code non disponible sur ce navigateur (Chrome sur Android conseillé).'); return; }
+  Materiel.scanner(aiguillerCodeLu);
+}
+document.querySelectorAll('#barre-scan [data-scan]').forEach((b) => b.addEventListener('click', () => {
+  if (b.dataset.scan === 'qr') lireQrRapide();
+  else Inventaires.scanRapide(b.dataset.scan);
+}));
 
 // ----- Numéro de version (pied du menu) : « avismur-vNNN » de sw.js.
 // En ligne, lu sur le site (c'est la version dont les fichiers sont chargés) ; hors ligne, nom du cache de l'appareil.
