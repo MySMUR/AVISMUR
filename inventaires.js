@@ -2464,6 +2464,21 @@ const Inventaires = (() => {
   }
   /** Lit une valeur : QR code / code-barres (caméra) et/ou puce NFC (texte, lien ou n° de série de la puce). */
   async function lireCode(surLu, choix = { qr: true, nfc: true }) {
+    if (choix.qr && Scannette.ordinateur()) {
+      // Ordinateur : la scannette tape le code dans un champ.
+      const fondScan = el('div', { classe: 'fenetre-fond' });
+      const fermerScan = () => { fondScan.remove(); document.body.classList.remove('camera-ouverte'); };
+      fondScan.addEventListener('click', (e) => { if (e.target === fondScan) fermerScan(); });
+      fondScan.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermerScan(); });
+      fondScan.append(el('div', { classe: 'fenetre', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Scanner un code' },
+        el('div', { classe: 'fenetre-entete' }, el('h2', { texte: 'Scanner un code' }),
+          el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermerScan })),
+        el('div', { classe: 'fenetre-corps' }, Scannette.champ((t) => { fermerScan(); surLu(t); }))));
+      document.body.append(fondScan);
+      document.body.classList.add('camera-ouverte');
+      Scannette.focusChamp(fondScan);
+      return;
+    }
     const qr = choix.qr && 'BarcodeDetector' in window && navigator.mediaDevices;
     const nfc = choix.nfc && 'NDEFReader' in window;
     if (!qr && !nfc) { messageVue(choix.nfc && !choix.qr ? 'NFC non disponible sur cet appareil (Chrome sur Android requis) : saisissez la valeur.' : 'Lecture de code non disponible sur cet appareil : saisissez la valeur.', 'erreur'); return; }
@@ -6726,14 +6741,17 @@ const Inventaires = (() => {
   // ---------- Scanner (QR code par la caméra, puce NFC) ----------
 
   function scanner(choix = { qr: true, nfc: true }, surTrouve = aller, surAutre = null) {
-    const qr = choix.qr && 'BarcodeDetector' in window;
-    const nfc = choix.nfc && 'NDEFReader' in window;
+    // Ordinateur : pas de caméra, la scannette tape le code dans un champ.
+    const scannette = choix.qr && Scannette.ordinateur();
+    const qr = !scannette && choix.qr && 'BarcodeDetector' in window;
+    const nfc = !scannette && choix.nfc && 'NDEFReader' in window;
     const video = el('video', { playsinline: '', muted: '', autoplay: '' });
     video.muted = true;
-    const lecture = el('p', { classe: 'lecture', role: 'status', texte: qr ? 'Ouverture de la caméra…' : 'Approchez la puce NFC du dos du téléphone.' });
+    const lecture = el('p', { classe: 'lecture', role: 'status', texte: scannette ? '' : (qr ? 'Ouverture de la caméra…' : 'Approchez la puce NFC du dos du téléphone.') });
     const annuler = el('button', { type: 'button', classe: 'camera-bouton secondaire', texte: 'Annuler' });
-    const ecran = el('div', { classe: 'camera', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Scanner un inventaire' },
-      el('div', { classe: `camera-vue${qr ? '' : ' inv-nfc-seul'}` }, qr ? video : el('div', { classe: 'inv-attente-nfc', 'aria-hidden': 'true' }, logoNfc()), qr ? el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }) : null,
+    let champScannette = null;
+    const ecran = el('div', { classe: `camera${scannette ? ' camera-scannette' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Scanner un inventaire' },
+      scannette ? (champScannette = Scannette.champ((t) => trouve(t))) : el('div', { classe: `camera-vue${qr ? '' : ' inv-nfc-seul'}` }, qr ? video : el('div', { classe: 'inv-attente-nfc', 'aria-hidden': 'true' }, logoNfc()), qr ? el('div', { classe: 'viseur viseur-qr', 'aria-hidden': 'true' }) : null,
         el('p', { classe: 'consigne-camera consigne-qr', texte: [qr ? 'Visez le QR code de l\'inventaire' : '', nfc ? 'approchez sa puce NFC' : ''].filter(Boolean).join(' ou ') })),
       lecture, nfc ? el('div', { classe: 'cible-nfc-lien-zone' }, CibleNfc.lien()) : null, el('div', { classe: 'camera-actions' }, annuler));
     document.body.append(ecran);
@@ -6754,7 +6772,7 @@ const Inventaires = (() => {
       document.body.classList.remove('camera-ouverte');
     };
     const trouve = (texte) => {
-      const m = /#inv=([a-z0-9]{6,16})$/.exec(String(texte || ''));
+      const m = /#inv=([a-z0-9]{6,16})$/.exec(String(texte || '').trim());
       if (!m) {
         // Autre code (étiquette biomed, puce d'appareil) : la vue appelante peut le reconnaître.
         const suite = surAutre ? surAutre(texte) : null;
@@ -6767,7 +6785,7 @@ const Inventaires = (() => {
     };
     annuler.addEventListener('click', fermer);
     ecran.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
-    annuler.focus();
+    if (champScannette) Scannette.focusChamp(ecran); else annuler.focus();
 
     if (qr) {
       // Avec reconnaissance d'appareil : aussi les codes-barres des étiquettes biomed.
@@ -6885,7 +6903,7 @@ const Inventaires = (() => {
 
   /** Barre du bas (téléphone) : scan depuis n'importe quel écran, ouvre l'inventaire trouvé. */
   function scanRapide(type) {
-    const dispo = type === 'nfc' ? 'NDEFReader' in window : ('BarcodeDetector' in window && navigator.mediaDevices);
+    const dispo = type === 'nfc' ? 'NDEFReader' in window : (Scannette.ordinateur() || ('BarcodeDetector' in window && navigator.mediaDevices));
     if (!dispo) { alerteBreve(type === 'nfc' ? 'NFC non disponible : Chrome sur Android requis, NFC activé.' : 'Lecture de QR code non disponible sur ce navigateur.'); return; }
     // Étiquette lue sur place : on est là, l'inventaire s'ouvre pour être vérifié.
     scanner({ qr: type === 'qr', nfc: type === 'nfc' }, (id) => {

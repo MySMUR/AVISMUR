@@ -1227,7 +1227,7 @@ const Materiel = (() => {
   }
 
   // ---------- Lecture d'un QR code / code-barres (caméra) ----------
-  const scanDisponible = () => 'BarcodeDetector' in window && Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const scanDisponible = () => Scannette.ordinateur() || ('BarcodeDetector' in window && Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
   /** Valeur utile d'un code lu : « Biomed 12345 » (puce ou étiquette MySMUR) → 12345, sinon le texte lu. */
   function valeurCode(brut) {
     const t = String(brut || '').trim();
@@ -1249,6 +1249,19 @@ const Materiel = (() => {
    * Écran affiché dans un <dialog> modal : il passe au-dessus de la fiche en cours d'édition.
    */
   async function scannerCode(surLu, brut = false) {
+    if (Scannette.ordinateur()) {
+      // Ordinateur : la scannette tape le code dans un champ (pas de caméra).
+      const boite = el('dialog', { classe: 'mat-dialogue scannette-dialogue', 'aria-label': 'Scanner un code' });
+      const fermerBoite = () => { if (boite.open) boite.close(); boite.remove(); };
+      boite.addEventListener('cancel', fermerBoite);
+      boite.append(el('div', { classe: 'fenetre-entete' }, el('h2', { texte: 'Scanner un code' }),
+        el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermerBoite })),
+        Scannette.champ((t) => { fermerBoite(); const v = brut ? t : valeurCode(t); if (v) surLu(v); }));
+      document.body.append(boite);
+      boite.showModal();
+      Scannette.focusChamp(boite);
+      return;
+    }
     const video = el('video', { playsinline: '', muted: '', autoplay: '' });
     video.muted = true;
     const lecture = el('p', { classe: 'lecture', role: 'status', texte: 'Ouverture de la caméra…' });

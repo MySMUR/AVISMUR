@@ -1962,6 +1962,16 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .notif-point { grid-row: 1 / span 2; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: #d32f2f; }
 .notif-supprimer { width: 2.8rem; flex-shrink: 0; border: 0; border-left: 1px solid var(--trait, #d5dbe5); background: none; color: #777; font-size: 1.1rem; cursor: pointer; border-radius: 0 0.6rem 0.6rem 0; }
 .notif-supprimer:hover { color: #d32f2f; }
+/* Scannette (lecteur de codes de l'ordinateur) : champ à la place de la caméra (scannette.js) */
+.scannette { display: flex; flex-direction: column; gap: 0.6rem; }
+.scannette-consigne { margin: 0; }
+.scannette-ligne { display: flex; gap: 0.5rem; }
+.scannette-champ { flex: 1; min-width: 0; font-size: 1.1rem; padding: 0.7rem 0.9rem; }
+.scannette-valider { width: auto; margin: 0; padding-inline: 1.2rem; }
+.camera.camera-scannette { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1rem; background: rgb(19 41 75 / 0.55); }
+.camera.camera-scannette .scannette { width: min(32rem, 92vw); padding: 1.4rem; border-radius: 1rem; background: #fff; color: var(--encre, #13294b); }
+.camera.camera-scannette .lecture { color: #fff; }
+.scannette-dialogue { width: min(32rem, 92vw); padding: 1.2rem; border: 0; border-radius: 1rem; }
 .barre-scan-avis { position: fixed; left: 1rem; right: 1rem; bottom: calc(5rem + env(safe-area-inset-bottom)); z-index: 60; margin: 0; padding: 0.75rem 1rem; border-radius: 0.6rem; background: #263238; color: #fff; text-align: center; }
 
 /* ---------- Suivi du matériel (materiel.js) ---------- */
