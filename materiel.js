@@ -28,7 +28,7 @@ const Materiel = (() => {
   const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret', 'signalerMateriel'];
   const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle'];
   const STATUTS_DEFAUT = ['En service', 'En maintenance', 'En panne', 'Prêté', 'Réformé'];
-  const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Envoi en maintenance', 'Note', 'Autre'];
+  const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Envoi en maintenance', 'Note', 'Réforme', 'Remise en service', 'Autre'];
   // Entrées écrites automatiquement dans la main courante : jamais retirées.
   const JOURNAL = ['Création', 'Modification'];
   // Champs communs à plusieurs appareils, que l'on peut répercuter (jamais les numéros propres à chacun).
@@ -114,7 +114,10 @@ const Materiel = (() => {
     return [...base, ...new Set(autres)];
   };
   const statuts = () => (donnees && donnees.statuts) || STATUTS_DEFAUT;
-  const typesIntervention = () => ((donnees && donnees.typesIntervention) || INTERVENTIONS_DEFAUT).filter((t) => t !== 'Évènement');
+  const typesIntervention = () => ((donnees && donnees.typesIntervention) || INTERVENTIONS_DEFAUT).filter((t) => !['Évènement', 'Réforme', 'Remise en service'].includes(t));
+  /** Appareil utilisable : ni archivé ni réformé. Un appareil réformé disparaît de tous les listings. */
+  const enService = (f) => !f.archive && f.statut !== 'Réformé';
+  const MOTIFS_REFORME = ['Hors d\'usage / irréparable', 'Réparation trop coûteuse', 'Obsolète / fin de support fabricant', 'Remplacé par un nouvel appareil', 'Perdu ou volé', 'Autre'];
   /** « Scope Corpuls3 n° 2 » : type, modèle puis n° interne SMUR. */
   const nomAppareil = (f) => [f.type || 'Matériel', f.modele, f.numInterne && `n° ${f.numInterne}`].filter(Boolean).join(' ');
 
@@ -427,7 +430,7 @@ const Materiel = (() => {
   function filtrees(liste) {
     const t = normaliser(filtre.texte);
     return liste.filter((f) => {
-      if (filtre.statut === 'actifs' && (f.archive || f.statut === 'Réformé')) return false;
+      if (filtre.statut !== 'archives' && !enService(f)) return false;
       if (filtre.statut === 'archives' && !f.archive && f.statut !== 'Réformé') return false;
       if (filtre.statut && !['actifs', 'archives', 'tous'].includes(filtre.statut) && f.statut !== filtre.statut) return false;
       if (filtre.type && f.type !== filtre.type) return false;
@@ -456,7 +459,7 @@ const Materiel = (() => {
     if (!zone) return;
     if (onglet === 'prets') { rendrePrets(); return; }
     const { fiches: toutes, attente } = etat();
-    const actives = toutes.filter((f) => !f.archive && f.statut !== 'Réformé');
+    const actives = toutes.filter(enService);
     const nbRetard = actives.filter((f) => etatRevision(f).retard).length;
     const nbBientot = actives.filter((f) => etatRevision(f).bientot).length;
     const nbPanne = actives.filter((f) => f.statut === 'En panne' || f.statut === 'En maintenance').length;
@@ -491,7 +494,7 @@ const Materiel = (() => {
       el('option', { value: '', texte: 'Tous les types' }),
       types().map((t) => el('option', { value: t, texte: t, selected: filtre.type === t })));
     const choixStatut = el('select', { 'aria-label': 'Statut', surchange: (e) => { filtre.statut = e.target.value; rendre(); } },
-      [['actifs', 'En service, panne, maintenance'], ['tous', 'Tout le matériel'], ...statuts().map((s) => [s, s]), ['archives', 'Réformés et archivés']]
+      [['actifs', 'En service, panne, maintenance'], ['tous', 'Tout le matériel (hors réformés)'], ...statuts().filter((s) => s !== 'Réformé').map((s) => [s, s]), ['archives', 'Réformés et archivés']]
         .map(([v, t]) => el('option', { value: v, texte: t, selected: filtre.statut === v })));
     // Recherche toujours visible ; type, statut et traceur repliés derrière « Filtres » (nombre de filtres actifs).
     const nbFiltres = [filtre.type, filtre.statut && filtre.statut !== 'actifs', filtre.alerte === 'traceur'].filter(Boolean).length;
@@ -866,7 +869,10 @@ const Materiel = (() => {
         f.modeleType
           ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ouvrir le matériel type', surclick: () => { d.close(); ouvrirModele(modeleDe(f.modeleType)); } })
           : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Créer un matériel type', title: 'Fiche type reprenant le type, le modèle, la périodicité et la photo de cet appareil', surclick: () => { d.close(); ouvrirModele(null, f); } }),
-        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Dupliquer', title: 'Nouvel appareil du même type et du même modèle', surclick: () => { d.close(); ouvrirEdition(null, f); } })) : null,
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Dupliquer', title: 'Nouvel appareil du même type et du même modèle', surclick: () => { d.close(); ouvrirEdition(null, f); } }),
+        f.statut === 'Réformé'
+          ? el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Remettre en service', surclick: () => { d.close(); ouvrirRemiseEnService(f); } })
+          : el('button', { type: 'button', classe: 'cfg-bouton danger', texte: 'Réformer', title: 'Retire définitivement l\'appareil des listings (historique conservé)', surclick: () => { d.close(); ouvrirReforme(f); } })) : null,
       blocEvenements(f, historique, () => d),
       el('h3', { texte: 'Main courante de l\'appareil' }),
       el('p', { classe: 'aide-question', texte: 'Création et modifications de la fiche (consignées automatiquement), révisions, interventions, réparations et notes.' }),
@@ -887,6 +893,42 @@ const Materiel = (() => {
           },
         }) : null))) : el('p', { classe: 'mat-vide', texte: 'Aucune entrée pour le moment.' }));
     d = fenetre(nomAppareil(f), contenu, { large: true });
+  }
+
+  // ---------- Réforme ----------
+  /** Réforme d'un appareil : statut « Réformé » + entrée de main courante. Il disparaît des listings, des inventaires et du suivi traceur. */
+  function ouvrirReforme(f) {
+    const date = el('input', { type: 'date', valeur: aujourdhui(), max: aujourdhui(), required: true });
+    const motif = selectListe(MOTIFS_REFORME, MOTIFS_REFORME[0]);
+    const texte = el('textarea', { rows: '3', placeholder: 'Précisions : n° de bon de réforme biomed, appareil de remplacement, devenir de l\'appareil…' });
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
+    let d;
+    const contenu = el('form', {
+      classe: 'mat-form', novalidate: true,
+      sursubmit: (ev) => {
+        ev.preventDefault();
+        if (!date.value) { message.textContent = 'La date est obligatoire.'; return; }
+        if (motif.value === 'Autre' && !texte.value.trim()) { message.textContent = 'Précisez le motif.'; return; }
+        d.close();
+        enfiler('enregistrerMateriel', { fiches: [{ ...f, statut: 'Réformé' }] });
+        enfiler('ajouterIntervention', { materiels: [f.id], date: date.value, type: 'Réforme', description: [`Motif : ${motif.value}`, texte.value.trim()].filter(Boolean).join('\n'), intervenant: '', prochaineRevision: '' });
+      },
+    },
+    el('p', { classe: 'aide-question', texte: `${nomAppareil(f)} n'apparaîtra plus dans la liste du matériel, les inventaires, les interventions groupées ni le suivi des traceurs. Sa fiche et sa main courante restent consultables via le filtre « Réformés et archivés ». Son n° interne, son n° biomed et son n° de série redeviennent disponibles.` }),
+    f.traceur ? el('p', { classe: 'aide-question', texte: `Pensez à retirer le traceur${f.nomTraceur ? ` ${f.nomTraceur}` : ''} de l'appareil.` }) : null,
+    el('div', { classe: 'mat-grille' }, champ('Date de réforme', date), champ('Motif', motif)),
+    champ('Précisions', texte),
+    message,
+    el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal danger', texte: 'Réformer l\'appareil' })));
+    d = fenetre(`Réformer ${nomAppareil(f)}`, contenu);
+  }
+
+  function ouvrirRemiseEnService(f) {
+    const doublon = verifierDoublons([{ ...f, statut: 'En service' }]);
+    if (doublon) { window.alert(`Remise en service impossible : ${doublon} Modifiez d'abord les numéros de l'appareil.`); return; }
+    if (!window.confirm(`Remettre ${nomAppareil(f)} en service ?`)) return;
+    enfiler('enregistrerMateriel', { fiches: [{ ...f, statut: 'En service' }] });
+    enfiler('ajouterIntervention', { materiels: [f.id], date: aujourdhui(), type: 'Remise en service', description: 'Annulation de la réforme', intervenant: '', prochaineRevision: '' });
   }
 
   /** Formulaire de création / modification. `modele` : fiche dont on part pour « Dupliquer ». */
@@ -1017,7 +1059,7 @@ const Materiel = (() => {
         ? `${f.photo || ''}|${f.photoDonnees || ''}` !== `${fiche.photo || ''}|${fiche.photoDonnees || ''}`
         : (BOOLEENS.includes(k) ? Boolean(f[k]) !== Boolean(fiche[k]) : (k === 'plans' ? JSON.stringify(f.plans || []) !== JSON.stringify(fiche.plans || []) : String(f[k] ?? '') !== String(fiche[k] ?? ''))))) : [];
       d.close();
-      const autres = fiches().filter((x) => x.id !== fiche.id && !x.archive && (x.type === (f ? f.type : fiche.type) || (fiche.modele && x.modele === fiche.modele)));
+      const autres = fiches().filter((x) => x.id !== fiche.id && enService(x) && (x.type === (f ? f.type : fiche.type) || (fiche.modele && x.modele === fiche.modele)));
       if (changes.length && autres.length) proposerRepercussion(fiche, f, changes, autres);
       else enfiler('enregistrerMateriel', { fiches: [fiche] });
     }
@@ -1076,7 +1118,7 @@ const Materiel = (() => {
     modelesModifies.forEach((m) => final.forEach((x) => { if (x.modeleType === m.id) concernes.add(x.id); }));
     const vus = new Map();
     for (const x of final.values()) {
-      if (x.archive) continue;
+      if (!enService(x)) continue; // un réformé libère son n° interne, son n° biomed et son n° de série
       const cles = [];
       if (x.numInterne) cles.push([`i|${normaliser(x.type)}|${normaliser(x.modele)}|${normaliser(x.numInterne)}`, `${nomAppareil(x)} existe déjà.`]);
       if (x.numSerie) cles.push([`s|${normaliser(x.numSerie)}`, `Le n° de série ${x.numSerie} est déjà attribué.`]);
@@ -1197,7 +1239,7 @@ const Materiel = (() => {
   /** Révision / intervention / réparation pour un ou plusieurs appareils. */
   /** options : { type, plan } pré-choisis (icône « acquitter une maintenance » de la liste). */
   function ouvrirIntervention(ids, options = {}) {
-    const toutes = fiches().filter((x) => !x.archive);
+    const toutes = fiches().filter(enService);
     const cibles = new Set(ids);
     const e = {
       date: el('input', { type: 'date', valeur: aujourdhui(), max: aujourdhui(), required: true }),
@@ -1429,12 +1471,12 @@ const Materiel = (() => {
     const { fiches: toutes, modeles: liste, modelesAttente } = etat();
     let d;
     const tries = liste.slice().sort((a, b) => Number(a.archive) - Number(b.archive) || nomModele(a).localeCompare(nomModele(b), 'fr'));
-    const uniques = toutes.filter((x) => !x.modeleType && !x.archive).length;
+    const uniques = toutes.filter((x) => !x.modeleType && enService(x)).length;
     const contenu = el('div', { classe: 'mat-modeles' },
       el('p', { classe: 'aide-question', texte: 'Un matériel type « Type > modèle » regroupe des appareils identiques : n° biomed ou non, maintenance préventive et périodicité, logiciel suivi, photo. Le modifier met à jour tous les appareils rattachés. Les numéros, la révision prévue, le statut et le traceur restent propres à chaque appareil.' }),
       estAdmin() ? el('div', { classe: 'mat-boutons' }, el('button', { type: 'button', classe: 'principal', texte: '+ Nouveau matériel type', surclick: () => { d.close(); ouvrirModele(null); } })) : null,
       tries.length ? el('ul', { classe: 'mat-lignes' }, tries.map((m) => {
-        const nb = toutes.filter((x) => x.modeleType === m.id && !x.archive).length;
+        const nb = toutes.filter((x) => x.modeleType === m.id && enService(x)).length;
         return el('li', { classe: 'mat-ligne' },
           el('button', { type: 'button', classe: 'mat-ouvrir', surclick: () => { d.close(); ouvrirModele(m); } },
             (m.photo || m.photoDonnees) ? vignette({ ...m, type: m.type }, 'mat-vignette') : null,
@@ -2105,7 +2147,7 @@ const Materiel = (() => {
     identifier(code) {
       const t = String(code || '').trim();
       if (!t) return null;
-      const liste = fiches().sort((a, b) => Number(Boolean(a.archive)) - Number(Boolean(b.archive)));
+      const liste = fiches().sort((a, b) => Number(!enService(a)) - Number(!enService(b)));
       const lien = t.match(/#mat=([a-z0-9]{6,20})/);
       if (lien) return liste.find((f) => f.id === lien[1]) || null;
       const n = normaliser(t);
@@ -2115,7 +2157,7 @@ const Materiel = (() => {
     },
     /** Appareils en service (ni archivés ni réformés), pour le choix « dans la liste » d'un matériel attendu en inventaire. */
     appareils() {
-      return fiches().filter((f) => !f.archive && f.statut !== 'Réformé')
+      return fiches().filter(enService)
         .map((f) => ({ id: f.id, type: f.type || '', modele: f.modele || '', numInterne: f.numInterne || '', numSerie: f.numSerie || '', numBiomed: f.numBiomed || '' }));
     },
     /** Types d'appareils connus (types par défaut + types utilisés dans la base). */
