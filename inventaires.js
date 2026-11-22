@@ -5541,31 +5541,52 @@ const Inventaires = (() => {
    */
   /** Contenants dont la liste des scellables non vérifiés est dépliée (conservé entre deux rendus). */
   const scellesDeroules = new Set();
+  /** Scellables décochés par l'agent (non inclus dans « Tout est scellé ») ; par défaut tout est coché. */
+  const scellesDecoches = new Set();
   function blocScellesGroupes(c) {
     const { prets, aIdentifier } = scellablesSous(c);
     if (!prets.length && !aIdentifier.length) return null;
     const bloques = new Map(prets.map((x) => [x.id, obstaclesScelle(x)]).filter(([, o]) => o.length));
     const n = prets.length + aIdentifier.length;
-    const ligne = (x, etat) => {
+    const ligne = (x, etat, cochable) => {
       const ou = cheminSous(c, x);
-      return el('li', {}, el('strong', { texte: x.nom }), ou ? el('small', { texte: ` · ${ou}` }) : null,
-        el('span', { classe: 'inv-scelles-etat', texte: etat }));
+      const contenu = [el('strong', { texte: x.nom }), ou ? el('small', { texte: ` · ${ou}` }) : null,
+        el('span', { classe: 'inv-scelles-etat', texte: etat })];
+      if (!cochable) return el('li', {}, el('span', { classe: 'inv-scelles-case-vide' }), ...contenu);
+      const cb = el('input', { type: 'checkbox', classe: 'inv-scelles-case' });
+      cb.checked = !scellesDecoches.has(x.id);
+      cb.addEventListener('change', () => { if (cb.checked) scellesDecoches.delete(x.id); else scellesDecoches.add(x.id); majBouton(); });
+      return el('li', {}, el('label', { classe: 'inv-scelles-ligne' }, cb, ...contenu));
+    };
+    const cochables = prets.filter((x) => !bloques.has(x.id));
+    const choisis = () => cochables.filter((x) => !scellesDecoches.has(x.id));
+    let bouton = null;
+    const majBouton = () => {
+      if (!bouton) return;
+      const k = choisis().length;
+      bouton.disabled = !k;
+      bouton.textContent = k === cochables.length ? 'Tout est scellé' : `Valider ${pluriel(k, 'scellé')}`;
     };
     const deroule = el('details', { classe: 'inv-scelles-details' },
       el('summary', { classe: 'inv-scelles-resume' }, logoCadenas(),
         el('span', { texte: `${pluriel(n, 'contenant')} scellable${n > 1 ? 's' : ''} non vérifié${n > 1 ? 's' : ''}` }),
         el('span', { classe: 'inv-scelles-chevron', 'aria-hidden': 'true', texte: '▾' })),
       el('ul', { classe: 'inv-scelles-detail-liste' },
-        ...prets.map((x) => ligne(x, bloques.has(x.id) ? 'inventaire incomplet' : 'à vérifier')),
-        ...aIdentifier.map((f) => ligne(f, 'à identifier'))));
+        ...prets.map((x) => ligne(x, bloques.has(x.id) ? 'inventaire incomplet' : 'à vérifier', !bloques.has(x.id))),
+        ...aIdentifier.map((f) => ligne(f, 'à identifier', false))));
     if (scellesDeroules.has(c.id)) deroule.open = true;
     deroule.addEventListener('toggle', () => { if (deroule.open) scellesDeroules.add(c.id); else scellesDeroules.delete(c.id); });
-    return el('section', { classe: 'inv-scelles-groupes' },
+    const section = el('section', { classe: 'inv-scelles-groupes' },
       deroule,
       el('div', { classe: 'inv-boutons-scelle' },
-        prets.length ? el('button', { type: 'button', classe: 'principal', texte: 'Tout est scellé', surclick: () => confirmerScelles(c, prets, bloques, aIdentifier) }) : null,
+        prets.length ? (bouton = el('button', { type: 'button', classe: 'principal', texte: 'Tout est scellé', surclick: () => {
+          const sel = new Set(choisis().map((x) => x.id));
+          confirmerScelles(c, prets.filter((x) => sel.has(x.id) || bloques.has(x.id)), bloques, aIdentifier);
+        } })) : null,
         aIdentifier.length ? el('button', { type: 'button', classe: 'cfg-bouton inv-bouton-lecture', surclick: () => scannerScelles(c) },
           logoQr(), el('span', { texte: ` Identifier ${aIdentifier.length > 1 ? `les ${aIdentifier.length}` : 'le contenant'}` })) : null));
+    majBouton();
+    return section;
   }
 
   /** Administration d'un emplacement : inventaires types acceptés (un ou plusieurs). */
