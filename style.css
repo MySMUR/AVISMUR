@@ -3511,3 +3511,7 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .inv-repercuter-bandeau { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin: 0.5rem 0; padding: 0.6rem 0.75rem; background: #F4EEFB; border-left: 6px solid #6B3FA0; border-radius: 6px; }
 .inv-repercuter { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 48px; font-size: 1.05rem; font-weight: 700; }
 .inv-repercuter-aide { font-size: 0.9rem; color: #4a2c73; }
+
+/* Scellables à identifier : liste déroulante des contenants correspondants */
+.inv-scelles-liste-deroulante { flex: 1 0 100%; margin-top: 0.3rem; }
+.inv-scelles-choix { width: 100%; min-height: 2.75rem; padding: 0.4rem 0.6rem; font: inherit; color: var(--bleu); background: #fff; border: 2px solid var(--bleu); border-radius: 10px; }

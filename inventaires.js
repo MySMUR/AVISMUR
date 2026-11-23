@@ -5623,14 +5623,47 @@ const Inventaires = (() => {
       const parModele = places.find((s) => (s.emplacement ? modelesEmplacement(s).includes(x.source) : (x.source && s.source === x.source)));
       const s = exacte || parModele;
       if (!s) { alerteBreve(`« ${x.nom} » n'a pas de place à identifier ici.`); return; }
-      let ok;
-      if (s.emplacement) { const occ = enfants(s.id)[0]; ok = enregistrerIdentification(occ || null, x.id, occ ? '' : s.id); } else ok = enregistrerIdentification(s, x.id);
-      if (!ok) return;
-      avis = '';
-      alerteBreve(`« ${x.nom} » identifié.`);
-      rendre({ garderPosition: true });
+      if (!identifierPlace(s, x)) return;
       if (scellablesSous(c).aIdentifier.length) setTimeout(() => { if (idCourant() === c.id) scannerScelles(c); }, 900);
     });
+  }
+  /** Le contenant `x` est celui qui se trouve à la place `s` (emplacement ou mobile scellable non pointé) : vrai si enregistré. */
+  function identifierPlace(s, x) {
+    let ok;
+    if (s.emplacement) { const occ = enfants(s.id)[0]; ok = enregistrerIdentification(occ || null, x.id, occ ? '' : s.id); } else ok = enregistrerIdentification(s, x.id);
+    if (!ok) return false;
+    avis = '';
+    alerteBreve(`« ${x.nom} » identifié.`);
+    rendre({ garderPosition: true });
+    return true;
+  }
+  /**
+   * Contenants mobiles correspondant à la place `s` : exemplaires du ou des modèles attendus (emplacement), de même
+   * modèle que le contenant prévu, ou à défaut de même nom (au numéro près). Ordre alphabétique, sans mettre en avant
+   * le prévu ni dire où se trouvait chaque contenant.
+   */
+  function candidatsPlace(s) {
+    const sansNumero = (x) => cle(x.nom).replace(/\d+|n°/g, '').trim();
+    const modeles = s.emplacement ? modelesEmplacement(s) : [];
+    return Object.values(structure.contenants)
+      .filter((x) => !x.supprime && x.categorie === 'mobile' && !x.emplacement && !dansUnModele(x.id)
+        && (s.emplacement ? modeles.includes(x.source)
+          : x.id === s.id || (s.source ? x.source === s.source : sansNumero(x) === sansNumero(s))))
+      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { numeric: true }));
+  }
+  /** Liste déroulante des contenants correspondant à la place `s` : le choix vaut identification. */
+  function listeCandidats(c, s) {
+    const candidats = candidatsPlace(s);
+    if (!candidats.length) return null;
+    const id = idChamp();
+    const select = el('select', { id, classe: 'inv-scelles-choix', 'aria-label': `Contenant présent : ${s.nom}` },
+      el('option', { value: '', texte: 'Choisir le contenant…' }),
+      ...candidats.map((x) => el('option', { value: x.id, texte: x.nom })));
+    select.addEventListener('change', () => {
+      const x = contenant(select.value);
+      if (x && !identifierPlace(s, x)) select.value = '';
+    });
+    return el('div', { classe: 'inv-scelles-liste-deroulante' }, select);
   }
   /**
    * Bouton « Tout est scellé » du contenant affiché : l'agent vérifie d'abord les sous-contenants de son choix
@@ -5670,7 +5703,7 @@ const Inventaires = (() => {
         el('span', { classe: 'inv-scelles-chevron', 'aria-hidden': 'true', texte: '▾' })),
       el('ul', { classe: 'inv-scelles-detail-liste' },
         ...prets.map((x) => ligne(x, bloques.has(x.id) ? 'inventaire incomplet' : 'à vérifier', !bloques.has(x.id))),
-        ...aIdentifier.map((f) => ligne(f, 'à identifier', false))));
+        ...aIdentifier.map((f) => { const li = ligne(f, 'à identifier', false); li.append(listeCandidats(c, f) || ''); return li; })));
     if (scellesDeroules.has(c.id)) deroule.open = true;
     deroule.addEventListener('toggle', () => { if (deroule.open) scellesDeroules.add(c.id); else scellesDeroules.delete(c.id); });
     const section = el('section', { classe: 'inv-scelles-groupes' },
