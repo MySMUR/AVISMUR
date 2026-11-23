@@ -62,6 +62,9 @@ const Regulation = (() => {
       const premiere = !donnees;
       donnees = rep;
       ecrireStockage(CLE, rep);
+      // L'armement des véhicules se conserve d'un jour à l'autre sur le serveur : l'appareil s'y aligne
+      // (un changement pas encore envoyé reste tel quel, voir Desarmement.majServeur).
+      if (typeof Desarmement !== 'undefined') Desarmement.majServeur(rep.armement, rep.desarmements);
       if (rep.dernierEnvoi && rep.dernierEnvoi.date === aujourdhui()) ecrireStockage(CLE_FAITE, aujourdhui());
       // Sans brouillon du jour, on repart toujours de la fiche fraîchement lue (commentaires compris) :
       // la copie gardée sur l'appareil peut dater d'avant le dernier envoi.
