@@ -2247,7 +2247,32 @@ const Inventaires = (() => {
       })());
   }
 
+  /** Ferme la fenêtre d'options d'un sous-inventaire ; renvoie la position de défilement qu'elle avait (0 si absente). */
+  function retirerFenetreOptions() {
+    const ancienne = document.querySelector('.inv-fenetre-options');
+    const haut = ancienne ? (ancienne.querySelector('.fenetre') || {}).scrollTop || 0 : -1;
+    if (ancienne) { ancienne.remove(); document.body.classList.remove('fenetre-ouverte'); }
+    return haut;
+  }
+  /** Options d'un sous-inventaire (catégorie, scellable, gommette…) dans une fenêtre pop-up. */
+  function ouvrirFenetreOptions(f, contenu, haut) {
+    const fermer = () => { optionsOuvertes.delete(f.id); retirerFenetreOptions(); };
+    const fond = el('div', { classe: 'fenetre-fond inv-fenetre-options', surclick: (e) => { if (e.target === fond) fermer(); } });
+    const titre = idChamp();
+    fond.append(el('div', { classe: 'fenetre', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
+      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: `Options · ${f.nom}` }),
+        el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
+      contenu,
+      el('button', { type: 'button', classe: 'principal', texte: 'Fermer', surclick: fermer })));
+    fond.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermer(); });
+    document.body.append(fond);
+    document.body.classList.add('fenetre-ouverte');
+    const fen = fond.querySelector('.fenetre');
+    if (haut > 0) fen.scrollTop = haut; else fond.querySelector('.fenetre-fermer').focus();
+  }
+
   function blocEnfants(c, fils) {
+    const hautFenetre = retirerFenetreOptions();
     if (!fils.length && !edition) return null;
     // Check-list : on ouvre un sous-inventaire en touchant sa gommette sur la photo (ou par QR / NFC).
     // Ne restent en liste que ceux qui n'ont de gommette sur aucune photo ; la liste complète
@@ -2288,28 +2313,26 @@ const Inventaires = (() => {
           }));
         // Options repliées par défaut : la liste reste lisible. Seul « Placer sur la photo » reste visible
         // tant que le sous-inventaire n'a pas de gommette (c'est l'étape suivante logique).
-        const ouvert = optionsOuvertes.has(f.id) || placement === f.id;
-        if (ouvert) li.classList.add('inv-tuile-large'); // options dépliées : la tuile prend toute la largeur
-        const idOptions = idChamp();
+        const ouvert = optionsOuvertes.has(f.id);
         li.append(el('div', { classe: 'inv-options-ligne' },
-          vc.photo && !point && !ailleurs.length && !ouvert ? el('button', {
+          vc.photo && !point && !ailleurs.length ? el('button', {
             type: 'button', classe: 'cfg-mini inv-actif', texte: `📍 Placer sur ${vuesDe(c).length > 1 ? `« ${vc.nom} »` : 'la photo'}`,
             surclick: () => { placement = f.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); },
           }) : null,
-          el('button', { type: 'button', classe: 'lien inv-options-bouton', 'aria-expanded': String(ouvert), 'aria-controls': idOptions,
-            texte: ouvert ? 'Masquer les options ▴' : 'Options ▾',
-            surclick: () => { if (ouvert) { optionsOuvertes.delete(f.id); if (placement === f.id) placement = ''; } else optionsOuvertes.add(f.id); rendre({ garderPosition: true }); } })));
-        const options = el('div', { classe: 'inv-options', id: idOptions, hidden: !ouvert });
-        li.append(options);
+          el('button', { type: 'button', classe: 'lien inv-options-bouton', 'aria-haspopup': 'dialog',
+            texte: 'Options',
+            surclick: () => { optionsOuvertes.clear(); optionsOuvertes.add(f.id); rendre({ garderPosition: true }); } })));
+        const options = el('div', { classe: 'inv-options-corps' });
         options.append(reglages);
         options.append(el('div', { classe: 'cfg-ligne inv-outils' },
           vc.photo ? el('button', {
             type: 'button', classe: `cfg-mini${placement === f.id ? ' inv-actif' : ''}`, texte: point ? 'Déplacer le point' : `Placer sur ${vuesDe(c).length > 1 ? `« ${vc.nom} »` : 'la photo'}`,
-            surclick: () => { placement = f.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); },
+            surclick: () => { optionsOuvertes.delete(f.id); placement = f.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); },
           }) : null,
           point ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Retirer le point', surclick: () => { majVue(c, vc.cle, { points: vc.points.filter((p) => p.cible !== f.id) }); marquer(c.id); rendre({ garderPosition: true }); } }) : null,
           ailleurs.length ? el('small', { classe: 'aide-question', texte: `aussi sur : ${ailleurs.join(', ')}` }) : null,
           point || ailleurs.length ? champTexteGommette(c, f, i) : null));
+        if (ouvert) ouvrirFenetreOptions(f, options, hautFenetre);
       }
       liste.append(li);
     });
