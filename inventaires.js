@@ -5632,6 +5632,7 @@ const Inventaires = (() => {
     let ok;
     if (s.emplacement) { const occ = enfants(s.id)[0]; ok = enregistrerIdentification(occ || null, x.id, occ ? '' : s.id); } else ok = enregistrerIdentification(s, x.id);
     if (!ok) return false;
+    scellesChoisis.set(s.id, x.nom);
     avis = '';
     alerteBreve(`« ${x.nom} » identifié.`);
     rendre({ garderPosition: true });
@@ -5671,11 +5672,18 @@ const Inventaires = (() => {
    */
   /** Contenants dont la liste des scellables non vérifiés est dépliée (conservé entre deux rendus). */
   const scellesDeroules = new Set();
+  /** Place à identifier (id du contenant prévu ou de l'emplacement) → nom du contenant choisi ; affiché en coche verte. */
+  const scellesChoisis = new Map();
+  /** Places à identifier d'un contenant, dans l'ordre d'affichage (stable après chaque identification). */
+  const scellesPlaces = new Map();
   /** Scellables décochés par l'agent (non inclus dans « Tout est scellé ») ; par défaut tout est coché. */
   const scellesDecoches = new Set();
   function blocScellesGroupes(c) {
     const { prets, aIdentifier } = scellablesSous(c);
-    if (!prets.length && !aIdentifier.length) return null;
+    const dejaIds = (scellesPlaces.get(c.id) || []).filter((id) => scellesChoisis.has(id) || aIdentifier.some((f) => f.id === id));
+    const places = [...dejaIds, ...aIdentifier.map((f) => f.id).filter((id) => !dejaIds.includes(id))];
+    scellesPlaces.set(c.id, places);
+    if (!prets.length && !places.length) return null;
     const bloques = new Map(prets.map((x) => [x.id, obstaclesScelle(x)]).filter(([, o]) => o.length));
     const n = prets.length + aIdentifier.length;
     const ligne = (x, etat, cochable) => {
@@ -5688,6 +5696,16 @@ const Inventaires = (() => {
       cb.addEventListener('change', () => { if (cb.checked) scellesDecoches.delete(x.id); else scellesDecoches.add(x.id); majBouton(); });
       return el('li', {}, el('label', { classe: 'inv-scelles-ligne' }, cb, ...contenu));
     };
+    // Place à identifier : nom et liste déroulante sur une seule ligne ; une fois choisi, le contenant remplace le prévu, avec une coche verte.
+    const lignePlace = (id) => {
+      const f = contenant(id);
+      if (!f) return null;
+      const ou = cheminSous(c, f);
+      const choisi = scellesChoisis.get(id);
+      const nom = el('span', { classe: 'inv-scelles-nom' }, el('strong', { texte: choisi || f.nom }), ou ? el('small', { texte: ` · ${ou}` }) : null);
+      if (choisi) return el('li', { classe: 'inv-scelles-ident fait', title: 'Identifié' }, nom, el('span', { classe: 'inv-scelles-ok', 'aria-label': 'identifié', texte: '✓' }));
+      return el('li', { classe: 'inv-scelles-ident' }, nom, listeCandidats(c, f));
+    };
     const cochables = prets.filter((x) => !bloques.has(x.id));
     const choisis = () => cochables.filter((x) => !scellesDecoches.has(x.id));
     let bouton = null;
@@ -5699,11 +5717,11 @@ const Inventaires = (() => {
     };
     const deroule = el('details', { classe: 'inv-scelles-details' },
       el('summary', { classe: 'inv-scelles-resume' }, logoCadenas(),
-        el('span', { texte: `${pluriel(n, 'contenant')} scellable${n > 1 ? 's' : ''} non vérifié${n > 1 ? 's' : ''}` }),
+        el('span', { texte: n ? `${pluriel(n, 'contenant')} scellable${n > 1 ? 's' : ''} non vérifié${n > 1 ? 's' : ''}` : 'Contenants identifiés' }),
         el('span', { classe: 'inv-scelles-chevron', 'aria-hidden': 'true', texte: '▾' })),
       el('ul', { classe: 'inv-scelles-detail-liste' },
         ...prets.map((x) => ligne(x, bloques.has(x.id) ? 'inventaire incomplet' : 'à vérifier', !bloques.has(x.id))),
-        ...aIdentifier.map((f) => { const li = ligne(f, 'à identifier', false); li.append(listeCandidats(c, f) || ''); return li; })));
+        ...places.map(lignePlace)));
     if (scellesDeroules.has(c.id)) deroule.open = true;
     deroule.addEventListener('toggle', () => { if (deroule.open) scellesDeroules.add(c.id); else scellesDeroules.delete(c.id); });
     const section = el('section', { classe: 'inv-scelles-groupes' },
