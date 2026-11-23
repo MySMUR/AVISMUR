@@ -4885,6 +4885,34 @@ const Inventaires = (() => {
     fond.querySelector('.fenetre-fermer').focus();
   }
 
+  /** Vrai si l'inventaire type a évolué depuis la dernière répercussion sur au moins un de ses exemplaires. */
+  function typeNonRepercute(m) {
+    const cles = [...Object.keys(CHAMPS_LIBELLES), 'emplacement'];
+    return exemplairesDe(m.id).some((r) => [r, ...descendants(r.id)].some((x) => {
+      const src = contenant(x.source);
+      if (!src || !x.base) return false;
+      const nm = instantane(src);
+      return cles.some((k) => {
+        if (k === 'vignette' && x.base.vignette === undefined) return false; // base antérieure aux vignettes
+        if (k === 'etiquette' && x.base.etiquette === undefined) return false;
+        if (k === 'emplacement' && x.base.emplacement === undefined) return false;
+        return !egal(k === 'articles' ? sansNoms(nm.articles) : nm[k], k === 'articles' ? sansNoms(x.base.articles) : x.base[k]);
+      });
+    }));
+  }
+  /** Bouton bien visible en tête d'un inventaire type modifié : mène à l'onglet Exemplaires pour répercuter. */
+  function boutonRepercuter(c) {
+    const m = racineModele(c.id);
+    if (!m || !edition || ongletGestion === 'exemplaires' || !exemplairesDe(m.id).length || !typeNonRepercute(m)) return null;
+    return el('div', { classe: 'inv-repercuter-bandeau' },
+      el('button', { type: 'button', classe: 'cfg-bouton inv-actif inv-repercuter', title: 'Le type a changé : répercuter sur ses exemplaires', surclick: () => {
+        if (c.id !== m.id) { ongletDemande = 'exemplaires'; aller(m.id); return; }
+        ongletGestion = 'exemplaires';
+        rendre({ garderPosition: true }); window.scrollTo(0, 0);
+      } }, icone('M12 16V4', 'M7 9l5-5 5 5', 'M4 20h16'), el('span', { texte: 'Répercuter' })),
+      el('span', { classe: 'inv-repercuter-aide', texte: 'Cet inventaire type a été modifié.' }));
+  }
+
   const diffsOuvertes = new Set(); // exemplaires dont le détail « personnalisé » est déplié
   /** Bloc affiché en tête d'un inventaire type (racine ou sous-inventaire). */
   function blocModele(c) {
@@ -5976,6 +6004,7 @@ const Inventaires = (() => {
     return [
       barre,
       bandeauGestion(c),
+      boutonRepercuter(c),
       ligneSynchro(), ligneAvis(),
       c.desaffecte && !c.parent ? el('p', { classe: 'note-parc anomalie' }, el('strong', { texte: 'Désaffecté — à retrouver. ' }),
         `Était dans ${c.desaffecte.deNom || '?'}. `,
