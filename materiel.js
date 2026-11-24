@@ -701,6 +701,8 @@ const Materiel = (() => {
     const date = el('input', { type: 'date', valeur: aujourdhui(), max: aujourdhui() });
     const texte = el('textarea', { rows: '3', placeholder: nature === 'Note' ? 'Votre note' : 'Que s\'est-il passé ? Ce qui ne fonctionne pas…' });
     const enPanne = el('input', { type: 'checkbox', coche: (nature === 'Casse' || nature === 'Panne') && f.statut === 'En service' });
+    const dejaMaintenance = f.statut === 'En maintenance';
+    const biomed = el('input', { type: 'checkbox', coche: !dejaMaintenance, disabled: dejaMaintenance });
     const message = el('p', { classe: 'message erreur', role: 'alert' });
     let d;
     const contenu = el('form', {
@@ -709,12 +711,25 @@ const Materiel = (() => {
         ev.preventDefault();
         if (!texte.value.trim()) { message.textContent = 'Décrivez en quelques mots.'; return; }
         d.close();
+        if (nature !== 'Note') {
+          // Problème : même parcours que l'action rapide — à amener au biomédical (suivi par boutons), puis proposition de publier une information.
+          const description = texte.value.trim();
+          const aAmener = biomed.checked && !dejaMaintenance;
+          const ok = enfiler('signalerMateriel', {
+            materiel: f.id, date: date.value || aujourdhui(), type: TYPES[nature], description: aAmener ? `${description}\nÀ amener au service biomédical.` : description,
+            statut: aAmener || enPanne.checked ? 'En panne' : '', destination: '', photoDonnees: '',
+          });
+          if (ok) proposerPublicationProbleme(f, nature === 'Panne' ? 'Panne' : nature, description, aAmener, '');
+          return;
+        }
         enfiler('ajouterIntervention', { materiels: [f.id], date: date.value || aujourdhui(), type: TYPES[nature], description: texte.value.trim(), intervenant: '', prochaineRevision: '' });
         if (enPanne.checked && f.statut !== 'En panne') enfiler('enregistrerMateriel', { fiches: [{ ...f, statut: 'En panne' }] });
       },
     },
     champ('Date', date), champ(nature === 'Note' ? 'Note' : 'Description', texte),
     nature === 'Note' ? null : el('label', { classe: 'mat-case-libelle' }, enPanne, el('span', { texte: 'Passer l\'appareil « En panne »' })),
+    nature === 'Note' ? null : el('label', { classe: 'mat-case-libelle' }, biomed,
+      el('span', { texte: dejaMaintenance ? 'Appareil déjà en maintenance' : 'À amener au service biomédical (suivi par boutons dans l\'information)' })),
     message, el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Enregistrer' })));
     d = fenetre(`${nature} · ${nomAppareil(f)}`, contenu);
   }
