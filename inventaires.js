@@ -2367,15 +2367,20 @@ const Inventaires = (() => {
       .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
     const idType = idChamp();
     const choixType = el('select', { id: idType }, el('option', { value: '', texte: types.length ? 'Choisir l\'inventaire type attendu…' : 'Aucun inventaire type' }),
-      ...types.map((t) => el('option', { value: t.id, texte: t.nom })));
+      ...types.map((t) => el('option', { value: t.id, texte: t.categorie === 'immobile' ? `${t.nom} (immobile)` : t.nom })));
     const ajoutEmplacement = el('div', { classe: 'inv-ajout inv-ajout-emplacement', hidden: !ajoutSousOuvert },
-      el('label', { for: idType, texte: 'Ou ajouter un emplacement pour un contenant mobile' }),
-      el('p', { classe: 'aide-question', texte: 'En check-list, l\'agent identifiera l\'exemplaire présent (QR, NFC ou liste) ; seuls les exemplaires de ce type seront acceptés.' }),
+      el('label', { for: idType, texte: 'Ou ajouter un inventaire type (emplacement pour un contenant mobile)' }),
+      el('p', { classe: 'aide-question', texte: 'Type mobile : en check-list, l\'agent identifiera l\'exemplaire présent (QR, NFC ou liste) ; seuls les exemplaires de ce type seront acceptés. Type immobile : ajouté directement, sans rien à identifier.' }),
       el('div', { classe: 'cfg-ligne' }, choixType, el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Ajouter', disabled: !types.length, surclick: () => {
         const type = contenant(choixType.value);
         if (!type) return;
         const fratrie = enfants(c.id);
-        const emp = normaliser({ id: nouvelId(), parent: c.id, nom: type.nom, categorie: 'mobile', emplacement: { modele: type.id }, ordre: fratrie.length ? fratrie[fratrie.length - 1].ordre + 1 : 0 });
+        const rang = fratrie.length ? fratrie[fratrie.length - 1].ordre + 1 : 0;
+        // Inventaire type immobile (tiroir, placard) : il ne change jamais de place, donc rien à identifier en check-list.
+        // Il est rattaché directement (copie liée au type) ; seuls les types mobiles donnent un emplacement à identifier.
+        const emp = type.categorie === 'immobile'
+          ? copierDepuisModele(type, c.id, rang)
+          : normaliser({ id: nouvelId(), parent: c.id, nom: type.nom, categorie: 'mobile', emplacement: { modele: type.id }, ordre: rang });
         structure.contenants[emp.id] = emp;
         marquer(emp.id);
         if (vueCourante(c).photo) { placement = emp.id; rendre({ garderPosition: true }); zone.querySelector('.inv-photo').scrollIntoView({ block: 'center', behavior: 'smooth' }); } else rendre({ garderPosition: true });
