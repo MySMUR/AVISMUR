@@ -7079,7 +7079,7 @@ const Inventaires = (() => {
   }
 
   /** Barre du bas (téléphone) : scan depuis n'importe quel écran, ouvre l'inventaire trouvé. */
-  function scanRapide(type) {
+  function scanRapide(type, surAutre = null) {
     const dispo = type === 'nfc' ? 'NDEFReader' in window : (Scannette.ordinateur() || ('BarcodeDetector' in window && navigator.mediaDevices));
     if (!dispo) { alerteBreve(type === 'nfc' ? 'NFC non disponible : Chrome sur Android requis, NFC activé.' : 'Lecture de QR code non disponible sur ce navigateur.'); return; }
     // Étiquette lue sur place : on est là, l'inventaire s'ouvre pour être vérifié.
@@ -7089,7 +7089,7 @@ const Inventaires = (() => {
       const place = placeIci(contenant(id));
       if (place) { confirmerIdentification(place.y, id, place.dans); return; }
       ouvrirScanne(id);
-    });
+    }, surAutre);
   }
   /**
    * Contenant scanné par l'action rapide : si l'on se trouve dans un contenant primaire, il s'ouvre pour en faire

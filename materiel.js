@@ -710,6 +710,7 @@ const Materiel = (() => {
     if (!f) return;
     const actif = !f.archive && f.statut !== 'Réformé';
     const enMaintenance = f.statut === 'En maintenance';
+    const pretEnCours = f.pret ? etatPrets().ouverts.get(f.pret) || null : null;
     const action = (icone, titre, detail, faire, desactive) => el('button', { type: 'button', classe: 'mat-rapide-action', disabled: desactive, surclick: faire },
       el('span', { classe: 'mat-rapide-icone', 'aria-hidden': 'true', texte: icone }),
       el('span', {}, el('strong', { texte: titre }), detail ? el('small', { texte: detail }) : null));
@@ -726,7 +727,9 @@ const Materiel = (() => {
       el('div', { classe: 'mat-rapide-actions' },
         action('⚠️', 'Signaler un problème', 'Panne, casse, dysfonctionnement…', () => { d.close(); rapideSignaler(f); }, !actif),
         action('🔧', 'Envoyer en maintenance', enMaintenance ? 'Déjà en maintenance' : 'Biomédical, fournisseur…', () => { d.close(); rapideMaintenance(f); }, !actif || enMaintenance),
-        action('🕘', 'Consulter l\'historique', 'Main courante de l\'appareil', () => { d.close(); rapideHistorique(f.id); })));
+        action('🕘', 'Consulter l\'historique', 'Main courante de l\'appareil', () => { d.close(); rapideHistorique(f.id); }),
+        pretEnCours ? action('🤝', 'Détail du prêt', `${pretEnCours.reference} · ${pretEnCours.proprietaire || 'propriétaire non renseigné'}`, () => { d.close(); ouvrirDetailPret(pretEnCours); }) : null,
+        f.provisoire ? null : action('📋', 'Fiche complète', 'Caractéristiques, maintenance, main courante', () => { d.close(); ouvrirFiche(f.id); })));
     d = fenetre(nomAppareil(f), contenu);
   }
 
@@ -2311,6 +2314,17 @@ const Materiel = (() => {
     /** Lien « #pret=<code> » (QR code ou puce d'une référence de prêt). */
     ouvrirPretDuCode(code) {
       const go = () => { const ref = refDuCode(code); if (ref) ouvrirReferencePret(ref); };
+      if (donnees && donnees.prets) go(); else charger().then(go);
+    },
+    /** Référence de prêt scannée (QR code ou puce, « #pret=<code> ») : fiche rapide du matériel prêté, sinon fenêtre de la référence. */
+    ouvrirPretRapide(code) {
+      const go = () => {
+        const ref = refDuCode(code);
+        if (!ref) { fenetre('Référence de prêt', el('p', { texte: `Référence « ${code} » inconnue : vérifiez l'étiquette.` })); return; }
+        const p = etatPrets().ouverts.get(ref);
+        const fiche = p && etat().fiches.find((x) => x.idPret === p.id);
+        if (fiche) ouvrirRapide(fiche.id); else ouvrirReferencePret(ref);
+      };
       if (donnees && donnees.prets) go(); else charger().then(go);
     },
     /** Action rapide (scan) : fenêtre statut / dernier contenant / signaler / maintenance / historique. */

@@ -1117,7 +1117,7 @@ function aiguillerCodeLu(code) {
   if (lienInterne) {
     const [lien, type] = lienInterne;
     if (type === 'mat') Materiel.ouvrirRapide(lien.slice(5));
-    else if (type === 'pret') ouvrirPretDuLien(lien);
+    else if (type === 'pret') Materiel.ouvrirPretRapide(lien.slice(6));
     else if (type === 'info') ouvrirInfoDuLien(lien);
     else if (accesInventaires()) { ouvrirVue('inventaires'); Inventaires.ouvrirScanne(decodeURIComponent(lien.slice(5))); }
     else if (location.hash === lien) ouvrirVue(vueDuLien());
@@ -1139,9 +1139,15 @@ function lireQrRapide() {
   if (!Materiel.scanDisponible()) { avisRapide('Lecture de QR code non disponible sur ce navigateur (Chrome sur Android conseillé).'); return; }
   Materiel.scanner(aiguillerCodeLu);
 }
+/** Code lu par la puce NFC (barre rapide) : lien d'appareil, de prêt ou d'info, ou n° biomed / de série connu. Renvoie la suite à exécuter, sinon null. */
+function reconnaitreCodeLu(texte) {
+  const t = String(texte || '');
+  if (/#(mat|pret|info)=[^\s#]+/.test(t) || Materiel.identifier(t)) return () => aiguillerCodeLu(t);
+  return null;
+}
 document.querySelectorAll('#barre-scan [data-scan]').forEach((b) => b.addEventListener('click', () => {
   if (b.dataset.scan === 'qr') lireQrRapide();
-  else Inventaires.scanRapide(b.dataset.scan);
+  else Inventaires.scanRapide(b.dataset.scan, b.dataset.scan === 'nfc' ? reconnaitreCodeLu : null);
 }));
 // NFC : seulement là où la lecture est possible (Chrome sur Android).
 document.querySelector('#barre-scan [data-scan="nfc"]').hidden = !('NDEFReader' in window);
