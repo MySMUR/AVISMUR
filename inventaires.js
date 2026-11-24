@@ -1063,7 +1063,7 @@ const Inventaires = (() => {
       // de l'appareil, auquel l'écran affiché est relié. Le remplacer ferait partir les ajouts suivants
       // dans une copie qui n'est plus enregistrée.
       if (local && identiques(local, recu)) contenants[c.id] = local;
-      else { contenants[c.id] = recu; if (local) changeDistant = true; }
+      else { contenants[c.id] = recu; if (local && !modifs.ids[c.id]) changeDistant = true; }
     });
     // Ce qui n'est pas encore envoyé reste tel que sur l'appareil.
     Object.keys(modifs.ids).forEach((id) => { if (structure.contenants[id]) contenants[id] = structure.contenants[id]; });
