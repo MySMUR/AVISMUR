@@ -1126,7 +1126,13 @@ function aiguillerCodeLu(code) {
   }
   const appareilLu = Materiel.identifier(code);
   if (appareilLu) { Materiel.ouvrirRapide(appareilLu.id); return; }
-  avisRapide(`Code lu : « ${code.slice(0, 60)} » — aucun inventaire ni appareil correspondant.`);
+  // Liste des appareils absente ou périmée sur cet appareil : on la recharge, puis on réessaie une seule fois.
+  avisRapide('Recherche de l\'appareil…');
+  Materiel.recharger().then(() => {
+    const apresRecharge = Materiel.identifier(code);
+    if (apresRecharge) { document.querySelectorAll('.barre-scan-avis').forEach((p) => p.remove()); Materiel.ouvrirRapide(apresRecharge.id); return; }
+    avisRapide(`Code lu : « ${code.slice(0, 60)} » — aucun appareil, inventaire ou lien correspondant.`);
+  });
 }
 function lireQrRapide() {
   if (document.body.classList.contains('vue-inv-checklist')) { Inventaires.scanRapide('qr'); return; }

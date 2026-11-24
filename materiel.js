@@ -2306,6 +2306,8 @@ const Materiel = (() => {
     },
     /** Met à jour la liste gardée sur l'appareil, sans rien afficher (pour reconnaître les appareils scannés). */
     actualiser() { charger(); },
+    /** Recharge la liste et renvoie une promesse toujours résolue (hors ligne : on garde le cache existant). */
+    recharger() { return charger().catch(() => {}); },
     /** Lien « #pret=<code> » (QR code ou puce d'une référence de prêt). */
     ouvrirPretDuCode(code) {
       const go = () => { const ref = refDuCode(code); if (ref) ouvrirReferencePret(ref); };
