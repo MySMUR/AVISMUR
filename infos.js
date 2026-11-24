@@ -158,13 +158,32 @@ const Infos = (() => {
       creee: e.date,
       terminee: '',
       enAttente: true,
+      suivi: e.donnees.suivi ? 'a-amener' : '',
     }));
     const fins = {};
     file.filter((e) => e.action === 'terminerInfo').forEach((e) => { fins[e.donnees.id] = e; });
-    return mur.infos.concat(locales).map((i) => (fins[i.id] && !i.terminee
-      ? { ...i, terminee: fins[i.id].date, termineePar: fins[i.id].agent || agent(), finEnAttente: true }
-      : i));
+    // Suivi biomédical : étapes déjà validées sur cet appareil, pas encore envoyées au serveur.
+    const etapes = {};
+    file.filter((e) => e.action === 'avancerSuiviBiomed').forEach((e) => { etapes[e.donnees.id] = e; });
+    return mur.infos.concat(locales).map((i0) => {
+      let i = i0;
+      const e = etapes[i.id];
+      if (e && i.suivi) {
+        const cible = e.donnees.etape === 'recupere' ? 'recupere' : 'au-biomed';
+        if (ORDRE_SUIVI.indexOf(i.suivi) < ORDRE_SUIVI.indexOf(cible)) {
+          i = { ...i, suivi: cible, suiviEnAttente: true };
+          if (cible === 'recupere' && !i.terminee) i.terminee = e.date;
+        }
+      }
+      return fins[i.id] && !i.terminee
+        ? { ...i, terminee: fins[i.id].date, termineePar: fins[i.id].agent || agent(), finEnAttente: true }
+        : i;
+    });
   }
+
+  // Suivi d'un appareil en panne publié sur le mur : à amener → au biomédical → récupéré (SuiviBiomed.gs côté serveur).
+  const ORDRE_SUIVI = ['a-amener', 'au-biomed', 'recupere'];
+  const LIBELLES_SUIVI = { 'a-amener': 'À amener au service biomédical', 'au-biomed': 'Au service biomédical', recupere: 'Récupéré du service biomédical' };
 
   function statut(info, aujourdhui) {
     if (info.terminee || (info.fin && info.fin < aujourdhui)) return 'terminee';
@@ -400,7 +419,8 @@ const Infos = (() => {
     if (info.importance === 'urgente') pastilles.push(el('span', { classe: 'info-pastille urgente', texte: 'Urgent' }));
     else if (info.importance === 'importante') pastilles.push(el('span', { classe: 'info-pastille importante', texte: 'Important' }));
     if (st === 'encours' && info.fin === aujourdhui) pastilles.push(el('span', { classe: 'info-pastille dernier-jour', texte: 'Dernier jour' }));
-    if (info.enAttente || info.finEnAttente) pastilles.push(el('span', { classe: 'info-pastille attente', texte: 'En attente d\'envoi' }));
+    if (info.suivi) pastilles.push(el('span', { classe: `info-pastille suivi-${info.suivi}`, texte: LIBELLES_SUIVI[info.suivi] }));
+    if (info.enAttente || info.finEnAttente || info.suiviEnAttente) pastilles.push(el('span', { classe: 'info-pastille attente', texte: 'En attente d\'envoi' }));
     // Commentaires : pas sur une information pas encore publiée (elle n'a pas d'identifiant sur le serveur).
     const commentaires = info.enAttente ? [] : commentairesDe(info);
     const ouvert = !info.enAttente && ouverts.has(info.id);
@@ -445,10 +465,56 @@ const Infos = (() => {
           el('button', { type: 'button', classe: 'info-bouton', texte: 'Annuler', surclick: () => { confirmerFin = ''; rendre(); } })))
       : el('div', { classe: 'info-actions' },
         boutonCommentaires,
+        boutonSuivi(info),
         st === 'terminee' ? null : el('button', {
           type: 'button', classe: 'info-bouton', surclick: () => { confirmerFin = info.id; rendre(); focaliser(`[data-id="${CSS.escape(info.id)}"] .info-confirmation .danger`); },
         }, info.enAttente ? 'Annuler la publication' : 'Clôturer')),
     ouvert ? filCommentaires(info, commentaires) : null));
+  }
+
+  /** Bouton d'étape du suivi biomédical : « Envoyé au biomédical » puis « Récupéré » (pas sur une publication en attente d'envoi). */
+  function boutonSuivi(info) {
+    if (info.enAttente || info.terminee || !info.materiel) return null;
+    if (info.suivi === 'a-amener') {
+      return el('button', {
+        type: 'button', classe: 'info-bouton info-bouton-suivi',
+        surclick: () => avancerSuivi(info, 'envoye', ''),
+      }, el('span', { 'aria-hidden': 'true', texte: '🚚 ' }), 'Envoyé au biomédical');
+    }
+    if (info.suivi === 'au-biomed') {
+      return el('button', {
+        type: 'button', classe: 'info-bouton info-bouton-suivi',
+        surclick: () => ouvrirRecuperation(info),
+      }, el('span', { 'aria-hidden': 'true', texte: '✅ ' }), 'Récupéré');
+    }
+    return null;
+  }
+
+  /** Enregistre l'étape (file d'attente : fonctionne hors ligne) ; la main courante et le statut de l'appareil suivent. */
+  function avancerSuivi(info, etape, observation) {
+    const ok = App.mettreEnFile({ action: 'avancerSuiviBiomed', donnees: { id: info.id, materiel: info.materiel, etape, observation }, agent: agent() });
+    avis = ok
+      ? { texte: etape === 'envoye' ? 'Envoi au biomédical consigné dans la main courante de l\'appareil.' : `« ${info.titre} » est close : appareil récupéré.`, classe: 'succes' }
+      : { texte: 'Impossible d\'enregistrer sur cet appareil.', classe: 'erreur' };
+    rendre();
+  }
+
+  /** « Récupéré » : observation facultative, puis l'information est close. */
+  function ouvrirRecuperation(info) {
+    const idTitre = nouvelId();
+    const idObs = nouvelId();
+    const obs = el('textarea', { id: idObs, rows: '3', maxlength: '600', placeholder: 'Réparation effectuée, appareil remplacé, réserve…' });
+    const formulaireRecup = el('form', {
+      novalidate: true,
+      sursubmit: (e) => { e.preventDefault(); fermerFenetre(); avancerSuivi(info, 'recupere', obs.value.trim()); },
+    },
+    el('p', { texte: 'L\'appareil repasse « En service » et l\'information est close.' }),
+    el('label', { for: idObs, texte: 'Observation (facultatif)' }), obs,
+    el('div', { classe: 'info-confirmation-boutons' },
+      el('button', { type: 'submit', classe: 'principal', texte: 'Valider la récupération' }),
+      el('button', { type: 'button', classe: 'info-bouton', texte: 'Annuler', surclick: fermerFenetre })));
+    ouvrirFenetre('Appareil récupéré', idTitre, formulaireRecup);
+    obs.focus();
   }
 
   function focaliser(selecteur) {
@@ -820,6 +886,8 @@ const Infos = (() => {
         destinataires,
         pieces,
       };
+      // Information d'un appareil en panne (depuis le suivi du matériel) : suivi du biomédical dans l'information.
+      if (prerempli.materiel) { donnees.materiel = prerempli.materiel; donnees.suivi = prerempli.suivi === true; }
       const ok = App.mettreEnFile({ action: 'creerInfo', donnees, agent: agent() });
       if (!ok) {
         message.textContent = 'Impossible d\'enregistrer sur cet appareil (mémoire pleine : pièces jointes trop lourdes ?).';

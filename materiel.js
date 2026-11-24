@@ -25,7 +25,7 @@
  */
 const Materiel = (() => {
   const CLE_CACHE = 'avismur_materiel';
-  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret', 'signalerMateriel', 'enregistrerEtiquettePret'];
+  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret', 'signalerMateriel', 'avancerSuiviBiomed', 'enregistrerEtiquettePret'];
   const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle'];
   const STATUTS_DEFAUT = ['En service', 'En maintenance', 'En panne', 'Prêté', 'Réformé'];
   const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Envoi en maintenance', 'Note', 'Réforme', 'Remise en service', 'Autre'];
@@ -242,6 +242,23 @@ const Materiel = (() => {
         if (f && d.statut === 'En maintenance' && f.statut !== 'Réformé' && !f.archive) f.statut = 'En maintenance';
         if (f && d.statut === 'En panne' && (f.statut === 'En service' || f.statut === 'Prêté')) f.statut = 'En panne';
         if (f) attente.add(f.id);
+      } else if (e.action === 'avancerSuiviBiomed') {
+        // Bouton d'une information de panne (mur) : étape consignée et statut changés tout de suite, même hors ligne.
+        const f = parId.get(d.materiel);
+        if (f) {
+          const envoi = d.etape === 'envoye';
+          const nouveau = envoi ? 'En maintenance' : (f.pret ? 'Prêté' : 'En service');
+          const change = envoi ? (f.statut !== 'Réformé' && !f.archive && f.statut !== 'En maintenance')
+            : (f.statut === 'En maintenance' || f.statut === 'En panne');
+          interventions.push({
+            id: `${e.id}-0`, materiel: d.materiel, date: aujourdhui(), type: envoi ? 'Envoi en maintenance' : 'Remise en service',
+            description: [envoi ? 'Envoyé au service biomédical.' : 'Récupéré du service biomédical.',
+              !envoi && d.observation ? `Observation : ${d.observation}` : '', change ? `Statut : ${f.statut} → ${nouveau}` : ''].filter(Boolean).join('\n'),
+            intervenant: 'Service biomédical', saisiPar: e.agent || '', attente: true, idFile: e.id,
+          });
+          if (change) f.statut = nouveau;
+          attente.add(f.id);
+        }
       } else if (e.action === 'enregistrerPret' && d.pret) {
         // Matériel de prêt : sa fiche apparaît (ou se met à jour) dans le suivi du matériel, même hors ligne.
         const p = d.pret;
@@ -745,7 +762,7 @@ const Materiel = (() => {
     NATURES.forEach(([t, v]) => choix.append(el('button', { type: 'button', classe: 'cfg-bouton', role: 'radio', 'aria-checked': 'false', 'data-v': v, texte: t, surclick: () => { nature = v; majChoix(); } })));
     const texte = el('textarea', { rows: '4', placeholder: 'Ce qui ne fonctionne pas, dans quelles circonstances…' });
     const dejaMaintenance = f.statut === 'En maintenance';
-    const biomed = el('input', { type: 'checkbox', disabled: dejaMaintenance });
+    const biomed = el('input', { type: 'checkbox', coche: !dejaMaintenance, disabled: dejaMaintenance });
     const message = el('p', { classe: 'message erreur', role: 'alert' });
 
     // Photo facultative (prise sur place ou choisie dans la galerie), recadrable.
@@ -768,15 +785,16 @@ const Materiel = (() => {
         ev.preventDefault();
         if (!nature) { message.textContent = 'Choisissez le type de problème.'; return; }
         if (!texte.value.trim()) { message.textContent = 'Décrivez le problème en quelques mots.'; texte.focus(); return; }
-        const envoiBiomed = biomed.checked && !dejaMaintenance;
+        const aAmener = biomed.checked && !dejaMaintenance;
         const description = texte.value.trim();
+        // « À amener au biomédical » : l'appareil passe « En panne » ; il ne sera « En maintenance » qu'à l'envoi (bouton de l'information).
         const ok = enfiler('signalerMateriel', {
-          materiel: f.id, date: aujourdhui(), type: nature, description,
-          statut: envoiBiomed ? 'En maintenance' : '', destination: envoiBiomed ? 'Service biomédical' : '', photoDonnees: photo,
+          materiel: f.id, date: aujourdhui(), type: nature, description: aAmener ? `${description}\nÀ amener au service biomédical.` : description,
+          statut: aAmener ? 'En panne' : '', destination: '', photoDonnees: photo,
         });
         if (!ok) { message.textContent = 'Impossible d\'enregistrer sur cet appareil (mémoire pleine ?).'; return; }
         d.close();
-        proposerPublicationProbleme(f, NATURES.find(([, v]) => v === nature)[0], description, envoiBiomed, photo);
+        proposerPublicationProbleme(f, NATURES.find(([, v]) => v === nature)[0], description, aAmener, photo);
       },
     },
     el('p', { classe: 'mat-libelle', texte: 'Type de problème' }), choix,
@@ -785,16 +803,16 @@ const Materiel = (() => {
       el('div', { classe: 'mat-boutons' },
         el('button', { type: 'button', classe: 'cfg-bouton', texte: '📷 Prendre ou choisir une photo', surclick: () => fichierPhoto.click() }), boutonRecadrer, boutonRetirer, fichierPhoto)),
     el('label', { classe: 'mat-case-libelle' }, biomed,
-      el('span', { texte: dejaMaintenance ? 'Appareil déjà en maintenance' : 'Envoyer au biomed (l\'appareil passe « En maintenance »)' })),
+      el('span', { texte: dejaMaintenance ? 'Appareil déjà en maintenance' : 'À amener au service biomédical (suivi par boutons dans l\'information)' })),
     message,
     el('div', { classe: 'mat-boutons' }, boutonRetourRapide({ close: () => d.close() }, f), el('button', { type: 'submit', classe: 'principal', texte: 'Signaler' })));
     d = fenetre(`Signaler un problème · ${nomAppareil(f)}`, contenu);
   }
 
   /** Après un signalement : proposer de publier une information sur le mur (formulaire pré-rempli, photo jointe). */
-  function proposerPublicationProbleme(f, nature, description, envoiBiomed, photo) {
+  function proposerPublicationProbleme(f, nature, description, aAmener, photo) {
     const nom = nomAppareil(f);
-    const titre = `${nom} : ${nature.toLowerCase()}${envoiBiomed ? ' — envoyé au biomed' : ''}`;
+    const titre = `${nom} : ${nature.toLowerCase()}${aAmener ? ' — à amener au biomed' : ''}`;
     if (typeof Infos === 'undefined' || !Infos.publier) { ouvrirRapide(f.id); return; }
     let d;
     const contenu = el('div', {},
@@ -808,7 +826,8 @@ const Materiel = (() => {
             const lieu = texteEmplacement(f);
             Infos.publier({
               types: ['panne', 'information'], importance: 'importante', titre,
-              texte: [description, lieu ? `Dernier contenant : ${lieu}` : '', envoiBiomed ? 'Appareil envoyé au service biomédical.' : ''].filter(Boolean).join('\n'),
+              texte: [description, lieu ? `Dernier contenant : ${lieu}` : '', aAmener ? 'À amener au service biomédical.' : ''].filter(Boolean).join('\n'),
+              materiel: f.id, suivi: aAmener, // boutons « Envoyé au biomédical » puis « Récupéré » dans l'information
               pieces: photo ? [{ type: 'photo', nom: `${nom}.jpg`.slice(0, 80), donnees: photo }] : [],
             });
           },

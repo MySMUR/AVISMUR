@@ -396,7 +396,8 @@ async function envoyerFileAttente() {
       try {
         if (suivante.donnees) { // mur d'informations (creerInfo, terminerInfo) ; suivi du matériel (Materiel.actions)
           rep = await appeler(suivante.action, { ...suivante.donnees, idSaisie: suivante.id, dateSaisie: suivante.date });
-          if (Materiel.actions.includes(suivante.action)) materielEnvoye = true;
+          if (suivante.action === 'avancerSuiviBiomed') { materielEnvoye = true; infosEnvoyees = true; } // touche le mur et le suivi du matériel
+          else if (Materiel.actions.includes(suivante.action)) materielEnvoye = true;
           else if (suivante.action === 'envoyerFicheRegulation') ficheEnvoyee = true;
           else infosEnvoyees = true;
         } else if (suivante.action === 'deplacerContenant') {

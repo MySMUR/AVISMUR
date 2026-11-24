@@ -3525,3 +3525,9 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 /* Options d'un sous-inventaire : pop-up */
 .inv-options-corps { display: grid; gap: 0.9rem; margin: 0.4rem 0 0.2rem; }
 .inv-fenetre-options .inv-reglages-rapides, .inv-fenetre-options .inv-outils { margin: 0; }
+
+/* Suivi biomédical d'un appareil en panne (information du mur) */
+.info-pastille.suivi-a-amener { color: #93370D; background: #FDEAD7; }
+.info-pastille.suivi-au-biomed { color: var(--bleu); background: var(--ciel); }
+.info-pastille.suivi-recupere { color: #166534; background: #DCFCE7; }
+.info-bouton-suivi { font-weight: 700; color: var(--bleu); border-color: var(--bleu); }
