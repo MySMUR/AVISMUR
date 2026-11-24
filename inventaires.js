@@ -360,7 +360,7 @@ const Inventaires = (() => {
   const classesTexte = (t) => (t === '' ? ' vierge' : Array.from(t).length > 1 ? ` long${Array.from(t).length > 2 ? ' tres-long' : ''}` : '');
 
   // ---------- Base des articles (catalogue) ----------
-  const CATEGORIES = ['Médicament', 'DM', 'Magasin', 'Kit', 'Matériel', 'Autre'];
+  const CATEGORIES = ['Médicament', 'DM', 'Magasin', 'Kit', 'Matériel', 'Biomed', 'Documents', 'Autre'];
   /** Texte comparable : minuscules, sans accents, espaces simples. */
   const cle = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
   function normaliserFiche(f) {
@@ -369,6 +369,8 @@ const Inventaires = (() => {
       horsStock: f.horsStock === true, refInterne: String(f.refInterne || ''), refFournisseur: String(f.refFournisseur || ''),
       consommable: f.consommable === true, perissable: f.perissable === true, archive: f.archive === true,
       photo: String(f.photo || ''),
+      // Case « Secrétariat » : propre à la catégorie « Documents ».
+      secretariat: f.categorie === 'Documents' && f.secretariat === true,
     };
   }
   /** Fiche de la base d'un article d'inventaire (null pour un article ancien, saisi sans la base). */
@@ -377,7 +379,7 @@ const Inventaires = (() => {
   /** Péremption suivie : d'après la fiche (« périssable »), sinon d'après l'article lui-même. */
   const suiviPeremption = (a) => (fiche(a) ? fiche(a).perissable : a.peremption === true);
   function resumeFiche(f) {
-    return [f.categorie || 'Sans catégorie', f.refInterne ? `réf. ${f.refInterne}` : '', f.horsStock ? 'dotation hors stock' : '',
+    return [f.categorie || 'Sans catégorie', f.refInterne ? `réf. ${f.refInterne}` : '', f.horsStock ? 'dotation hors stock' : '', f.secretariat ? 'secrétariat' : '',
       f.consommable ? '' : 'non consommable', f.perissable ? 'périssable' : '', f.archive ? 'archivé' : ''].filter(Boolean).join(' · ');
   }
   /**
@@ -2793,7 +2795,8 @@ const Inventaires = (() => {
     const img = el('img', { classe: 'inv-fiche-grande', alt: f.denomination });
     obtenirPhoto(f.photo).then((d) => { if (d) img.src = d; });
     const lignes = [['Catégorie', f.categorie], ['Réf. interne', f.refInterne], ['Réf. fournisseur', f.refFournisseur],
-      ['Consommable', f.consommable ? 'Oui' : 'Non'], ['Périssable', f.perissable ? 'Oui' : 'Non'], ['Dotation hors stock', f.horsStock ? 'Oui' : 'Non']];
+      ['Consommable', f.consommable ? 'Oui' : 'Non'], ['Périssable', f.perissable ? 'Oui' : 'Non'], ['Dotation hors stock', f.horsStock ? 'Oui' : 'Non'],
+      ...(f.categorie === 'Documents' ? [['Secrétariat', f.secretariat ? 'Oui' : 'Non']] : [])];
     const titre = idChamp();
     fond.append(el('div', { classe: 'fenetre', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
       el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: f.denomination }),
@@ -3325,7 +3328,7 @@ const Inventaires = (() => {
     const listes = descendants(c.id).filter((d) => aCocher(d).length);
     return listes.length > 0 && listes.every((d) => verifScellee(verifDuJour(d.id)));
   }
-  const articleBiomed = (a) => Boolean(fiche(a)) && ['Matériel', 'Biomédical'].includes(fiche(a).categorie); // « Biomédical » : ancien nom
+  const articleBiomed = (a) => Boolean(fiche(a)) && ['Matériel', 'Biomed', 'Biomédical'].includes(fiche(a).categorie); // « Biomédical » : ancien nom de « Matériel »
   /** Contenant d'un appareil biomédical (ex. un scope et ses pochettes) : sa liste attend un article « Matériel ». */
   // Un contrôle « scan » (n° d'appareil scanné : puce MySMUR, étiquette biomed, n° de série) désigne aussi un appareil biomédical.
   const appareilScanne = (a) => !a.separateur && estIdentifiant(a);
@@ -3648,6 +3651,9 @@ const Inventaires = (() => {
         } }), el('span', {}, texte, aide ? el('small', { texte: aide }) : null));
     };
     const casePerissable = caseFiche('perissable', 'Périssable', 'date de péremption suivie dans les inventaires');
+    // Propre aux documents : n'apparaît que pour cette catégorie.
+    const caseSecretariat = caseFiche('secretariat', 'Secrétariat', 'document géré par le secrétariat');
+    caseSecretariat.hidden = f.categorie !== 'Documents';
     // Photo de l'article : gardée sur l'appareil, envoyée avec la fiche.
     const apercu = el('img', { classe: 'inv-fiche-photo', alt: 'Photo de l\'article', hidden: !f.photo });
     const montrerPhoto = () => {
@@ -3685,6 +3691,8 @@ const Inventaires = (() => {
       const i = idChamp();
       categories.append(el('input', { type: 'radio', name: ids.cat, id: i, value: cat, checked: f.categorie === cat, surchange: () => {
         f.categorie = cat;
+        caseSecretariat.hidden = cat !== 'Documents';
+        if (cat !== 'Documents') { f.secretariat = false; caseSecretariat.querySelector('input').checked = false; }
         // Un médicament est périssable par défaut, tant qu'on n'a pas choisi soi-même.
         if (!perissableTouche.valeur) { f.perissable = cat === 'Médicament'; casePerissable.querySelector('input').checked = f.perissable; }
       } }), el('label', { for: i, texte: cat }));
@@ -3693,7 +3701,7 @@ const Inventaires = (() => {
       f.denomination = f.denomination.trim().replace(/\s+/g, ' ');
       f.refInterne = f.refInterne.trim();
       f.refFournisseur = f.refFournisseur.trim();
-      const probleme = !f.denomination ? 'Indiquez la dénomination.' : (!f.categorie ? 'Choisissez la catégorie (Médicament, DM, Magasin, Kit, Biomédical ou Autre).' : '');
+      const probleme = !f.denomination ? 'Indiquez la dénomination.' : (!f.categorie ? 'Choisissez la catégorie (Médicament, DM, Magasin, Kit, Matériel, Biomed, Documents ou Autre).' : '');
       erreur.innerHTML = '';
       if (probleme) { erreur.textContent = probleme; erreur.hidden = false; return; }
       const autre = doublon(f);
@@ -3719,7 +3727,8 @@ const Inventaires = (() => {
       el('div', { classe: 'inv-cases-fiche' },
         caseFiche('consommable', 'Consommable', 'usage unique, à remplacer après utilisation'),
         casePerissable,
-        caseFiche('horsStock', 'Dotation hors stock', 'ne fait pas partie du stock de la pharmacie')),
+        caseFiche('horsStock', 'Dotation hors stock', 'ne fait pas partie du stock de la pharmacie'),
+        caseSecretariat),
       blocPhotoFiche,
       erreur,
       el('div', { classe: 'cfg-actions' },
@@ -3870,7 +3879,7 @@ const Inventaires = (() => {
       rendre({ garderPosition: true, focus: '.inv-recherche-article input' });
     };
     const ouvrirCreation = () => {
-      creation = creation || { id: nouvelId(), denomination: rechercheAjout.trim(), categorie: '', horsStock: false, refInterne: '', refFournisseur: '', consommable: true, perissable: false, archive: false };
+      creation = creation || { id: nouvelId(), denomination: rechercheAjout.trim(), categorie: '', horsStock: false, refInterne: '', refFournisseur: '', consommable: true, perissable: false, archive: false, secretariat: false };
       zoneCreation.innerHTML = '';
       zoneCreation.append(formulaireFiche(creation, {
         titre: 'Nouvel article dans la base',
@@ -3990,7 +3999,7 @@ const Inventaires = (() => {
     const modifier = (f, champ, v) => {
       const d = { ...valeur(f), [champ]: v };
       const origine = structure.catalogue[f.id];
-      const pareil = ['denomination', 'categorie', 'refInterne', 'refFournisseur', 'consommable', 'perissable', 'horsStock', 'archive', 'photo']
+      const pareil = ['denomination', 'categorie', 'refInterne', 'refFournisseur', 'consommable', 'perissable', 'horsStock', 'archive', 'photo', 'secretariat']
         .every((k) => String(d[k]) === String(origine[k]));
       if (pareil) brouillonsBase.delete(f.id); else brouillonsBase.set(f.id, d);
       majCompte();
@@ -4047,7 +4056,18 @@ const Inventaires = (() => {
         type: 'checkbox', checked: f[champ] === true, 'aria-label': `${libelle} : ${f0.denomination}`,
         surchange: (e) => { modifier(f0, champ, e.target.checked); },
       }));
-      const cat = el('select', { 'aria-label': `Catégorie : ${f0.denomination}`, surchange: (e) => { modifier(f0, 'categorie', e.target.value); } },
+      // Case « Secrétariat » : cochable seulement pour la catégorie « Documents ».
+      const inputSecr = el('input', {
+        type: 'checkbox', checked: f.secretariat === true, 'aria-label': `Secrétariat : ${f0.denomination}`,
+        surchange: (e) => { modifier(f0, 'secretariat', e.target.checked); },
+      });
+      inputSecr.disabled = f.categorie !== 'Documents';
+      const cat = el('select', { 'aria-label': `Catégorie : ${f0.denomination}`, surchange: (e) => {
+        modifier(f0, 'categorie', e.target.value);
+        const docs = e.target.value === 'Documents';
+        if (!docs && valeur(f0).secretariat) { modifier(f0, 'secretariat', false); inputSecr.checked = false; }
+        inputSecr.disabled = !docs;
+      } },
         el('option', { value: '', texte: '—' }), ...CATEGORIES.map((c) => el('option', { value: c, texte: c })));
       cat.value = f.categorie;
       // Miniature de la photo (rafraîchie quand on en ajoute une) : la toucher l'ouvre en grand,
@@ -4105,6 +4125,7 @@ const Inventaires = (() => {
         caseC('consommable', 'Consommable'),
         caseC('perissable', 'Périssable'),
         caseC('horsStock', 'Hors stock'),
+        el('td', { classe: 'inv-tb-base-case' }, inputSecr),
         el('td', { classe: 'inv-tb-base-outils' },
           el('label', { for: idPrendre, classe: 'cfg-mini inv-tb-base-icone', title: 'Prendre une photo', 'aria-label': `Prendre une photo : ${f0.denomination}` }, iconeAppareil()),
           el('input', { type: 'file', id: idPrendre, accept: 'image/*', capture: 'environment', classe: 'invisible', surchange: recevoir }),
@@ -4113,7 +4134,7 @@ const Inventaires = (() => {
           archive));
       corps.append(tr);
     });
-    const tete = el('thead', {}, el('tr', {}, ...['Photo', 'Dénomination', 'Catégorie', 'Réf. interne', 'Réf. fournisseur', 'Consommable', 'Périssable', 'Hors stock', '']
+    const tete = el('thead', {}, el('tr', {}, ...['Photo', 'Dénomination', 'Catégorie', 'Réf. interne', 'Réf. fournisseur', 'Consommable', 'Périssable', 'Hors stock', 'Secrétariat', '']
       .map((t) => el('th', { scope: 'col', texte: t }))));
     const bloc = el('div', { classe: 'inv-tb-base' }, barre(), compteur, erreur,
       el('div', { classe: 'inv-tb-base-defile' }, el('table', { classe: 'inv-tb-base-table' }, tete, corps)), barre());
@@ -4371,7 +4392,8 @@ const Inventaires = (() => {
       if (!admin) {
         return el('div', { classe: 'inv-fiche-detail' },
           el('dl', { classe: 'reponses' }, ...[['Catégorie', f.categorie], ['Réf. interne', f.refInterne], ['Réf. fournisseur', f.refFournisseur],
-            ['Dotation hors stock', f.horsStock ? 'Oui' : 'Non'], ['Consommable', f.consommable ? 'Oui' : 'Non'], ['Périssable', f.perissable ? 'Oui' : 'Non']]
+            ['Dotation hors stock', f.horsStock ? 'Oui' : 'Non'], ['Consommable', f.consommable ? 'Oui' : 'Non'], ['Périssable', f.perissable ? 'Oui' : 'Non'],
+            ...(f.categorie === 'Documents' ? [['Secrétariat', f.secretariat ? 'Oui' : 'Non']] : [])]
             .map(([k, v]) => el('div', { classe: 'reponse' }, el('dt', { texte: k }), el('dd', { texte: v || '—' })))), lieux);
       }
       const archiver = f.archive
@@ -4427,7 +4449,7 @@ const Inventaires = (() => {
     const caseSansPhoto = idChamp();
     remplir();
     if (baseOuverte === 'nouvelle') {
-      nouvelle.append(formulaireFiche({ id: nouvelId(), denomination: baseFiltre.texte.trim(), categorie: baseFiltre.categorie, horsStock: false, refInterne: '', refFournisseur: '', consommable: true, perissable: baseFiltre.categorie === 'Médicament', archive: false }, {
+      nouvelle.append(formulaireFiche({ id: nouvelId(), denomination: baseFiltre.texte.trim(), categorie: baseFiltre.categorie, horsStock: false, refInterne: '', refFournisseur: '', consommable: true, perissable: baseFiltre.categorie === 'Médicament', archive: false, secretariat: false }, {
         titre: 'Nouvel article',
         surEnregistrer: (f) => { enregistrerFiche(f); baseOuverte = ''; avis = `« ${f.denomination} » ajouté à la base.`; rendre({ garderPosition: true }); },
         surAnnuler: () => { baseOuverte = ''; rendre({ garderPosition: true }); },
