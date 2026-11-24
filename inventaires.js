@@ -4995,7 +4995,7 @@ const Inventaires = (() => {
     const creer = el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Créer', surclick: () => {
       const n = Math.min(30, Math.max(1, Math.round(Number(nb.value)) || 1));
       const depart = exemplaires.length;
-      const crees = creerExemplaires(m, Array.from({ length: n }, (x, k) => `${m.nom} n°${depart + k + 1}`));
+      const crees = creerExemplaires(m, Array.from({ length: n }, (x, k) => (m.categorie === 'immobile' ? m.nom : `${m.nom} n°${depart + k + 1}`)));
       avis = `${pluriel(crees.length, 'exemplaire')} créé${crees.length > 1 ? 's' : ''} : renommez-les si besoin, puis imprimez leurs étiquettes QR.`;
       rendre({ garderPosition: true });
     } });
