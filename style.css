@@ -3236,7 +3236,10 @@ details.inv-dev[open] > summary { margin-bottom: 0.5rem; }
 .inv-tuiles .inv-repere:not(:has(img)):not(:empty) + .inv-carte-texte { margin-top: 2.4rem; }
 .inv-tuiles .inv-repere:not(:has(img)):empty.vierge { display: none; }
 /* Gestion : poignée en haut à droite de la tuile, options dépliées sur toute la largeur */
-.inv-tuiles.inv-liste-triable > li.inv-ligne-triable { display: block; position: relative; }
+.inv-tuiles.inv-liste-triable > li.inv-ligne-triable { display: flex; flex-direction: column; position: relative; }
+/* La carte occupe la place restante ; la ligne « Placer / Options » reste dans le flux, sous la tuile (plus de chevauchement). */
+.inv-tuiles.inv-liste-triable > li.inv-ligne-triable > .inv-carte { height: auto; flex: 1 1 auto; }
+.inv-tuiles.inv-liste-triable > li.inv-ligne-triable > .inv-options-ligne { flex: 0 0 auto; }
 .inv-tuiles > li.inv-ligne-triable > .inv-poignee {
   position: absolute; top: 0.25rem; right: 0.25rem; z-index: 2; width: 2.2rem; min-height: 2.2rem;
   background: rgb(255 255 255 / 0.9); box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
