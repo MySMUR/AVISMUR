@@ -4651,6 +4651,13 @@ const Inventaires = (() => {
   }
   const sansNoms = (articles) => (articles || []).map(({ refNom, ...a }) => a);
   const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', vignette: 'vignette', nomVue: 'nom de la vue', vues: 'vues', scellable: 'scellable', categorie: 'catégorie', etiquette: 'format d\'étiquette', clAmbulancier: 'check-list ambulancier', clElements: 'éléments vérifiés par l\'ambulancier', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
+  /**
+   * Check-list ambulancier (véhicule relié, éléments vérifiés) : réglage propre à chaque véhicule (F21, F22…).
+   * Tant que le type n'en définit pas (ni maintenant, ni à la dernière répercussion), ce que l'exemplaire a réglé
+   * lui appartient : ce n'est ni une personnalisation à signaler ni un conflit à proposer d'écraser.
+   */
+  const clPropreAuVehicule = (k, courant, base) => (k === 'clAmbulancier' ? !courant.clAmbulancier && !base.clAmbulancier
+    : k === 'clElements' ? !(courant.clElements || []).length && !(base.clElements || []).length : false);
   /** Champs d'un contenant d'exemplaire modifiés localement depuis la dernière répercussion. */
   function personnalisations(e) {
     if (!e.base) return [];
@@ -4658,6 +4665,7 @@ const Inventaires = (() => {
     const racine = !contenant(e.parent) || !contenant(e.parent).source;
     return Object.keys(CHAMPS_LIBELLES).filter((k) => !(racine && (k === 'nom' || k === 'ordre')))
       .filter((k) => !(k === 'etiquette' && !v.etiquette))
+      .filter((k) => !clPropreAuVehicule(k, contenant(e.source) || {}, e.base))
       // Base antérieure à la répercussion des vignettes : sans vignette propre, le contenant suit le type.
       .filter((k) => !(k === 'vignette' && e.base.vignette === undefined && !v.vignette))
       .filter((k) => !egal(k === 'articles' ? v.articles : v[k], k === 'articles' ? sansNoms(e.base.articles) : e.base[k]));
@@ -4807,6 +4815,7 @@ const Inventaires = (() => {
     const avant = canonique(e);
     ['nom', 'ordre', 'photo', 'vignette', 'nomVue', 'scellable', 'categorie', 'etiquette', 'clAmbulancier', 'clElements', 'emplacement'].forEach((k) => {
       if (racine && (k === 'nom' || k === 'ordre')) return; // le sac garde son nom et sa place
+      if (!forcer && clPropreAuVehicule(k, m, base)) return; // check-list ambulancier : réglage du véhicule, conservé tel quel
       // Étiquette : un exemplaire sans format propre suit toujours le modèle (formats effacés par un ancien serveur).
       // Vignette : avant sa répercussion, la base n'en gardait pas ; sans vignette propre, l'exemplaire suit le type.
       // Emplacement (modèles acceptés, condition) : la base ne le gardait pas avant ; l'exemplaire suit alors le type.
