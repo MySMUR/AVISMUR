@@ -20,7 +20,7 @@
  * file d'attente commune (app.js) et s'affichent tout de suite, marquées « en attente d'envoi ».
  * Backend : Materiel.gs (onglets Materiel et MaterielInterventions).
  *
- * Onglet « Matériel de prêt » (vue materiel-prets) : pool de 10 références qui accueillent chacune un matériel
+ * Onglet « Matériel de prêt » (vue materiel-prets) : pool de 12 références qui accueillent chacune un matériel
  * prêté au SMUR ; backend MaterielPrets.gs.
  */
 const Materiel = (() => {
@@ -2387,10 +2387,10 @@ const Materiel = (() => {
   }
 
   // ---------- Matériel de prêt ----------
-  // Pool de 10 références (« PRÊT 01 » à « PRÊT 10 ») : chacune accueille un matériel prêté au SMUR,
+  // Pool de 12 références (« PRÊT 01 » à « PRÊT 12 ») : chacune accueille un matériel prêté au SMUR,
   // avec ou sans n° biomed. Matériel rendu : la référence redevient disponible, le prêt passe dans l'historique.
   // Backend : MaterielPrets.gs (onglet MaterielPrets). Hors ligne : même file d'attente que le reste du matériel.
-  const REFERENCES_DEFAUT = Array.from({ length: 10 }, (_, i) => `PRÊT ${String(i + 1).padStart(2, '0')}`);
+  const REFERENCES_DEFAUT = Array.from({ length: 12 }, (_, i) => `PRÊT ${String(i + 1).padStart(2, '0')}`);
   const RAISONS_PRET = ['Remplacement d\'un appareil en réparation', 'Remplacement pendant une révision', 'Essai / démonstration', 'Besoin ponctuel (renfort)', 'Prêt intra-hospitalier', 'Matériel à l\'essai'];
   let rechercheHistorique = '';
   const references = () => (donnees && donnees.referencesPret) || REFERENCES_DEFAUT;
