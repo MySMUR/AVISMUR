@@ -597,6 +597,7 @@ const Materiel = (() => {
   const deplies = new Set();
   const ICONES = {
     acquitter: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/><path d="M16 19l2 2 4-4"/></svg>',
+    statut: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg>',
     note: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"/><path d="M12 7v4M12 13.5v.5"/></svg>',
     deplier: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   };
@@ -624,6 +625,7 @@ const Materiel = (() => {
     const actions = el('span', { classe: 'mat-actions' },
       admin && actif && f.maintenance !== false && (f.plans || []).length
         ? icone('acquitter', `Acquitter une maintenance : ${nomAppareil(f)}`, () => { const p = planPrioritaire(f); ouvrirIntervention([f.id], { type: 'Révision', plan: p && p.id }); }) : null,
+      admin && actif && !f.provisoire ? icone('statut', `Changer le statut : ${nomAppareil(f)}`, () => ouvrirStatut(f)) : null,
       admin && actif ? icone('note', `Évènement ou note (casse, panne, problème) : ${nomAppareil(f)}`, () => ouvrirSignalement(f)) : null,
       icone('deplier', ouvert ? 'Replier le détail' : 'Déplier le détail', () => {
         if (deplies.has(f.id)) deplies.delete(f.id); else deplies.add(f.id);
@@ -759,6 +761,7 @@ const Materiel = (() => {
       el('div', { classe: 'mat-rapide-actions' },
         action('⚠️', 'Signaler un problème', 'Panne, casse, dysfonctionnement…', () => { d.close(); rapideSignaler(f); }, !actif),
         action('🔧', 'Envoyer en maintenance', enMaintenance ? 'Déjà en maintenance' : 'Biomédical, fournisseur…', () => { d.close(); rapideMaintenance(f); }, !actif || enMaintenance),
+        estAdmin() && !f.provisoire ? action('🔁', 'Changer le statut', 'En service, maintenance, panne…', () => { d.close(); ouvrirStatut(f); }, !actif) : null,
         action('🕘', 'Consulter l\'historique', 'Main courante de l\'appareil', () => { d.close(); rapideHistorique(f.id); }),
         pretEnCours ? action('🤝', 'Détail du prêt', `${pretEnCours.reference} · ${pretEnCours.proprietaire || 'propriétaire non renseigné'}`, () => { d.close(); ouvrirDetailPret(pretEnCours); }) : null,
         f.provisoire ? null : action('📋', 'Fiche complète', 'Caractéristiques, maintenance, main courante', () => { d.close(); ouvrirFiche(f.id); })));
@@ -882,7 +885,38 @@ const Materiel = (() => {
     return img;
   }
 
-  /** Main courante en lecture seule (la fiche complète reste accessible). */
+  /** Bouton « Retirer » d'une entrée de main courante : administrateurs du matériel seulement, jamais pour la création / modification de fiche. */
+  function boutonRetirerEntree(i, dialogue, rouvrir) {
+    if (!estAdmin() || JOURNAL.includes(i.type)) return null;
+    return el('button', {
+      type: 'button', classe: 'cfg-mini danger', texte: 'Retirer',
+      surclick: () => {
+        if (!window.confirm('Retirer cette entrée de l\'historique ?')) return;
+        if (i.attente) outils.retirerDeFile(i.idFile);
+        else enfiler('supprimerIntervention', { intervention: i.id });
+        dialogue().close();
+        rouvrir();
+      },
+    });
+  }
+
+  /** Changement rapide de statut : un appui sur le nouveau statut, consigné automatiquement dans la main courante (« Statut : X → Y »). */
+  function ouvrirStatut(f) {
+    const choix = ['En service', 'En maintenance', 'En panne'];
+    if (f.pret) choix.push('Prêté');
+    let d;
+    const contenu = el('div', { classe: 'mat-statut' },
+      el('p', { classe: 'aide-question', texte: `Statut actuel : ${f.statut || 'En service'}. Le changement est consigné dans la main courante.` }),
+      el('div', { classe: 'mat-boutons', role: 'group', 'aria-label': 'Nouveau statut' }, choix.map((s) => el('button', {
+        type: 'button', classe: `cfg-bouton mat-pastille statut-${normaliser(s).replace(/\W+/g, '-')}`, texte: s,
+        disabled: s === (f.statut || 'En service'),
+        surclick: () => { d.close(); enfiler('enregistrerMateriel', { fiches: [{ ...f, statut: s }] }); },
+      }))),
+      el('p', { classe: 'aide-question', texte: 'Pour retirer l\'appareil des listings, utilisez « Réformer » dans sa fiche.' }));
+    d = fenetre(`Statut · ${nomAppareil(f)}`, contenu);
+  }
+
+  /** Main courante de l'appareil depuis l'action rapide (« Retirer » réservé aux administrateurs du matériel). */
   function rapideHistorique(id) {
     const { fiches: toutes, interventions } = etat();
     const f = toutes.find((x) => x.id === id);
@@ -898,7 +932,8 @@ const Materiel = (() => {
           i.attente ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null),
         i.description ? el('p', { classe: 'mat-histo-texte', texte: i.description, style: 'white-space: pre-line' }) : null,
         i.photo || i.photoDonnees ? photoEntree(i) : null,
-        i.saisiPar ? el('p', { classe: 'mat-histo-note', texte: `Saisi par ${i.saisiPar}` }) : null)))
+        i.saisiPar ? el('p', { classe: 'mat-histo-note', texte: `Saisi par ${i.saisiPar}` }) : null,
+        boutonRetirerEntree(i, () => d, () => rapideHistorique(f.id)))))
         : el('p', { classe: 'mat-vide', texte: 'Aucune entrée pour le moment.' }),
       el('div', { classe: 'mat-boutons' }, boutonRetourRapide({ close: () => d.close() }, f),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Fiche complète', surclick: () => { d.close(); ouvrirFiche(f.id); } })));
@@ -994,16 +1029,7 @@ const Materiel = (() => {
         i.description ? el('p', { classe: 'mat-histo-texte', texte: i.description, style: 'white-space: pre-line' }) : null,
         i.prochaineRevision ? el('p', { classe: 'mat-histo-note', texte: `Prochaine échéance${i.maintenance ? ` (${i.maintenance})` : ''} fixée au ${dateFr(i.prochaineRevision)}` }) : null,
         el('p', { classe: 'mat-histo-note', texte: i.saisiPar ? `Saisi par ${i.saisiPar}` : '' }),
-        estAdmin() && !JOURNAL.includes(i.type) ? el('button', {
-          type: 'button', classe: 'cfg-mini danger', texte: 'Retirer',
-          surclick: () => {
-            if (!window.confirm('Retirer cette entrée de l\'historique ?')) return;
-            if (i.attente) outils.retirerDeFile(i.idFile);
-            else enfiler('supprimerIntervention', { intervention: i.id });
-            d.close();
-            ouvrirFiche(f.id);
-          },
-        }) : null))) : el('p', { classe: 'mat-vide', texte: 'Aucune entrée pour le moment.' }));
+        boutonRetirerEntree(i, () => d, () => ouvrirFiche(f.id))))) : el('p', { classe: 'mat-vide', texte: 'Aucune entrée pour le moment.' }));
     d = fenetre(nomAppareil(f), contenu, { large: true });
   }
 
