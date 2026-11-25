@@ -1084,7 +1084,8 @@ const Materiel = (() => {
 
   // ---------- Maintenance hebdomadaire des respirateurs Monnal ----------
   const LIBELLE_MONNAL = 'Maintenance hebdomadaire Monnal';
-  const estMonnal = (f) => /MONNAL/.test(normaliser(`${f.type || ''} ${f.modele || ''}`)) && /MONNAL/.test(normaliser(f.modele || ''));
+  const motifMonnal = /monnal|t60/;
+  const estMonnal = (f) => motifMonnal.test(normaliser(f.modele || ''));
   /** Le 1er lundi du mois : valve expiratoire et capteur de débit en plus. */
   const premierLundi = (iso) => { const [a, m, j] = iso.split('-').map(Number); return new Date(a, m - 1, j).getDay() === 1 && j <= 7; };
   /** Le 1er lundi d'avril : filtre d'admission d'air en plus. */
@@ -1118,7 +1119,7 @@ const Materiel = (() => {
     });
     zone.replaceChildren(ongletsMateriel(), entete, aide,
       lignes.length ? el('ul', { classe: 'mat-lignes' }, lignes)
-        : el('p', { classe: 'mat-vide', texte: 'Aucun respirateur Monnal en service dans la base du matériel (type « Respirateur », modèle « Monnal … »).' }));
+        : el('p', { classe: 'mat-vide', texte: 'Aucun respirateur Monnal en service dans la base du matériel (modèle contenant « Monnal » ou « T60 », par exemple « Monnal T60 »).' }));
   }
 
   /** Plusieurs respirateurs à contrôler (rappel de l'accueil) : un bouton par appareil. */
@@ -2699,7 +2700,7 @@ const Materiel = (() => {
     actions: ACTIONS,
     rappelsMaintenance,
     /** Formulaire de maintenance d'un rappel de l'accueil : tous les agents sauf les étudiants. */
-    ouvrirControle(groupe) { if (peutControler()) (/monnal/i.test(groupe.appareil) ? ouvrirChoixMonnal(groupe.ids) : ouvrirControle(groupe)); },
+    ouvrirControle(groupe) { if (peutControler()) (motifMonnal.test(normaliser(groupe.appareil)) ? ouvrirChoixMonnal(groupe.ids) : ouvrirControle(groupe)); },
     peutControler,
     /**
      * Appareil correspondant à un code lu (puce NFC, QR code, code-barres de l'étiquette biomed) :
