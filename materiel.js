@@ -881,13 +881,30 @@ const Materiel = (() => {
 
   // ---------- Action rapide : appareil scanné (n° biomed, n° de série, puce) ----------
   /** Fenêtre ouverte depuis la barre du bas : identité, statut, dernier contenant, et trois actions pour tous. */
+  /** Maintenance attendue sur un appareil scanné : contrôle hebdomadaire d'un Monnal, ou maintenance à cycle fixe échue. */
+  function maintenanceAttendue(f, interventions) {
+    if (estMonnal(f)) {
+      const derniere = interventions.filter((i) => i.materiel === f.id && String(i.description || '').startsWith(LIBELLE_MONNAL))
+        .map((i) => i.date).sort().pop();
+      const faite = derniere && derniere >= lundiDeLaSemaine();
+      return { titre: LIBELLE_MONNAL, detail: faite ? `Déjà faite le ${dateFr(derniere)}` : 'À faire cette semaine', urgente: !faite, lancer: () => ouvrirMonnal(f) };
+    }
+    const plan = (f.plans || []).find((p) => p.cycle && p.prochaine && p.prochaine <= aujourdhui());
+    if (!plan || f.statut !== 'En service' || f.maintenance === false) return null;
+    return {
+      titre: `Maintenance : ${plan.libelle}`, detail: plan.prochaine < aujourdhui() ? `En retard, prévue le ${dateFr(plan.prochaine)}` : 'À faire aujourd\'hui', urgente: true,
+      lancer: () => ouvrirControle({ ids: [f.id], planId: plan.id, libelle: plan.libelle, appareil: [f.type, f.modele].filter(Boolean).join(' ') }),
+    };
+  }
+
   function ouvrirRapide(id) {
-    const { fiches: toutes, attente } = etat();
+    const { fiches: toutes, attente, interventions } = etat();
     const f = toutes.find((x) => x.id === id);
     if (!f) return;
     const actif = !f.archive && f.statut !== 'Réformé';
     const enMaintenance = f.statut === 'En maintenance';
     const pretEnCours = f.pret ? etatPrets().ouverts.get(f.pret) || null : null;
+    const attendue = actif && !f.provisoire && peutControler() ? maintenanceAttendue(f, interventions) : null;
     const action = (icone, titre, detail, faire, desactive) => el('button', { type: 'button', classe: 'mat-rapide-action', disabled: desactive, surclick: faire },
       el('span', { classe: 'mat-rapide-icone', 'aria-hidden': 'true', texte: icone }),
       el('span', {}, el('strong', { texte: titre }), detail ? el('small', { texte: detail }) : null));
@@ -902,6 +919,7 @@ const Materiel = (() => {
       el('p', { classe: 'mat-rapide-lieu' }, el('span', { 'aria-hidden': 'true', texte: '📍 ' }),
         el('strong', { texte: 'Dernier contenant : ' }), texteEmplacement(f) || 'jamais pointé dans un inventaire'),
       el('div', { classe: 'mat-rapide-actions' },
+        attendue ? action('✅', attendue.titre, attendue.detail, () => { d.close(); attendue.lancer(); }) : null,
         action('⚠️', 'Signaler un problème', 'Panne, casse, dysfonctionnement…', () => { d.close(); rapideSignaler(f); }, !actif),
         action('🔧', 'Envoyer en maintenance', enMaintenance ? 'Déjà en maintenance' : 'Biomédical, fournisseur…', () => { d.close(); rapideMaintenance(f); }, !actif || enMaintenance),
         estAdmin() && !f.provisoire ? action('🔁', 'Changer le statut', 'En service, maintenance, panne…', () => { d.close(); ouvrirStatut(f); }, !actif) : null,
