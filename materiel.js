@@ -474,6 +474,18 @@ const Materiel = (() => {
         if (p.prochaine < g.depuis) g.depuis = p.prochaine;
       });
     });
+    // Contrôle semestriel des appareils à glycémie : rappel dès l'échéance (ou s'il n'a jamais été fait), jusqu'à ce qu'il soit enregistré.
+    const { interventions } = etat();
+    fiches().filter((f) => enService(f) && !f.provisoire && f.statut === 'En service' && estGlycemie(f)).forEach((f) => {
+      const e = echeanceGlycemie(f, interventions);
+      if (!e.retard) return;
+      const cle = `glycemie|${f.type}|${f.modele}`;
+      if (!groupes.has(cle)) groupes.set(cle, { cle, glycemie: true, planId: '', libelle: LIBELLE_GLYCEMIE, cycle: `tous les ${MOIS_GLYCEMIE} mois`, appareil: [f.type, f.modele].filter(Boolean).join(' ') || 'Appareil glycémie', ids: [], numeros: [], depuis: e.prochaine || jour });
+      const g = groupes.get(cle);
+      g.ids.push(f.id);
+      g.numeros.push(f.numInterne || '?');
+      if ((e.prochaine || jour) < g.depuis) g.depuis = e.prochaine || jour;
+    });
     return [...groupes.values()].map((g) => ({ ...g, retard: g.depuis < jour }))
       .sort((a, b) => a.depuis.localeCompare(b.depuis) || a.appareil.localeCompare(b.appareil, 'fr'));
   }
@@ -1147,13 +1159,14 @@ const Materiel = (() => {
   }
 
   /** Plusieurs respirateurs à contrôler (rappel de l'accueil) : un bouton par appareil. */
-  function ouvrirChoixMonnal(ids) {
+  function ouvrirChoixMonnal(ids, glycemie = false) {
     const liste = fiches().filter((f) => ids.includes(f.id));
-    if (liste.length === 1) { ouvrirMonnal(liste[0]); return; }
+    const ouvrir = glycemie ? ouvrirGlycemie : ouvrirMonnal;
+    if (liste.length === 1) { ouvrir(liste[0]); return; }
     let d;
-    d = fenetre(LIBELLE_MONNAL, el('div', { classe: 'mat-form' },
-      el('p', { classe: 'aide-question', texte: 'Choisissez le respirateur contrôlé.' }),
-      el('div', { classe: 'mat-boutons' }, liste.map((f) => el('button', { type: 'button', classe: 'cfg-bouton', texte: nomAppareil(f), surclick: () => { d.close(); ouvrirMonnal(f); } })))));
+    d = fenetre(glycemie ? LIBELLE_GLYCEMIE : LIBELLE_MONNAL, el('div', { classe: 'mat-form' },
+      el('p', { classe: 'aide-question', texte: glycemie ? 'Choisissez l\'appareil contrôlé.' : 'Choisissez le respirateur contrôlé.' }),
+      el('div', { classe: 'mat-boutons' }, liste.map((f) => el('button', { type: 'button', classe: 'cfg-bouton', texte: nomAppareil(f), surclick: () => { d.close(); ouvrir(f); } })))));
   }
 
   /** Formulaire de la maintenance hebdomadaire d'un Monnal (champs du 1er lundi du mois / d'avril selon la date). */
@@ -2845,7 +2858,12 @@ const Materiel = (() => {
     actions: ACTIONS,
     rappelsMaintenance,
     /** Formulaire de maintenance d'un rappel de l'accueil : tous les agents sauf les étudiants. */
-    ouvrirControle(groupe) { if (peutControler()) (motifMonnal.test(normaliser(groupe.appareil)) ? ouvrirChoixMonnal(groupe.ids) : ouvrirControle(groupe)); },
+    ouvrirControle(groupe) {
+      if (!peutControler()) return;
+      if (groupe.glycemie) ouvrirChoixMonnal(groupe.ids, true);
+      else if (motifMonnal.test(normaliser(groupe.appareil))) ouvrirChoixMonnal(groupe.ids);
+      else ouvrirControle(groupe);
+    },
     peutControler,
     /**
      * Appareil correspondant à un code lu (puce NFC, QR code, code-barres de l'étiquette biomed) :
