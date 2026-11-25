@@ -1009,7 +1009,7 @@ Profil.initialiser({
   desactiverNotifications: () => Infos.desactiverNotifications(),
 });
 Materiel.demarrer({
-  appeler, mettreEnFile, retirerDeFile, lireFile: () => fileAttente.lire(), estAdmin: () => aDroit('MATERIEL'),
+  appeler, mettreEnFile, retirerDeFile, lireFile: () => fileAttente.lire(), estAdmin: () => aDroit('MATERIEL'), peutControler: () => !estEtudiant(),
   // Matériel de prêt : tous ceux qui ont accès au suivi du matériel, sauf les étudiants (comme MaterielPrets.gs).
   peutPreter: () => aDroit('MATERIEL') || (accesInventaires() && !estEtudiant()),
   ouvrirVue: (vue) => ouvrirVue(vue),

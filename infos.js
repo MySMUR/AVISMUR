@@ -382,9 +382,9 @@ const Infos = (() => {
       el('h2', { classe: 'mur-titre-section' }, 'Maintenances à faire', el('span', { classe: 'mur-compte', texte: String(nb) })),
       el('div', { classe: 'mur-grille' }, rappels.map((r) => el('div', { classe: `mur-rappel${r.retard ? ' en-retard' : ''}` },
         el('p', { classe: 'mur-rappel-titre' }, el('strong', { texte: r.libelle }), ` · ${r.appareil}`),
-        el('p', { classe: 'mur-rappel-appareils', texte: `${r.ids.length > 1 ? 'N° ' : 'N° '}${r.numeros.join(', ')}` }),
+        el('p', { classe: 'mur-rappel-appareils', texte: `N° ${r.numeros.join(', ')}` }),
         el('p', { classe: 'mur-rappel-echeance', texte: `${r.retard ? `En retard : prévue le ${dateFr(r.depuis)}` : 'À faire aujourd\'hui'} (${r.cycle})` }),
-        Materiel.peutAcquitter() ? el('button', { type: 'button', classe: 'info-bouton', texte: 'Maintenance faite', surclick: () => Materiel.acquitterMaintenance(r.ids, r.planId) }) : null))));
+        Materiel.peutControler() ? el('button', { type: 'button', classe: 'info-bouton', texte: 'Faire la maintenance', surclick: () => Materiel.ouvrirControle(r) }) : null))));
   }
 
   function section(titre, infos, aujourdhui, classe = '') {

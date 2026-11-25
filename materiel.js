@@ -25,7 +25,7 @@
  */
 const Materiel = (() => {
   const CLE_CACHE = 'avismur_materiel';
-  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret', 'signalerMateriel', 'avancerSuiviBiomed', 'enregistrerEtiquettePret'];
+  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret', 'signalerMateriel', 'avancerSuiviBiomed', 'enregistrerEtiquettePret', 'realiserMaintenance'];
   const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle'];
   const STATUTS_DEFAUT = ['En service', 'En maintenance', 'En panne', 'Prêté', 'Réformé'];
   const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Envoi en maintenance', 'Note', 'Réforme', 'Remise en service', 'Autre'];
@@ -282,6 +282,23 @@ const Materiel = (() => {
           }
           attente.add(id);
         });
+      } else if (e.action === 'realiserMaintenance') {
+        // Maintenance à cycle fixe faite par un agent : main courante, prochaine échéance et statut affichés tout de suite, même hors ligne.
+        (d.controles || []).forEach((c, n) => {
+          const f0 = parId.get(c.materiel);
+          interventions.push({
+            id: `${e.id}-${n}`, materiel: c.materiel, date: d.date, type: 'Contrôle', maintenance: d.libelle || '', prochaineRevision: c.prochaine,
+            description: texteControle(c, d.observation), saisiPar: e.agent || '', attente: true, idFile: e.id,
+          });
+          if (!f0) return;
+          const f = resoudre(f0, modeles);
+          const plans = f.plans.map((p) => ({ ...p }));
+          const plan = plans.find((p) => p.id === c.plan);
+          if (plan && c.prochaine) plan.prochaine = c.prochaine;
+          f0.plans = plans;
+          if (!c.conforme && (f0.statut === 'En service' || f0.statut === 'Prêté')) f0.statut = 'En panne';
+          attente.add(c.materiel);
+        });
       } else if (e.action === 'signalerMateriel') {
         // Action rapide (scan) : entrée de main courante et statut affichés tout de suite, même hors ligne.
         const f = parId.get(d.materiel);
@@ -335,6 +352,8 @@ const Materiel = (() => {
     const fichesResolues = [...parId.values()].map((f) => resoudre(f, modeles));
     return { fiches: fichesResolues, modeles: [...modeles.values()], interventions, attente, modelesAttente };
   }
+  /** Texte de main courante d'un contrôle de maintenance (mêmes mots que le serveur). */
+  const texteControle = (c, commune) => [c.conforme ? 'Maintenance faite : conforme.' : 'Maintenance faite : anomalie constatée.', c.conforme ? '' : c.observation, commune || ''].filter(Boolean).join('\n');
   /** Appareil rattaché à une fiche type : type, modèle, périodicité (et photo par défaut) viennent de la fiche type. */
   function resoudre(f, modeles) {
     const m = f.modeleType && modeles.get(f.modeleType);
@@ -438,8 +457,15 @@ const Materiel = (() => {
   function rappelsMaintenance() {
     const jour = aujourdhui();
     const groupes = new Map();
+    // Seuls les appareils présents dans les locaux sont concernés : « En service » (ni en panne, ni en maintenance, ni prêté)
+    // et, si le cycle indique des lieux, dernier contenant pointé dans l'un d'eux.
+    const present = (f, c) => {
+      if (f.statut !== 'En service') return false;
+      const lieux = String(c.lieux || '').split(',').map((l) => normaliser(l.trim())).filter(Boolean);
+      return !lieux.length || lieux.some((l) => normaliser(f.emplacement || '').includes(l));
+    };
     fiches().filter((f) => enService(f) && !f.provisoire && f.maintenance !== false).forEach((f) => {
-      (f.plans || []).filter((p) => p.cycle && p.prochaine && p.prochaine <= jour).forEach((p) => {
+      (f.plans || []).filter((p) => p.cycle && p.prochaine && p.prochaine <= jour && present(f, p.cycle)).forEach((p) => {
         const cle = `${p.id}|${f.type}|${f.modele}`;
         if (!groupes.has(cle)) groupes.set(cle, { cle, planId: p.id, libelle: p.libelle, cycle: texteCycle(p.cycle), appareil: [f.type, f.modele].filter(Boolean).join(' ') || 'Matériel', ids: [], numeros: [], depuis: p.prochaine });
         const g = groupes.get(cle);
@@ -468,6 +494,7 @@ const Materiel = (() => {
     const agent = '';
     const ok = outils.mettreEnFile({ action, donnees: charge, agent });
     rendre();
+    document.dispatchEvent(new CustomEvent('avismur-materiel'));
     return ok;
   }
 
@@ -540,7 +567,11 @@ const Materiel = (() => {
         : c.mode === 'rang'
           ? [choix('Rang', Object.entries(RANGS), c.rang, (v) => { c.rang = Number(v); }), choix('Jour', jours, c.jour, (v) => { c.jour = Number(v); }), el('span', { texte: 'tous les' }), nombre('Nombre de mois', c.pas, 1, 12, (v) => { c.pas = v; }), el('span', { texte: 'mois' })]
           : [el('span', { texte: 'le' }), nombre('Jour du mois', c.jour, 1, 31, (v) => { c.jour = v; }), el('span', { texte: 'tous les' }), nombre('Nombre de mois', c.pas, 1, 12, (v) => { c.pas = v; }), el('span', { texte: 'mois' })];
-      return el('div', { classe: 'mat-periode mat-cycle' }, unite, type, ...detail,
+      const lieux = el('input', {
+        type: 'text', maxlength: '120', valeur: c.lieux || '', placeholder: 'Lieux concernés, ex. Réserve, Pharmacie (vide : tous les appareils en service)', 'aria-label': 'Lieux concernés',
+        classe: 'mat-cycle-lieux', disabled: off, surchange: (ev) => { c.lieux = ev.target.value.trim(); },
+      });
+      return el('div', { classe: 'mat-periode mat-cycle' }, unite, type, ...detail, lieux,
         el('small', { classe: 'mat-cycle-texte', texte: `${texteCycle(c).replace(/^./, (x) => x.toUpperCase())}. L'échéance se recale sur le calendrier à chaque maintenance faite${c.mode !== 'jourMois' && c.pas > 1 ? ' ; la prochaine échéance saisie donne la phase du cycle' : ''}.` }));
     }
     function rendrePlans() {
@@ -994,6 +1025,59 @@ const Materiel = (() => {
     if (i.photoDonnees) img.src = i.photoDonnees;
     else imageDe({ photo: i.photo }).then((src) => { if (src) img.src = src; else img.remove(); });
     return img;
+  }
+
+  const peutControler = () => Boolean(outils.peutControler ? outils.peutControler() : estAdmin());
+
+  /** Formulaire d'une maintenance à cycle fixe : un choix « conforme / anomalie » par appareil concerné. */
+  function ouvrirControle(g) {
+    const toutes = fiches();
+    const lignes = g.ids.map((id) => toutes.find((x) => x.id === id)).filter(Boolean).map((f) => {
+      let conforme = true;
+      const obs = el('input', { type: 'text', maxlength: '300', placeholder: 'Anomalie constatée (obligatoire)', 'aria-label': `Anomalie : ${nomAppareil(f)}` });
+      const zoneObs = el('div', {}, obs);
+      zoneObs.hidden = true;
+      const choix = (valeur, libelle) => {
+        const r = el('input', { type: 'radio', surchange: () => { conforme = valeur; zoneObs.hidden = valeur; if (!valeur) obs.focus(); } });
+        r.name = `ctl-${f.id}`; r.checked = valeur;
+        return el('label', { classe: 'mat-case-libelle' }, r, el('span', { texte: libelle }));
+      };
+      return { f, obs, etat: () => conforme,
+        element: el('li', { classe: 'mat-controle' }, el('strong', { texte: nomAppareil(f) }), el('div', { classe: 'mat-boutons' }, choix(true, 'Conforme'), choix(false, 'Anomalie')), zoneObs) };
+    });
+    if (!lignes.length) return;
+    const date = el('input', { type: 'date', valeur: aujourdhui(), max: aujourdhui(), required: true });
+    const commune = el('textarea', { rows: '2', maxlength: '300', placeholder: 'Observation générale (facultatif)' });
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
+    let d;
+    const contenu = el('form', {
+      classe: 'mat-form', novalidate: true,
+      sursubmit: (ev) => {
+        ev.preventDefault();
+        if (!date.value) { message.textContent = 'La date est obligatoire.'; return; }
+        const controles = [];
+        for (const l of lignes) {
+          const conforme = l.etat();
+          const o = l.obs.value.trim();
+          if (!conforme && !o) { message.textContent = `Précisez l'anomalie : ${nomAppareil(l.f)}.`; l.obs.focus(); return; }
+          const plan = (l.f.plans || []).find((p) => p.id === g.planId);
+          if (!plan) continue;
+          // Maintenance faite : prochaine date du cycle après aujourd'hui (ou après l'échéance si faite en avance) ; les occurrences manquées ne s'additionnent pas.
+          const ref = plan.prochaine && plan.prochaine > date.value ? plan.prochaine : date.value;
+          controles.push({ materiel: l.f.id, plan: g.planId, conforme, observation: conforme ? '' : o, prochaine: ajouterPeriode(ref, plan, plan.prochaine) });
+        }
+        if (!controles.length) { d.close(); return; }
+        d.close();
+        enfiler('realiserMaintenance', { date: date.value, libelle: g.libelle, observation: commune.value.trim(), controles });
+      },
+    },
+    el('p', { classe: 'aide-question', texte: `${g.libelle} · ${g.appareil}. Cochez chaque appareil contrôlé ; une anomalie passe l'appareil « En panne » et le signale dans sa main courante.` }),
+    champ('Date de la maintenance', date),
+    el('ul', { classe: 'mat-controles' }, lignes.map((l) => l.element)),
+    champ('Observation', commune),
+    message,
+    el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Enregistrer la maintenance' })));
+    d = fenetre(`Maintenance · ${g.libelle}`, contenu);
   }
 
   /** Bouton « Retirer » d'une entrée de main courante : administrateurs du matériel seulement, jamais pour la création / modification de fiche. */
@@ -2454,9 +2538,9 @@ const Materiel = (() => {
     },
     actions: ACTIONS,
     rappelsMaintenance,
-    /** Acquittement d'un rappel de l'accueil (administrateurs du matériel) : fenêtre de main courante pré-remplie. */
-    acquitterMaintenance(ids, planId) { if (estAdmin()) ouvrirIntervention(ids, { type: 'Révision', plan: planId }); },
-    peutAcquitter: () => estAdmin(),
+    /** Formulaire de maintenance d'un rappel de l'accueil : tous les agents sauf les étudiants. */
+    ouvrirControle(groupe) { if (peutControler()) ouvrirControle(groupe); },
+    peutControler,
     /**
      * Appareil correspondant à un code lu (puce NFC, QR code, code-barres de l'étiquette biomed) :
      * lien « #mat=… », n° biomed ou n° de série (exact, ou « Biomed … » / « S/N … » dans le texte d'une puce).
