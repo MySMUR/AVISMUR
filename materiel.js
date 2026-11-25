@@ -26,7 +26,7 @@
 const Materiel = (() => {
   const CLE_CACHE = 'avismur_materiel';
   const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret', 'signalerMateriel', 'avancerSuiviBiomed', 'enregistrerEtiquettePret', 'realiserMaintenance'];
-  const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle'];
+  const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle', 'Appareil glycémie'];
   const STATUTS_DEFAUT = ['En service', 'En maintenance', 'En panne', 'Prêté', 'Réformé'];
   const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Envoi en maintenance', 'Note', 'Réforme', 'Remise en service', 'Autre'];
   // Entrées écrites automatiquement dans la main courante : jamais retirées.
@@ -633,6 +633,7 @@ const Materiel = (() => {
     if (!zone) return;
     if (onglet === 'prets') { rendrePrets(); return; }
     if (onglet === 'monnal') { rendreMonnal(); return; }
+    if (onglet === 'glycemie') { rendreGlycemie(); return; }
     const { fiches: toutes, attente } = etat();
     const actives = toutes.filter(enService);
     const nbRetard = actives.filter((f) => etatRevision(f).retard).length;
@@ -888,6 +889,11 @@ const Materiel = (() => {
         .map((i) => i.date).sort().pop();
       const faite = derniere && derniere >= lundiDeLaSemaine();
       return { titre: LIBELLE_MONNAL, detail: faite ? `Déjà faite le ${dateFr(derniere)}` : 'À faire cette semaine', urgente: !faite, lancer: () => ouvrirMonnal(f) };
+    }
+    if (estGlycemie(f)) {
+      const echeance = echeanceGlycemie(f, interventions);
+      if (!echeance.retard && !echeance.bientot) return null;
+      return { titre: LIBELLE_GLYCEMIE, detail: echeance.texte, urgente: echeance.retard, lancer: () => ouvrirGlycemie(f) };
     }
     const plan = (f.plans || []).find((p) => p.cycle && p.prochaine && p.prochaine <= aujourdhui());
     if (!plan || f.statut !== 'En service' || f.maintenance === false) return null;
@@ -1238,8 +1244,8 @@ const Materiel = (() => {
   }
 
   /** Anomalie à la maintenance : proposer de signaler le problème et d'envoyer le respirateur au biomédical. */
-  function proposerSignalementMonnal(f, resume, remarque) {
-    const description = `Anomalie constatée lors de la maintenance hebdomadaire : ${resume}.${remarque ? `\n${remarque}` : ''}`;
+  function proposerSignalementMonnal(f, resume, remarque, contexte = 'de la maintenance hebdomadaire', objet = 'le respirateur') {
+    const description = `Anomalie constatée lors ${contexte} : ${resume}.${remarque ? `\n${remarque}` : ''}`;
     const dejaMaintenance = f.statut === 'En maintenance';
     const lancer = (aAmener) => {
       enfiler('signalerMateriel', {
@@ -1251,11 +1257,131 @@ const Materiel = (() => {
     let d;
     d = fenetre('Anomalie constatée', el('div', { classe: 'mat-form' },
       el('p', { texte: `${nomAppareil(f)} : ${resume}.` }),
-      el('p', { texte: 'La maintenance est enregistrée. Souhaitez-vous signaler le problème et envoyer le respirateur au service biomédical ?' }),
+      el('p', { texte: `Le contrôle est enregistré. Souhaitez-vous signaler le problème et envoyer ${objet} au service biomédical ?` }),
       el('div', { classe: 'mat-boutons' },
         dejaMaintenance ? null : el('button', { type: 'button', classe: 'principal', texte: 'Signaler et envoyer au biomédical', surclick: () => { d.close(); lancer(true); } }),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Signaler seulement', surclick: () => { d.close(); lancer(false); } }),
         el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Plus tard', surclick: () => d.close() }))));
+  }
+
+  // ---------- Contrôle semestriel des appareils à glycémie ----------
+  const LIBELLE_GLYCEMIE = 'Contrôle appareil glycémie';
+  const MOIS_GLYCEMIE = 6;
+  const estGlycemie = (f) => /glyc/.test(normaliser(`${f.type || ''} ${f.modele || ''}`));
+  const controlesGlycemie = (interventions, id) => interventions
+    .filter((i) => (id === undefined || i.materiel === id) && String(i.description || '').startsWith(LIBELLE_GLYCEMIE))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.saisiLe || '').localeCompare(String(a.saisiLe || '')));
+  /** Échéance du prochain contrôle : 6 mois après le dernier (« bientôt » dans les 30 jours). */
+  function echeanceGlycemie(f, interventions) {
+    const derniere = controlesGlycemie(interventions, f.id)[0];
+    if (!derniere) return { derniere: null, prochaine: '', retard: true, bientot: false, texte: 'Aucun contrôle enregistré' };
+    const prochaine = ajouterMois(derniere.date, MOIS_GLYCEMIE);
+    const jours = Math.round((new Date(prochaine) - new Date(aujourdhui())) / 86400000);
+    const retard = jours < 0;
+    const bientot = !retard && jours <= 30;
+    return { derniere, prochaine, retard, bientot, texte: retard ? `En retard, prévu le ${dateFr(prochaine)}` : `Prochain contrôle le ${dateFr(prochaine)}` };
+  }
+  /** Lots et péremptions du dernier contrôle (tous appareils confondus), pour ne pas les ressaisir à chaque fois. */
+  function dernierLotsGlycemie() {
+    const { interventions } = etat();
+    const texte = (controlesGlycemie(interventions)[0] || {}).description || '';
+    const lire = (titre) => {
+      const m = texte.match(new RegExp(`${titre} : lot (.*?) · péremption (\\d{2})/(\\d{2})/(\\d{4})`));
+      return m ? { lot: m[1] === '—' ? '' : m[1], peremption: `${m[4]}-${m[3]}-${m[2]}` } : { lot: '', peremption: '' };
+    };
+    const unite = (texte.match(/Contrôle bas : [\d,.]+ (\S+)/) || [])[1] || 'g/L';
+    return { bandelettes: lire('Bandelettes'), solutions: lire('Solutions test'), unite };
+  }
+
+  function rendreGlycemie() {
+    const { fiches: toutes, interventions, attente } = etat();
+    const appareils = toutes.filter((f) => enService(f) && !f.provisoire && estGlycemie(f))
+      .sort((a, b) => String(a.numInterne).localeCompare(String(b.numInterne), 'fr', { numeric: true }));
+    const entete = el('div', { classe: 'mat-entete' }, el('h1', { texte: LIBELLE_GLYCEMIE }));
+    const aide = el('p', { classe: 'aide-question', texte: 'Contrôle tous les 6 mois, par le personnel du SMUR : lot et péremption des bandelettes et des solutions test, valeurs des contrôles bas et haut. Les lots et péremptions du dernier contrôle sont repris automatiquement.' });
+    const lignes = appareils.map((f) => {
+      const e = echeanceGlycemie(f, interventions);
+      const anomalie = e.derniere && /Résultat : anomalie/.test(e.derniere.description || '');
+      return el('li', { classe: 'mat-ligne' },
+        el('span', { classe: 'mat-corps' },
+          el('span', { classe: 'mat-nom' }, el('strong', { texte: nomAppareil(f) })),
+          el('span', { classe: 'mat-derniere', texte: e.derniere ? `Dernier contrôle le ${dateFr(e.derniere.date)}${anomalie ? ' (anomalie)' : ''} · ${e.texte}` : e.texte }),
+          f.emplacement ? el('span', { classe: 'mat-emplacement', texte: `📍 ${texteEmplacement(f)}` }) : null),
+        el('span', { classe: 'mat-etats' },
+          f.statut !== 'En service' ? el('span', { classe: `mat-pastille statut-${normaliser(f.statut).replace(/\W+/g, '-')}`, texte: f.statut }) : null,
+          el('span', { classe: `mat-pastille rev-${e.retard ? 'retard' : e.bientot ? 'bientot' : 'ok'}`, texte: e.retard ? 'À contrôler' : e.bientot ? 'Bientôt' : 'À jour' }),
+          attente.has(f.id) ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null),
+        peutControler() ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Faire le contrôle', surclick: () => ouvrirGlycemie(f) }) : null);
+    });
+    zone.replaceChildren(ongletsMateriel(), entete, aide,
+      lignes.length ? el('ul', { classe: 'mat-lignes' }, lignes)
+        : el('p', { classe: 'mat-vide', texte: 'Aucun appareil à glycémie en service dans la base du matériel : créez-en un dans l\'onglet Appareils avec le type « Appareil glycémie ».' }));
+  }
+
+  /** Formulaire du contrôle d'un appareil à glycémie ; lots et péremptions repris du dernier contrôle. */
+  function ouvrirGlycemie(f) {
+    const prec = dernierLotsGlycemie();
+    const lot = (valeur, libelle) => el('input', { type: 'text', maxlength: '40', autocomplete: 'off', valeur, 'aria-label': libelle });
+    const peremption = (valeur, libelle) => el('input', { type: 'date', valeur, 'aria-label': libelle });
+    const date = el('input', { type: 'date', valeur: aujourdhui(), max: aujourdhui(), required: true });
+    const lotBandelettes = lot(prec.bandelettes.lot, 'N° de lot des bandelettes');
+    const perBandelettes = peremption(prec.bandelettes.peremption, 'Péremption des bandelettes');
+    const lotSolutions = lot(prec.solutions.lot, 'N° de lot des solutions test');
+    const perSolutions = peremption(prec.solutions.peremption, 'Péremption des solutions test');
+    const unite = el('select', { 'aria-label': 'Unité' }, ['g/L', 'mmol/L', 'mg/dL'].map((u) => el('option', { value: u, texte: u, selected: u === prec.unite })));
+    const mesure = (libelle) => el('input', { type: 'number', inputmode: 'decimal', step: 'any', min: '0', required: true, 'aria-label': libelle });
+    const bas = mesure('Valeur du contrôle bas');
+    const haut = mesure('Valeur du contrôle haut');
+    const anomalie = el('input', { type: 'checkbox' });
+    const commentaires = el('textarea', { rows: '3', maxlength: '300', placeholder: 'Commentaires (facultatif ; obligatoire si anomalie)' });
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
+    const jolie = (iso) => (iso ? dateFr(iso) : '—');
+    let d;
+    const contenu = el('form', {
+      classe: 'mat-form', novalidate: true,
+      sursubmit: (ev) => {
+        ev.preventDefault();
+        if (!date.value) { message.textContent = 'La date est obligatoire.'; return; }
+        const manque = [
+          [lotBandelettes, 'le n° de lot des bandelettes'], [perBandelettes, 'la péremption des bandelettes'],
+          [lotSolutions, 'le n° de lot des solutions test'], [perSolutions, 'la péremption des solutions test'],
+        ].find(([champSaisie]) => !String(champSaisie.value).trim());
+        if (manque) { message.textContent = `Renseignez ${manque[1]}.`; manque[0].focus(); return; }
+        const valeurs = [bas, haut].map((c) => parseFloat(String(c.value).replace(',', '.')));
+        const mauvaise = valeurs.findIndex((v) => !Number.isFinite(v) || v < 0);
+        if (mauvaise >= 0) { message.textContent = `Saisissez la valeur du contrôle ${mauvaise === 0 ? 'bas' : 'haut'}.`; [bas, haut][mauvaise].focus(); return; }
+        const remarque = commentaires.value.trim();
+        if (anomalie.checked && !remarque) { message.textContent = 'Décrivez l\'anomalie dans les commentaires.'; commentaires.focus(); return; }
+        const resume = anomalie.checked ? 'valeurs de contrôle hors tolérance ou autre anomalie' : '';
+        const details = [
+          LIBELLE_GLYCEMIE, `Résultat : ${anomalie.checked ? 'anomalie' : 'conforme'}`,
+          `Bandelettes : lot ${lotBandelettes.value.trim()} · péremption ${jolie(perBandelettes.value)}`,
+          `Solutions test : lot ${lotSolutions.value.trim()} · péremption ${jolie(perSolutions.value)}`,
+          `Contrôle bas : ${nombreFr(valeurs[0])} ${unite.value}`, `Contrôle haut : ${nombreFr(valeurs[1])} ${unite.value}`,
+          remarque ? `Commentaires : ${remarque}` : '',
+        ].filter(Boolean).join('\n');
+        d.close();
+        enfiler('realiserMaintenance', {
+          date: date.value, libelle: LIBELLE_GLYCEMIE, observation: '',
+          controles: [{ materiel: f.id, plan: '', conforme: !anomalie.checked, observation: resume, prochaine: '', details, signaler: false }],
+        });
+        if (anomalie.checked) proposerSignalementMonnal(f, resume, remarque, 'du contrôle de l\'appareil à glycémie', 'l\'appareil');
+      },
+    },
+    el('p', { classe: 'aide-question', texte: nomAppareil(f) }),
+    champ('Date du contrôle', date),
+    el('div', { classe: 'mat-cadre-groupe' }, el('p', { classe: 'mat-libelle', texte: 'Bandelettes' }),
+      champ('N° de lot', lotBandelettes), champ('Date de péremption', perBandelettes)),
+    el('div', { classe: 'mat-cadre-groupe' }, el('p', { classe: 'mat-libelle', texte: 'Solutions test' }),
+      champ('N° de lot', lotSolutions), champ('Date de péremption', perSolutions)),
+    prec.bandelettes.lot || prec.solutions.lot ? el('p', { classe: 'aide-question', texte: 'Lots et péremptions repris du dernier contrôle : modifiez-les seulement s\'ils ont changé.' }) : null,
+    el('div', { classe: 'mat-cadre-groupe' }, el('p', { classe: 'mat-libelle', texte: 'Valeurs mesurées' }),
+      champ('Unité', unite), champ('Contrôle bas', bas), champ('Contrôle haut', haut)),
+    el('label', { classe: 'mat-case-libelle' }, anomalie, el('span', { texte: 'Anomalie constatée (valeurs hors tolérance, appareil défectueux…)' })),
+    champ('Commentaires', commentaires),
+    message,
+    el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Enregistrer le contrôle' })));
+    d = fenetre(`${LIBELLE_GLYCEMIE} · ${nomAppareil(f)}`, contenu, { large: true });
   }
 
   /** Bouton « Retirer » d'une entrée de main courante : administrateurs du matériel seulement, jamais pour la création / modification de fiche. */
@@ -2284,14 +2410,15 @@ const Materiel = (() => {
       type: 'button', role: 'tab', classe: `mat-onglet${onglet === cle ? ' actif' : ''}`, 'aria-selected': String(onglet === cle), texte,
       surclick: () => {
         if (onglet === cle) return;
-        if (outils.ouvrirVue) outils.ouvrirVue({ appareils: 'suivi-materiel', prets: 'materiel-prets', monnal: 'materiel-monnal' }[cle]);
+        if (outils.ouvrirVue) outils.ouvrirVue({ appareils: 'suivi-materiel', prets: 'materiel-prets', monnal: 'materiel-monnal', glycemie: 'materiel-glycemie' }[cle]);
         else { onglet = cle; rendre(); }
       },
     });
     return el('div', { classe: 'mat-onglets', role: 'tablist', 'aria-label': 'Gestion du matériel' },
       bouton('appareils', 'Appareils'),
       bouton('prets', `Matériel de prêt (${ouverts.size}/${references().length})`),
-      bouton('monnal', 'Maintenance Monnal'));
+      bouton('monnal', 'Maintenance Monnal'),
+      bouton('glycemie', 'Contrôle glycémie'));
   }
 
   function etatRetour(p) {
@@ -2701,7 +2828,7 @@ const Materiel = (() => {
     /** Vue « suivi-materiel » (onglet Appareils) ou « materiel-prets » (onglet Matériel de prêt). */
     afficher(choix) {
       if (!zone) return;
-      if (choix === 'prets' || choix === 'appareils' || choix === 'monnal') onglet = choix;
+      if (choix === 'prets' || choix === 'appareils' || choix === 'monnal' || choix === 'glycemie') onglet = choix;
       zone.hidden = false;
       rendre();
       charger();
