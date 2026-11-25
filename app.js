@@ -750,7 +750,7 @@ const vueDuLien = () => (location.hash === '#inv-base' ? 'base-articles' : (gest
 function vueAutorisee(vue) {
   if (VUES_VEHICULES[vue] && !accesVehicules()) return 'aujourdhui';
   if (vue === 'base-articles' && !accesInventaires() && !aDroit('ARTICLES')) return 'aujourdhui';
-  if ((vue === 'suivi-materiel' || vue === 'materiel-prets') && !accesInventaires() && !aDroit('MATERIEL')) return 'aujourdhui';
+  if ((vue === 'suivi-materiel' || vue === 'materiel-prets' || vue === 'materiel-monnal') && !accesInventaires() && !aDroit('MATERIEL')) return 'aujourdhui';
   if (vue === 'inventaires' && !accesInventaires()) return 'aujourdhui';
   if (vue === 'fiche-regulation' && !accesVehicules()) return 'aujourdhui';
   if (DROITS_VUES[vue] && !aUnDroit(...DROITS_VUES[vue])) return 'accueil';
@@ -796,9 +796,9 @@ function ouvrirVue(demandee) {
     if (/^#inv\b/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
   }
 
-  // Suivi du matériel : onglets « Appareils » (suivi-materiel) et « Matériel de prêt » (materiel-prets).
-  const materiel = vue === 'suivi-materiel' || vue === 'materiel-prets';
-  if (materiel) Materiel.afficher(vue === 'materiel-prets' ? 'prets' : 'appareils');
+  // Suivi du matériel : onglets « Appareils » (suivi-materiel), « Matériel de prêt » (materiel-prets) et « Maintenance Monnal » (materiel-monnal).
+  const materiel = vue === 'suivi-materiel' || vue === 'materiel-prets' || vue === 'materiel-monnal';
+  if (materiel) Materiel.afficher({ 'materiel-prets': 'prets', 'materiel-monnal': 'monnal' }[vue] || 'appareils');
   else Materiel.masquer();
 
   const config = vue === 'configuration';

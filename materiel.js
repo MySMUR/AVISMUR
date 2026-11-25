@@ -296,7 +296,7 @@ const Materiel = (() => {
           const plan = plans.find((p) => p.id === c.plan);
           if (plan && c.prochaine) plan.prochaine = c.prochaine;
           f0.plans = plans;
-          if (!c.conforme && (f0.statut === 'En service' || f0.statut === 'Prêté')) f0.statut = 'En panne';
+          if (!c.conforme && c.signaler !== false && (f0.statut === 'En service' || f0.statut === 'Prêté')) f0.statut = 'En panne';
           attente.add(c.materiel);
         });
       } else if (e.action === 'signalerMateriel') {
@@ -353,7 +353,7 @@ const Materiel = (() => {
     return { fiches: fichesResolues, modeles: [...modeles.values()], interventions, attente, modelesAttente };
   }
   /** Texte de main courante d'un contrôle de maintenance (mêmes mots que le serveur). */
-  const texteControle = (c, commune) => [c.conforme ? 'Maintenance faite : conforme.' : 'Maintenance faite : anomalie constatée.', c.conforme ? '' : c.observation, commune || ''].filter(Boolean).join('\n');
+  const texteControle = (c, commune) => c.details || [c.conforme ? 'Maintenance faite : conforme.' : 'Maintenance faite : anomalie constatée.', c.conforme ? '' : c.observation, commune || ''].filter(Boolean).join('\n');
   /** Appareil rattaché à une fiche type : type, modèle, périodicité (et photo par défaut) viennent de la fiche type. */
   function resoudre(f, modeles) {
     const m = f.modeleType && modeles.get(f.modeleType);
@@ -632,6 +632,7 @@ const Materiel = (() => {
   function rendre() {
     if (!zone) return;
     if (onglet === 'prets') { rendrePrets(); return; }
+    if (onglet === 'monnal') { rendreMonnal(); return; }
     const { fiches: toutes, attente } = etat();
     const actives = toutes.filter(enService);
     const nbRetard = actives.filter((f) => etatRevision(f).retard).length;
@@ -1078,6 +1079,164 @@ const Materiel = (() => {
     message,
     el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Enregistrer la maintenance' })));
     d = fenetre(`Maintenance · ${g.libelle}`, contenu);
+  }
+
+
+  // ---------- Maintenance hebdomadaire des respirateurs Monnal ----------
+  const LIBELLE_MONNAL = 'Maintenance hebdomadaire Monnal';
+  const estMonnal = (f) => /MONNAL/.test(normaliser(`${f.type || ''} ${f.modele || ''}`)) && /MONNAL/.test(normaliser(f.modele || ''));
+  /** Le 1er lundi du mois : valve expiratoire et capteur de débit en plus. */
+  const premierLundi = (iso) => { const [a, m, j] = iso.split('-').map(Number); return new Date(a, m - 1, j).getDay() === 1 && j <= 7; };
+  /** Le 1er lundi d'avril : filtre d'admission d'air en plus. */
+  const premierLundiAvril = (iso) => premierLundi(iso) && Number(iso.split('-')[1]) === 4;
+  const lundiDeLaSemaine = () => { const [a, m, j] = aujourdhui().split('-').map(Number); const d = new Date(a, m - 1, j); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return isoDe(d); };
+  const nombreFr = (v) => String(v).replace('.', ',');
+
+  function rendreMonnal() {
+    const { fiches: toutes, interventions, attente } = etat();
+    const appareils = toutes.filter((f) => enService(f) && !f.provisoire && estMonnal(f))
+      .sort((a, b) => String(a.numInterne).localeCompare(String(b.numInterne), 'fr', { numeric: true }));
+    const lundi = lundiDeLaSemaine();
+    const entete = el('div', { classe: 'mat-entete' }, el('h1', { texte: 'Maintenance Monnal' }));
+    const aide = el('p', { classe: 'aide-question', texte: 'Contrôle hebdomadaire des respirateurs Monnal : autotest, alarmes, filtre HEPA, FiO². Le 1er lundi du mois, s\'ajoutent la valve expiratoire et le capteur de débit ; le 1er lundi d\'avril, le filtre d\'admission d\'air. Une anomalie propose de signaler le problème et d\'envoyer le respirateur au biomédical.' });
+    const lignes = appareils.map((f) => {
+      const faites = interventions.filter((i) => i.materiel === f.id && String(i.description || '').startsWith(LIBELLE_MONNAL))
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.saisiLe || '').localeCompare(String(a.saisiLe || '')));
+      const derniere = faites[0];
+      const aJour = derniere && derniere.date >= lundi;
+      const anomalie = derniere && /Résultat : anomalie/.test(derniere.description || '');
+      return el('li', { classe: 'mat-ligne' },
+        el('span', { classe: 'mat-corps' },
+          el('span', { classe: 'mat-nom' }, el('strong', { texte: nomAppareil(f) })),
+          el('span', { classe: 'mat-derniere', texte: derniere ? `Dernière maintenance le ${dateFr(derniere.date)}${anomalie ? ' (anomalie)' : ''}` : 'Aucune maintenance enregistrée' }),
+          f.emplacement ? el('span', { classe: 'mat-emplacement', texte: `📍 ${texteEmplacement(f)}` }) : null),
+        el('span', { classe: 'mat-etats' },
+          f.statut !== 'En service' ? el('span', { classe: `mat-pastille statut-${normaliser(f.statut).replace(/\W+/g, '-')}`, texte: f.statut }) : null,
+          el('span', { classe: `mat-pastille rev-${aJour ? 'ok' : 'retard'}`, texte: aJour ? 'Faite cette semaine' : 'À faire' }),
+          attente.has(f.id) ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null),
+        peutControler() ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Faire la maintenance', surclick: () => ouvrirMonnal(f) }) : null);
+    });
+    zone.replaceChildren(ongletsMateriel(), entete, aide,
+      lignes.length ? el('ul', { classe: 'mat-lignes' }, lignes)
+        : el('p', { classe: 'mat-vide', texte: 'Aucun respirateur Monnal en service dans la base du matériel (type « Respirateur », modèle « Monnal … »).' }));
+  }
+
+  /** Plusieurs respirateurs à contrôler (rappel de l'accueil) : un bouton par appareil. */
+  function ouvrirChoixMonnal(ids) {
+    const liste = fiches().filter((f) => ids.includes(f.id));
+    if (liste.length === 1) { ouvrirMonnal(liste[0]); return; }
+    let d;
+    d = fenetre(LIBELLE_MONNAL, el('div', { classe: 'mat-form' },
+      el('p', { classe: 'aide-question', texte: 'Choisissez le respirateur contrôlé.' }),
+      el('div', { classe: 'mat-boutons' }, liste.map((f) => el('button', { type: 'button', classe: 'cfg-bouton', texte: nomAppareil(f), surclick: () => { d.close(); ouvrirMonnal(f); } })))));
+  }
+
+  /** Formulaire de la maintenance hebdomadaire d'un Monnal (champs du 1er lundi du mois / d'avril selon la date). */
+  function ouvrirMonnal(f) {
+    const ouiNon = (libelle, aide) => {
+      let valeur = null;
+      const radio = (v, t) => {
+        const r = el('input', { type: 'radio', surchange: () => { valeur = v; } });
+        r.name = `mn-${libelle}`;
+        return el('label', { classe: 'mat-case-libelle' }, r, el('span', { texte: t }));
+      };
+      return { valeur: () => valeur, libelle, element: el('fieldset', { classe: 'mat-cadre' }, el('legend', { texte: libelle }), aide ? el('small', { texte: aide }) : null, el('div', { classe: 'mat-boutons' }, radio(true, 'Oui'), radio(false, 'Non'))) };
+    };
+    const mesure = (libelle) => {
+      const champSaisie = el('input', { type: 'number', inputmode: 'decimal', step: 'any', min: '0', max: '110', required: true, 'aria-label': libelle });
+      return { libelle, champ: champSaisie, element: champ(libelle, el('div', { classe: 'mat-periode' }, champSaisie, el('span', { texte: '%' }))) };
+    };
+    const date = el('input', { type: 'date', valeur: aujourdhui(), max: aujourdhui(), required: true });
+    const autotest = ouiNon('Autotest réussi');
+    const pression = ouiNon('Alarme pression haute', 'Oui : l\'alarme s\'est déclenchée comme attendu.');
+    const debranchement = ouiNon('Alarme débranchement patient', 'Oui : l\'alarme s\'est déclenchée comme attendu.');
+    const hepa = ouiNon('Changement de filtre HEPA');
+    const fio100 = mesure('FiO² 100 % : valeur mesurée');
+    const fio21 = mesure('FiO² 21 % : valeur mesurée');
+    const valve = ouiNon('Changement de la valve expiratoire');
+    const capteur = ouiNon('Changement du capteur de débit');
+    const admission = ouiNon('Changement du filtre d\'admission d\'air');
+    const blocMois = el('div', { classe: 'mat-cadre-groupe' }, el('p', { classe: 'mat-libelle', texte: '1er lundi du mois' }), valve.element, capteur.element);
+    const blocAvril = el('div', { classe: 'mat-cadre-groupe' }, el('p', { classe: 'mat-libelle', texte: '1er lundi d\'avril' }), admission.element);
+    const autre = el('input', { type: 'checkbox' });
+    const commentaires = el('textarea', { rows: '3', maxlength: '300', placeholder: 'Commentaires (facultatif ; obligatoire si autre anomalie)' });
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
+    const majBlocs = () => {
+      blocMois.hidden = !(date.value && premierLundi(date.value));
+      blocAvril.hidden = !(date.value && premierLundiAvril(date.value));
+    };
+    date.addEventListener('input', majBlocs);
+    majBlocs();
+
+    let d;
+    const contenu = el('form', {
+      classe: 'mat-form', novalidate: true,
+      sursubmit: (ev) => {
+        ev.preventDefault();
+        if (!date.value) { message.textContent = 'La date est obligatoire.'; return; }
+        const aRepondre = [autotest, pression, debranchement, hepa, ...(blocMois.hidden ? [] : [valve, capteur]), ...(blocAvril.hidden ? [] : [admission])];
+        const manquant = aRepondre.find((q) => q.valeur() === null);
+        if (manquant) { message.textContent = `Répondez à : ${manquant.libelle}.`; return; }
+        const valeurs = [fio100, fio21].map((m) => ({ m, v: parseFloat(String(m.champ.value).replace(',', '.')) }));
+        const invalide = valeurs.find(({ v }) => !Number.isFinite(v) || v < 0 || v > 110);
+        if (invalide) { message.textContent = `Saisissez la valeur mesurée : ${invalide.m.libelle.replace(' : valeur mesurée', '')}.`; invalide.m.champ.focus(); return; }
+        const remarque = commentaires.value.trim();
+        const defauts = [
+          !autotest.valeur() && 'autotest non réussi', !pression.valeur() && 'alarme pression haute non déclenchée',
+          !debranchement.valeur() && 'alarme débranchement patient non déclenchée', autre.checked && 'autre anomalie constatée',
+        ].filter(Boolean);
+        if (autre.checked && !remarque) { message.textContent = 'Décrivez l\'autre anomalie dans les commentaires.'; commentaires.focus(); return; }
+        const anomalie = defauts.length > 0;
+        const oui = (q) => (q.valeur() ? 'oui' : 'non');
+        const details = [
+          LIBELLE_MONNAL, `Résultat : ${anomalie ? 'anomalie' : 'conforme'}`,
+          `Autotest réussi : ${oui(autotest)}`, `Alarme pression haute : ${oui(pression)}`, `Alarme débranchement patient : ${oui(debranchement)}`,
+          `Changement de filtre HEPA : ${oui(hepa)}`, `FiO² 100 % : ${nombreFr(valeurs[0].v)} %`, `FiO² 21 % : ${nombreFr(valeurs[1].v)} %`,
+          ...(blocMois.hidden ? [] : [`Changement valve expiratoire : ${oui(valve)}`, `Changement capteur de débit : ${oui(capteur)}`]),
+          ...(blocAvril.hidden ? [] : [`Changement filtre d'admission d'air : ${oui(admission)}`]),
+          remarque ? `Commentaires : ${remarque}` : '',
+        ].filter(Boolean).join('\n');
+        // Cycle fixe de l'appareil (ex. tous les lundis) : la prochaine échéance avance ; sinon la maintenance est seulement consignée.
+        const plan = (f.plans || []).find((p) => p.cycle);
+        const ref = plan && plan.prochaine && plan.prochaine > date.value ? plan.prochaine : date.value;
+        const resume = defauts.join(', ');
+        d.close();
+        enfiler('realiserMaintenance', {
+          date: date.value, libelle: LIBELLE_MONNAL, observation: '',
+          controles: [{ materiel: f.id, plan: plan ? plan.id : '', conforme: !anomalie, observation: resume, prochaine: plan ? ajouterPeriode(ref, plan, plan.prochaine) : '', details, signaler: false }],
+        });
+        if (anomalie) proposerSignalementMonnal(f, resume, remarque);
+      },
+    },
+    el('p', { classe: 'aide-question', texte: nomAppareil(f) }),
+    champ('Date de la maintenance', date),
+    autotest.element, pression.element, debranchement.element, hepa.element, fio100.element, fio21.element, blocMois, blocAvril,
+    el('label', { classe: 'mat-case-libelle' }, autre, el('span', { texte: 'Autre anomalie constatée (FiO² hors tolérance, aspect, bruit…)' })),
+    champ('Commentaires', commentaires),
+    message,
+    el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Enregistrer la maintenance' })));
+    d = fenetre(`${LIBELLE_MONNAL} · ${nomAppareil(f)}`, contenu, { large: true });
+  }
+
+  /** Anomalie à la maintenance : proposer de signaler le problème et d'envoyer le respirateur au biomédical. */
+  function proposerSignalementMonnal(f, resume, remarque) {
+    const description = `Anomalie constatée lors de la maintenance hebdomadaire : ${resume}.${remarque ? `\n${remarque}` : ''}`;
+    const dejaMaintenance = f.statut === 'En maintenance';
+    const lancer = (aAmener) => {
+      enfiler('signalerMateriel', {
+        materiel: f.id, date: aujourdhui(), type: 'Problème', description: aAmener ? `${description}\nÀ amener au service biomédical.` : description,
+        statut: aAmener ? 'En panne' : '', destination: '', photoDonnees: '',
+      });
+      proposerPublicationProbleme(f, 'Dysfonctionnement', description, aAmener, '');
+    };
+    let d;
+    d = fenetre('Anomalie constatée', el('div', { classe: 'mat-form' },
+      el('p', { texte: `${nomAppareil(f)} : ${resume}.` }),
+      el('p', { texte: 'La maintenance est enregistrée. Souhaitez-vous signaler le problème et envoyer le respirateur au service biomédical ?' }),
+      el('div', { classe: 'mat-boutons' },
+        dejaMaintenance ? null : el('button', { type: 'button', classe: 'principal', texte: 'Signaler et envoyer au biomédical', surclick: () => { d.close(); lancer(true); } }),
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Signaler seulement', surclick: () => { d.close(); lancer(false); } }),
+        el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Plus tard', surclick: () => d.close() }))));
   }
 
   /** Bouton « Retirer » d'une entrée de main courante : administrateurs du matériel seulement, jamais pour la création / modification de fiche. */
@@ -2106,13 +2265,14 @@ const Materiel = (() => {
       type: 'button', role: 'tab', classe: `mat-onglet${onglet === cle ? ' actif' : ''}`, 'aria-selected': String(onglet === cle), texte,
       surclick: () => {
         if (onglet === cle) return;
-        if (outils.ouvrirVue) outils.ouvrirVue(cle === 'prets' ? 'materiel-prets' : 'suivi-materiel');
+        if (outils.ouvrirVue) outils.ouvrirVue({ appareils: 'suivi-materiel', prets: 'materiel-prets', monnal: 'materiel-monnal' }[cle]);
         else { onglet = cle; rendre(); }
       },
     });
     return el('div', { classe: 'mat-onglets', role: 'tablist', 'aria-label': 'Gestion du matériel' },
       bouton('appareils', 'Appareils'),
-      bouton('prets', `Matériel de prêt (${ouverts.size}/${references().length})`));
+      bouton('prets', `Matériel de prêt (${ouverts.size}/${references().length})`),
+      bouton('monnal', 'Maintenance Monnal'));
   }
 
   function etatRetour(p) {
@@ -2522,7 +2682,7 @@ const Materiel = (() => {
     /** Vue « suivi-materiel » (onglet Appareils) ou « materiel-prets » (onglet Matériel de prêt). */
     afficher(choix) {
       if (!zone) return;
-      if (choix === 'prets' || choix === 'appareils') onglet = choix;
+      if (choix === 'prets' || choix === 'appareils' || choix === 'monnal') onglet = choix;
       zone.hidden = false;
       rendre();
       charger();
@@ -2539,7 +2699,7 @@ const Materiel = (() => {
     actions: ACTIONS,
     rappelsMaintenance,
     /** Formulaire de maintenance d'un rappel de l'accueil : tous les agents sauf les étudiants. */
-    ouvrirControle(groupe) { if (peutControler()) ouvrirControle(groupe); },
+    ouvrirControle(groupe) { if (peutControler()) (/monnal/i.test(groupe.appareil) ? ouvrirChoixMonnal(groupe.ids) : ouvrirControle(groupe)); },
     peutControler,
     /**
      * Appareil correspondant à un code lu (puce NFC, QR code, code-barres de l'étiquette biomed) :

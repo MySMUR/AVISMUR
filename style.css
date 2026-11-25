@@ -3544,3 +3544,5 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .mat-controles { list-style: none; margin: 0.6rem 0; padding: 0; display: grid; gap: 0.6rem; }
 .mat-controle { padding: 0.6rem 0.7rem; background: #fff; border: 1px solid var(--bordure, #d5deea); border-radius: 10px; }
 .mat-controle input[type="text"] { width: 100%; margin-top: 0.4rem; }
+.mat-cadre-groupe { margin: 0.6rem 0; padding: 0.4rem 0.7rem; border-left: 3px solid var(--bleu); }
+.mat-cadre small { display: block; color: var(--gris); margin-bottom: 0.3rem; }
