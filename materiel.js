@@ -1161,8 +1161,8 @@ const Materiel = (() => {
       };
       return { valeur: () => valeur, libelle, element: el('fieldset', { classe: 'mat-cadre' }, el('legend', { texte: libelle }), aide ? el('small', { texte: aide }) : null, el('div', { classe: 'mat-boutons' }, radio(true, 'Oui'), radio(false, 'Non'))) };
     };
-    const mesure = (libelle) => {
-      const champSaisie = el('input', { type: 'number', inputmode: 'decimal', step: 'any', min: '0', max: '110', required: true, 'aria-label': libelle });
+    const mesure = (libelle, defaut) => {
+      const champSaisie = el('input', { type: 'number', inputmode: 'decimal', step: 'any', min: '0', max: '110', required: true, valeur: String(defaut), 'aria-label': libelle });
       return { libelle, champ: champSaisie, element: champ(libelle, el('div', { classe: 'mat-periode' }, champSaisie, el('span', { texte: '%' }))) };
     };
     const date = el('input', { type: 'date', valeur: aujourdhui(), max: aujourdhui(), required: true });
@@ -1170,8 +1170,8 @@ const Materiel = (() => {
     const pression = ouiNon('Alarme pression haute', 'Oui : l\'alarme s\'est déclenchée comme attendu.');
     const debranchement = ouiNon('Alarme débranchement patient', 'Oui : l\'alarme s\'est déclenchée comme attendu.');
     const hepa = ouiNon('Changement de filtre HEPA');
-    const fio100 = mesure('FiO² 100 % : valeur mesurée');
-    const fio21 = mesure('FiO² 21 % : valeur mesurée');
+    const fio100 = mesure('FiO² 100 % : valeur mesurée', 100);
+    const fio21 = mesure('FiO² 21 % : valeur mesurée', 21);
     const valve = ouiNon('Changement de la valve expiratoire');
     const capteur = ouiNon('Changement du capteur de débit');
     const admission = ouiNon('Changement du filtre d\'admission d\'air');
