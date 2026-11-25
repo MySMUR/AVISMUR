@@ -325,6 +325,7 @@ const Infos = (() => {
       el('button', { type: 'button', classe: 'principal mur-publier', surclick: () => formulaire() },
         el('span', { 'aria-hidden': 'true', texte: '+' }), 'Publier une nouvelle information'),
       blocNotifications(),
+      blocRappelsMaintenance(),
       avis.texte ? el('p', { classe: `message ${avis.classe}`, role: 'status', texte: avis.texte }) : null,
       barreFiltres(visibles, aujourdhui, portee),
     );
@@ -368,6 +369,22 @@ const Infos = (() => {
     const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     const nb = n ? `${n} information${n > 1 ? 's' : ''} en cours` : 'Aucune information en cours';
     return `${date.charAt(0).toUpperCase()}${date.slice(1)} · ${nb}${urgentes ? ` dont ${urgentes} urgente${urgentes > 1 ? 's' : ''}` : ''}`;
+  }
+
+  /** Maintenances à cycle fixe du matériel (suivi du matériel) à faire aujourd'hui ou en retard. Disparaissent une fois acquittées. */
+  function blocRappelsMaintenance() {
+    if (typeof Materiel === 'undefined' || !Materiel.rappelsMaintenance) return null;
+    const rappels = Materiel.rappelsMaintenance();
+    if (!rappels.length) return null;
+    const dateFr = (iso) => iso.split('-').reverse().join('/');
+    const nb = rappels.reduce((n, r) => n + r.ids.length, 0);
+    return el('section', { classe: 'mur-section mur-rappels-maintenance', 'aria-label': 'Maintenances à faire' },
+      el('h2', { classe: 'mur-titre-section' }, 'Maintenances à faire', el('span', { classe: 'mur-compte', texte: String(nb) })),
+      el('div', { classe: 'mur-grille' }, rappels.map((r) => el('div', { classe: `mur-rappel${r.retard ? ' en-retard' : ''}` },
+        el('p', { classe: 'mur-rappel-titre' }, el('strong', { texte: r.libelle }), ` · ${r.appareil}`),
+        el('p', { classe: 'mur-rappel-appareils', texte: `${r.ids.length > 1 ? 'N° ' : 'N° '}${r.numeros.join(', ')}` }),
+        el('p', { classe: 'mur-rappel-echeance', texte: `${r.retard ? `En retard : prévue le ${dateFr(r.depuis)}` : 'À faire aujourd\'hui'} (${r.cycle})` }),
+        Materiel.peutAcquitter() ? el('button', { type: 'button', classe: 'info-bouton', texte: 'Maintenance faite', surclick: () => Materiel.acquitterMaintenance(r.ids, r.planId) }) : null))));
   }
 
   function section(titre, infos, aujourdhui, classe = '') {
@@ -1161,6 +1178,7 @@ const Infos = (() => {
     /** Après connexion : abonnement push silencieux si l'agent l'a déjà accepté sur cet appareil. */
     demarrer() {
       lireCache();
+      document.addEventListener('avismur-materiel', () => { if (estVisible() && !saisieEnCours()) rendre(); });
       abonner();
       signalerCompteur();
     },

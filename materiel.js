@@ -88,19 +88,69 @@ const Materiel = (() => {
   };
   const dateFr = (iso) => (iso ? iso.split('-').reverse().join('/') : '—');
   /** Échéance suivante d'un plan : + N mois ou + N semaines. */
-  function ajouterPeriode(iso, p) {
+  function ajouterPeriode(iso, p, ancre) {
+    if (p.cycle) return prochaineCycle(iso, p.cycle, ancre);
     if (p.unite !== 'semaine') return ajouterMois(iso, p.periodicite);
     const [a, m, j] = iso.split('-').map(Number);
     const d = new Date(a, m - 1, j + 7 * Number(p.periodicite));
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
-  /** « tous les 12 mois », « toutes les semaines », « toutes les 2 semaines ». */
+  // ---------- Cycles fixes (calendrier) ----------
+  // cycle : { mode: 'semaine', jour: 1-7, pas }            → tous les lundis, un lundi sur deux…
+  //         { mode: 'rang', jour: 1-7, rang: 1-5, pas }    → le premier lundi du mois (rang 5 = dernier), tous les `pas` mois
+  //         { mode: 'jourMois', jour: 1-31, pas }          → le 15 de chaque mois (jour 31 : dernier jour des mois courts)
+  const JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+  const RANGS = { 1: 'premier', 2: 'deuxième', 3: 'troisième', 4: 'quatrième', 5: 'dernier' };
+  const isoDe = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const jourSemaine = (d) => ((d.getDay() + 6) % 7) + 1; // 1 = lundi … 7 = dimanche
+  function texteCycle(c) {
+    if (!c) return '';
+    const pas = Number(c.pas) || 1;
+    if (c.mode === 'semaine') return pas === 1 ? `tous les ${JOURS[c.jour - 1]}s` : `le ${JOURS[c.jour - 1]}, toutes les ${pas} semaines`;
+    const mois = pas === 1 ? 'du mois' : `, tous les ${pas} mois`;
+    if (c.mode === 'rang') return `le ${RANGS[c.rang]} ${JOURS[c.jour - 1]} ${mois}`;
+    return pas === 1 ? `le ${c.jour === 1 ? '1er' : c.jour} de chaque mois` : `le ${c.jour === 1 ? '1er' : c.jour}, tous les ${pas} mois`;
+  }
+  /** Date du cycle dans un mois donné. */
+  function occurrenceMois(c, annee, mois) {
+    const dernier = new Date(annee, mois + 1, 0).getDate();
+    if (c.mode === 'jourMois') return new Date(annee, mois, Math.min(c.jour, dernier));
+    const premier = new Date(annee, mois, 1);
+    const decalage = (c.jour - jourSemaine(premier) + 7) % 7;
+    let jour = 1 + decalage + 7 * (c.rang === 5 ? 4 : c.rang - 1);
+    if (c.rang === 5) { while (jour > dernier) jour -= 7; } else if (jour > dernier) return null; // pas de 5ᵉ occurrence ce mois-ci
+    return new Date(annee, mois, jour);
+  }
+  /** Première date du cycle strictement après `apres` ; `ancre` (échéance en cours) fixe la phase des cycles « toutes les N semaines / N mois ». */
+  function prochaineCycle(apres, c, ancre) {
+    if (!c || !apres) return '';
+    const [a, m, j] = apres.split('-').map(Number);
+    const ref = new Date(a, m - 1, j);
+    const pas = Math.max(1, Number(c.pas) || 1);
+    if (c.mode === 'semaine') {
+      let d;
+      const depart = ancre && /^\d{4}-\d{2}-\d{2}$/.test(ancre) ? new Date(...ancre.split('-').map((v, n) => (n === 1 ? Number(v) - 1 : Number(v)))) : null;
+      if (depart && jourSemaine(depart) === c.jour) { d = depart; while (d <= ref) d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7 * pas); }
+      else { d = new Date(a, m - 1, j + 1); while (jourSemaine(d) !== c.jour) d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1); }
+      return isoDe(d);
+    }
+    const base = ancre && /^\d{4}-\d{2}-\d{2}$/.test(ancre) ? ancre.split('-').map(Number) : [a, m, j];
+    for (let k = 0; k < 600; k++) {
+      const t = new Date(base[0], base[1] - 1 + k * pas, 1);
+      const d = occurrenceMois(c, t.getFullYear(), t.getMonth());
+      if (d && d > ref) return isoDe(d);
+    }
+    return '';
+  }
+
+  /** « tous les 12 mois », « toutes les semaines », « toutes les 2 semaines », ou le cycle fixe (« le premier lundi du mois »). */
   function textePeriode(p) {
+    if (p.cycle) return texteCycle(p.cycle);
     if (!p.periodicite) return '';
     if (p.unite === 'semaine') return Number(p.periodicite) === 1 ? 'toutes les semaines' : `toutes les ${p.periodicite} semaines`;
     return `tous les ${p.periodicite} mois`;
   }
-  const courtePeriode = (p) => (p.periodicite ? (p.unite === 'semaine' ? (Number(p.periodicite) === 1 ? 'hebdomadaire' : `${p.periodicite} sem.`) : `${p.periodicite} mois`) : '');
+  const courtePeriode = (p) => (p.cycle ? texteCycle(p.cycle) : p.periodicite ? (p.unite === 'semaine' ? (Number(p.periodicite) === 1 ? 'hebdomadaire' : `${p.periodicite} sem.`) : `${p.periodicite} mois`) : '');
   function ajouterMois(iso, mois) {
     const [a, m, j] = iso.split('-').map(Number);
     const d = new Date(a, m - 1 + Number(mois), j);
@@ -293,7 +343,7 @@ const Materiel = (() => {
     if (m) {
       const dates = new Map(r.plans.map((p) => [p.id, p.prochaine]));
       COMMUNS.forEach((k) => { r[k] = m[k]; });
-      r.plans = plansDe(m).map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, unite: p.unite || 'mois', prochaine: dates.get(p.id) || '' }));
+      r.plans = plansDe(m).map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, unite: p.unite || 'mois', cycle: p.cycle, prochaine: dates.get(p.id) || '' }));
       r.evenements = (m.evenements || []).map((v) => ({ ...v }));
       r.photoModele = m.photo || '';
       r.photoModeleDonnees = m.photoDonnees || '';
@@ -378,6 +428,28 @@ const Materiel = (() => {
       chargementEnCours = false;
     }
     if (zone && !zone.hidden) rendre();
+    document.dispatchEvent(new CustomEvent('avismur-materiel')); // l'accueil relit les rappels de maintenance
+  }
+
+  /**
+   * Rappels de l'accueil : maintenances à cycle fixe (« premier lundi du mois »…) à faire aujourd'hui ou en retard,
+   * regroupées par maintenance et par modèle. Calculé sur la liste gardée sur l'appareil (fonctionne hors ligne).
+   */
+  function rappelsMaintenance() {
+    const jour = aujourdhui();
+    const groupes = new Map();
+    fiches().filter((f) => enService(f) && !f.provisoire && f.maintenance !== false).forEach((f) => {
+      (f.plans || []).filter((p) => p.cycle && p.prochaine && p.prochaine <= jour).forEach((p) => {
+        const cle = `${p.id}|${f.type}|${f.modele}`;
+        if (!groupes.has(cle)) groupes.set(cle, { cle, planId: p.id, libelle: p.libelle, cycle: texteCycle(p.cycle), appareil: [f.type, f.modele].filter(Boolean).join(' ') || 'Matériel', ids: [], numeros: [], depuis: p.prochaine });
+        const g = groupes.get(cle);
+        g.ids.push(f.id);
+        g.numeros.push(f.numInterne || '?');
+        if (p.prochaine < g.depuis) g.depuis = p.prochaine;
+      });
+    });
+    return [...groupes.values()].map((g) => ({ ...g, retard: g.depuis < jour }))
+      .sort((a, b) => a.depuis.localeCompare(b.depuis) || a.appareil.localeCompare(b.appareil, 'fr'));
   }
 
   /** Suppression définitive (administrateurs), après confirmation. Renvoie vrai si confirmée. */
@@ -428,15 +500,54 @@ const Materiel = (() => {
     let bloque = verrouille;
     const liste = el('div', { classe: 'mat-plans' });
     const ajout = el('button', { type: 'button', classe: 'cfg-mini', texte: '+ Ajouter une maintenance', surclick: () => { plans.push({ id: idPlan(), libelle: '', periodicite: 12, unite: 'mois', prochaine: '' }); rendrePlans(); liste.querySelector('.mat-plan:last-child input')?.focus(); } });
+    /** Cycle choisi : l'échéance vide ou passée est proposée d'après le calendrier. */
+    function majCycle(p) {
+      if (avecDate && p.cycle && (!p.prochaine || p.prochaine < aujourdhui())) p.prochaine = prochaineCycle(aujourdhui(), p.cycle, '');
+    }
+    function champsPeriodicite(p) {
+      const off = bloque || !actif;
+      const choix = (libelle, options, courant, appliquer) => el('select', {
+        'aria-label': libelle, disabled: off,
+        surchange: (ev) => { appliquer(ev.target.value); majCycle(p); rendrePlans(); },
+      }, options.map(([v, t]) => el('option', { value: String(v), texte: t, selected: String(v) === String(courant) })));
+      const nombre = (libelle, valeur, min, max, appliquer) => el('input', {
+        type: 'number', min: String(min), max: String(max), valeur, 'aria-label': libelle, disabled: off,
+        surchange: (ev) => { appliquer(Math.min(max, Math.max(min, Number(ev.target.value) || min))); majCycle(p); rendrePlans(); },
+      });
+      const unite = el('select', {
+        'aria-label': 'Unité', disabled: off,
+        surchange: (ev) => {
+          const v = ev.target.value;
+          if (v === 'cycle') { p.cycle = { mode: 'rang', jour: 1, rang: 1, pas: 1 }; p.periodicite = ''; majCycle(p); } else { delete p.cycle; p.unite = v; p.periodicite = p.periodicite || (v === 'semaine' ? 1 : 12); }
+          rendrePlans();
+        },
+      },
+      el('option', { value: 'mois', texte: 'mois', selected: !p.cycle && p.unite !== 'semaine' }),
+      el('option', { value: 'semaine', texte: 'semaine(s)', selected: !p.cycle && p.unite === 'semaine' }),
+      el('option', { value: 'cycle', texte: 'cycle fixe (calendrier)', selected: Boolean(p.cycle) }));
+      if (!p.cycle) {
+        return el('div', { classe: 'mat-periode' },
+          el('input', { type: 'number', min: '1', max: p.unite === 'semaine' ? '260' : '120', valeur: p.periodicite, 'aria-label': 'Nombre', disabled: off, surinput: (ev) => { p.periodicite = Number(ev.target.value) || ''; } }),
+          unite);
+      }
+      const c = p.cycle;
+      const jours = JOURS.map((t, n) => [n + 1, t]);
+      const type = choix('Type de cycle', [['semaine', 'Un jour de la semaine'], ['rang', 'Un jour de semaine du mois'], ['jourMois', 'Un jour fixe du mois']], c.mode, (v) => {
+        c.mode = v; c.jour = 1; c.pas = 1; if (v === 'rang') c.rang = 1; else delete c.rang;
+      });
+      const detail = c.mode === 'semaine'
+        ? [choix('Jour', jours, c.jour, (v) => { c.jour = Number(v); }), el('span', { texte: 'toutes les' }), nombre('Nombre de semaines', c.pas, 1, 52, (v) => { c.pas = v; }), el('span', { texte: 'sem.' })]
+        : c.mode === 'rang'
+          ? [choix('Rang', Object.entries(RANGS), c.rang, (v) => { c.rang = Number(v); }), choix('Jour', jours, c.jour, (v) => { c.jour = Number(v); }), el('span', { texte: 'tous les' }), nombre('Nombre de mois', c.pas, 1, 12, (v) => { c.pas = v; }), el('span', { texte: 'mois' })]
+          : [el('span', { texte: 'le' }), nombre('Jour du mois', c.jour, 1, 31, (v) => { c.jour = v; }), el('span', { texte: 'tous les' }), nombre('Nombre de mois', c.pas, 1, 12, (v) => { c.pas = v; }), el('span', { texte: 'mois' })];
+      return el('div', { classe: 'mat-periode mat-cycle' }, unite, type, ...detail,
+        el('small', { classe: 'mat-cycle-texte', texte: `${texteCycle(c).replace(/^./, (x) => x.toUpperCase())}. L'échéance se recale sur le calendrier à chaque maintenance faite${c.mode !== 'jourMois' && c.pas > 1 ? ' ; la prochaine échéance saisie donne la phase du cycle' : ''}.` }));
+    }
     function rendrePlans() {
       ajout.hidden = bloque || !actif;
       liste.replaceChildren(...(plans.length ? plans.map((p, n) => el('div', { classe: 'mat-plan mat-grille' },
         champ('Maintenance', el('input', { valeur: p.libelle, placeholder: 'ex. Révision annuelle, Contrôle électrique…', disabled: bloque || !actif, surinput: (ev) => { p.libelle = ev.target.value; } })),
-        champ('Périodicité', el('div', { classe: 'mat-periode' },
-          el('input', { type: 'number', min: '1', max: p.unite === 'semaine' ? '260' : '120', valeur: p.periodicite, 'aria-label': 'Nombre', disabled: bloque || !actif, surinput: (ev) => { p.periodicite = Number(ev.target.value) || ''; } }),
-          el('select', { 'aria-label': 'Unité', disabled: bloque || !actif, surchange: (ev) => { p.unite = ev.target.value; ev.target.previousElementSibling.max = p.unite === 'semaine' ? '260' : '120'; } },
-            el('option', { value: 'mois', texte: 'mois', selected: p.unite !== 'semaine' }),
-            el('option', { value: 'semaine', texte: 'semaine(s)', selected: p.unite === 'semaine' })))),
+        champ('Périodicité', champsPeriodicite(p)),
         avecDate ? champ('Prochaine échéance', el('input', { type: 'date', valeur: p.prochaine || '', disabled: !actif, surinput: (ev) => { p.prochaine = ev.target.value; } })) : null,
         bloque || !actif ? null : el('button', { type: 'button', classe: 'cfg-mini danger', texte: 'Retirer', 'aria-label': `Retirer la maintenance ${p.libelle}`, surclick: () => { plans.splice(n, 1); rendrePlans(); } })))
         : [el('p', { classe: 'mat-vide', texte: bloque ? 'Le matériel type ne définit aucune maintenance.' : 'Aucune maintenance : ajoutez-en une (révision, contrôle, changement de pièce…).' })]));
@@ -449,7 +560,7 @@ const Materiel = (() => {
       imposer(plansModele) {
         if (plansModele) {
           const dates = new Map(plans.map((p) => [p.id, p.prochaine]));
-          plans = plansModele.map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, unite: p.unite || 'mois', prochaine: dates.get(p.id) || '' }));
+          plans = plansModele.map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, unite: p.unite || 'mois', cycle: p.cycle, prochaine: dates.get(p.id) || '' }));
           bloque = true;
         } else bloque = false;
         rendrePlans();
@@ -1402,8 +1513,10 @@ const Materiel = (() => {
     function proposerProchaine() {
       const choisis = toutes.filter((x) => cibles.has(x.id));
       const plan = e.plan.value && (choisis[0].plans || []).find((p) => p.id === e.plan.value);
-      if (plan && plan.periodicite && e.date.value) {
-        e.prochaine.value = ajouterPeriode(e.date.value, plan);
+      if (plan && (plan.periodicite || plan.cycle) && e.date.value) {
+        // Cycle fixe : on avance au-delà de l'échéance en cours si la maintenance est faite en avance.
+        const ref = plan.cycle && plan.prochaine && plan.prochaine > e.date.value ? plan.prochaine : e.date.value;
+        e.prochaine.value = ajouterPeriode(ref, plan, plan.prochaine);
         aide.textContent = `Proposée d'après la périodicité de « ${plan.libelle} » (${textePeriode(plan)}). Laissez vide pour ne pas changer l'échéance.`;
       } else {
         if (!plan) e.prochaine.value = '';
@@ -1637,7 +1750,7 @@ const Materiel = (() => {
     const admin = estAdmin();
     const base = m || {
       id: idFiche(), type: (depuis && depuis.type) || filtre.type || TYPES_DEFAUT[0], modele: (depuis && depuis.modele) || '',
-      plans: depuis ? (depuis.plans || []).map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, unite: p.unite || 'mois' })) : [{ id: 'rev', libelle: 'Révision', periodicite: 12 }], photo: (depuis && depuis.photo) || '', photoDonnees: (depuis && depuis.photoDonnees) || '',
+      plans: depuis ? (depuis.plans || []).map((p) => ({ id: p.id, libelle: p.libelle, periodicite: p.periodicite, unite: p.unite || 'mois', cycle: p.cycle })) : [{ id: 'rev', libelle: 'Révision', periodicite: 12 }], photo: (depuis && depuis.photo) || '', photoDonnees: (depuis && depuis.photoDonnees) || '',
       remarques: '', archive: false,
       biomed: depuis ? depuis.biomed !== false : true, maintenance: depuis ? depuis.maintenance !== false : true, logiciel: Boolean(depuis && depuis.logiciel),
     };
@@ -1700,7 +1813,7 @@ const Materiel = (() => {
 
     let d;
     const lire = () => ({
-      ...base, type: e.type.valeur(), modele: e.modele.value.trim(), plans: e.plans.valeur().map(({ id, libelle, periodicite, unite }) => ({ id, libelle, periodicite, unite: unite || 'mois' })),
+      ...base, type: e.type.valeur(), modele: e.modele.value.trim(), plans: e.plans.valeur().map(({ id, libelle, periodicite, unite, cycle }) => ({ id, libelle, periodicite, unite: unite || 'mois', cycle })),
       evenements: e.evenements.valeur(),
       remarques: e.remarques.value.trim(), photo: photo.donnees ? '' : photo.id, photoDonnees: photo.donnees,
       biomed: e.biomed.checked, maintenance: e.maintenance.checked, logiciel: e.logiciel.checked,
@@ -2340,6 +2453,10 @@ const Materiel = (() => {
       charger(); // même masqué : les modifications envoyées doivent rejoindre le cache local
     },
     actions: ACTIONS,
+    rappelsMaintenance,
+    /** Acquittement d'un rappel de l'accueil (administrateurs du matériel) : fenêtre de main courante pré-remplie. */
+    acquitterMaintenance(ids, planId) { if (estAdmin()) ouvrirIntervention(ids, { type: 'Révision', plan: planId }); },
+    peutAcquitter: () => estAdmin(),
     /**
      * Appareil correspondant à un code lu (puce NFC, QR code, code-barres de l'étiquette biomed) :
      * lien « #mat=… », n° biomed ou n° de série (exact, ou « Biomed … » / « S/N … » dans le texte d'une puce).
