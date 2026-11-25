@@ -3540,6 +3540,14 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .mur-rappel p { margin: 0 0 0.3rem; }
 .mur-rappel-echeance { color: var(--gris); font-size: 0.9rem; }
 .mur-rappel.en-retard .mur-rappel-echeance { color: var(--urgente); }
+/* Rappels hebdomadaires des commandes (pharmacie, magasin) */
+.mur-commande-boutons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.4rem; }
+.mur-commande textarea { width: 100%; margin: 0.3rem 0; }
+.mur-commande.traite { border-left-color: #166534; background: #F3FAF5; }
+.mur-commande.traite.incomplete { border-left-color: #B45309; background: #FFF7ED; }
+.mur-commande-resultat { font-weight: 700; }
+.mur-commande-manque { white-space: pre-wrap; overflow-wrap: anywhere; }
+.mur-commande > .info-bouton { margin-top: 0.3rem; }
 .mat-cycle-lieux { flex: 1 0 100%; width: auto !important; }
 .mat-controles { list-style: none; margin: 0.6rem 0; padding: 0; display: grid; gap: 0.6rem; }
 .mat-controle { padding: 0.6rem 0.7rem; background: #fff; border: 1px solid var(--bordure, #d5deea); border-radius: 10px; }

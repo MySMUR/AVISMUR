@@ -17,6 +17,8 @@
  * un rappel programmé l'est le jour de son début, vers 7 h. L'agent active les notifications
  * une fois par appareil (bouton en haut du mur) ; l'appareil se réabonne seul à chaque ouverture.
  *
+ * Rappels des commandes (pharmacie, magasin) : cartes hebdomadaires en tête de l'accueil, « Fait » ou « Complète » / « Incomplète » (RappelsCommandes.gs).
+ *
  * Hors ligne : le dernier mur reçu est gardé sur l'appareil ; une publication ou une fin
  * passe par la file d'attente de app.js (actions « creerInfo », « terminerInfo », « commenterInfo »,
  * « supprimerCommentaire »). Backend : Infos.gs, CommentairesInfos.gs, PiecesJointes.gs et Push.gs (dépôt AVISMUR-backend).
@@ -206,7 +208,7 @@ const Infos = (() => {
     try {
       const rep = await App.appeler('lireInfos');
       if (rep.ok) {
-        mur = { aujourdhui: rep.aujourdhui, metier: rep.metier || '', types: rep.types && rep.types.length ? rep.types : TYPES_DEFAUT, infos: rep.infos || [], recu: new Date().toISOString() };
+        mur = { aujourdhui: rep.aujourdhui, metier: rep.metier || '', types: rep.types && rep.types.length ? rep.types : TYPES_DEFAUT, infos: rep.infos || [], commandes: rep.commandes || mur.commandes || null, recu: new Date().toISOString() };
         try { localStorage.setItem(CLE_MUR, JSON.stringify(mur)); } catch (e) { /* stockage plein */ }
       } else if (/Action inconnue/.test(rep.erreur || '')) {
         avis = { texte: 'Le serveur n\'a pas encore le mur d\'informations : prévenez l\'administrateur (Infos.gs à installer).', classe: 'erreur' };
@@ -325,6 +327,7 @@ const Infos = (() => {
       el('button', { type: 'button', classe: 'principal mur-publier', surclick: () => formulaire() },
         el('span', { 'aria-hidden': 'true', texte: '+' }), 'Publier une nouvelle information'),
       blocNotifications(),
+      blocRappelsCommandes(),
       blocRappelsMaintenance(),
       avis.texte ? el('p', { classe: `message ${avis.classe}`, role: 'status', texte: avis.texte }) : null,
       barreFiltres(visibles, aujourdhui, portee),
@@ -369,6 +372,137 @@ const Infos = (() => {
     const date = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     const nb = n ? `${n} information${n > 1 ? 's' : ''} en cours` : 'Aucune information en cours';
     return `${date.charAt(0).toUpperCase()}${date.slice(1)} · ${nb}${urgentes ? ` dont ${urgentes} urgente${urgentes > 1 ? 's' : ''}` : ''}`;
+  }
+
+  // ---------- Rappels des commandes (pharmacie, magasin) ----------
+  // Rappels hebdomadaires : scanner la commande (IADE, « Fait ») et réceptionner la commande (tout le monde, « Complète » /
+  // « Incomplète » + texte). Collectifs : le premier qui répond clôt le rappel pour tous. La liste des rappels, leurs jours
+  // et leurs destinataires viennent du serveur (RappelsCommandes.gs), avec le mur ; copie ci-dessous pour une première
+  // ouverture hors ligne. Réponses envoyées par la file d'attente (action « repondreRappelCommande »).
+  const COMMANDES_DEFAUT = {
+    retard: 3,
+    reponses: [],
+    definitions: [
+      { id: 'scan-pharmacie', titre: 'Scanner la commande pharmacie', jours: [1, 4], cible: ['iade'], type: 'fait' },
+      { id: 'scan-magasin', titre: 'Scanner la commande magasin', jours: [3], cible: ['iade'], type: 'fait' },
+      { id: 'reception-pharmacie', titre: 'Réception commande pharmacie', jours: [2, 5], cible: null, type: 'reception' },
+      { id: 'reception-magasin', titre: 'Réception commande magasin', jours: [5], cible: null, type: 'reception' },
+    ],
+  };
+  const brouillonsCommandes = new Map(); // « rappel|jour » → { incomplete: bool, texte } (garde la saisie entre deux affichages)
+  const correctionsCommandes = new Set(); // « rappel|jour » dont on corrige la réponse
+
+  const commandes = () => (mur.commandes && Array.isArray(mur.commandes.definitions) ? mur.commandes : COMMANDES_DEFAUT);
+  /** 1 = lundi … 7 = dimanche. */
+  function jourSemaine(iso) {
+    const j = dateLocale(iso).getDay();
+    return j === 0 ? 7 : j;
+  }
+
+  /** Réponses connues du serveur, complétées de celles qui attendent d'être envoyées depuis cet appareil. */
+  function reponsesCommandes() {
+    const reponses = new Map();
+    (commandes().reponses || []).forEach((r) => reponses.set(`${r.rappel}|${r.jour}`, r));
+    App.fileAttente().filter((e) => e.action === 'repondreRappelCommande' && e.donnees).forEach((e) => {
+      const d = e.donnees;
+      reponses.set(`${d.rappel}|${d.jour}`, { rappel: d.rappel, jour: d.jour, reponse: d.reponse, commentaire: d.commentaire || '', par: e.agent || agent(), le: e.date, enAttente: true });
+    });
+    return reponses;
+  }
+
+  /** Rappels à afficher : ceux d'aujourd'hui, ceux des derniers jours restés sans réponse, et les réponses du jour. */
+  function echeancesCommandes() {
+    const c = commandes();
+    const reponses = reponsesCommandes();
+    const echeances = [];
+    c.definitions.filter((d) => !d.cible || d.cible.includes(mur.metier)).forEach((def) => {
+      for (let k = 0; k <= (c.retard || 0); k += 1) {
+        const j = jour(-k);
+        if (!def.jours.includes(jourSemaine(j))) continue;
+        const rep = reponses.get(`${def.id}|${j}`);
+        if (rep && k > 0) continue; // traité les jours précédents : on n'en parle plus
+        echeances.push({ def, jour: j, retard: k > 0, rep });
+      }
+    });
+    return echeances.sort((a, b) => (Boolean(a.rep) - Boolean(b.rep)) || a.jour.localeCompare(b.jour) || a.def.titre.localeCompare(b.def.titre, 'fr'));
+  }
+
+  function repondreCommande(echeance, reponse, commentaire = '') {
+    const cle = `${echeance.def.id}|${echeance.jour}`;
+    const ok = App.mettreEnFile({
+      action: 'repondreRappelCommande',
+      donnees: { rappel: echeance.def.id, jour: echeance.jour, reponse, commentaire, corriger: Boolean(echeance.rep) },
+      agent: agent(),
+    });
+    if (!ok) return; // mémoire pleine : la saisie reste à l'écran
+    brouillonsCommandes.delete(cle);
+    correctionsCommandes.delete(cle);
+    rendre();
+  }
+
+  const LIBELLES_COMMANDE = { fait: 'Fait', complete: 'Commande complète', incomplete: 'Commande incomplète' };
+
+  function carteCommande(echeance) {
+    const { def, rep } = echeance;
+    const cle = `${def.id}|${echeance.jour}`;
+    const enCorrection = correctionsCommandes.has(cle);
+    const traite = Boolean(rep) && !enCorrection;
+    const classe = ['mur-rappel', 'mur-commande', echeance.retard ? 'en-retard' : '', traite ? 'traite' : '', traite && rep.reponse === 'incomplete' ? 'incomplete' : ''].filter(Boolean).join(' ');
+    const echeanceTexte = echeance.retard ? `En retard : prévu ${dateCourte(echeance.jour)}` : 'À faire aujourd\'hui';
+
+    if (traite) {
+      return el('div', { classe, 'data-commande': cle },
+        el('p', { classe: 'mur-rappel-titre' }, el('strong', { texte: def.titre })),
+        el('p', { classe: 'mur-commande-resultat', texte: `${rep.reponse === 'incomplete' ? '⚠ ' : '✓ '}${LIBELLES_COMMANDE[rep.reponse] || 'Fait'}` }),
+        rep.commentaire ? el('p', { classe: 'mur-commande-manque', texte: rep.commentaire }) : null,
+        el('p', { classe: 'mur-rappel-echeance', texte: [rep.par ? `par ${rep.par}` : '', rep.le ? relatif(rep.le) : '', rep.enAttente ? 'en attente d\'envoi' : ''].filter(Boolean).join(' · ') }),
+        el('button', { type: 'button', classe: 'info-bouton', texte: 'Corriger', surclick: () => { correctionsCommandes.add(cle); rendre(); } }));
+    }
+
+    const brouillon = brouillonsCommandes.get(cle) || { incomplete: false, texte: '' };
+    let actions;
+    if (def.type === 'fait') {
+      actions = [el('button', { type: 'button', classe: 'info-bouton info-bouton-suivi', texte: 'Fait', surclick: () => repondreCommande(echeance, 'fait') })];
+    } else if (brouillon.incomplete) {
+      const champ = el('textarea', {
+        rows: '3', maxlength: '500', placeholder: 'Ce qui manque ou ne correspond pas (facultatif)', 'aria-label': `Ce qui manque : ${def.titre}`,
+        surinput: () => { brouillon.texte = champ.value; },
+      });
+      champ.value = brouillon.texte;
+      actions = [
+        champ,
+        el('div', { classe: 'mur-commande-boutons' },
+          el('button', { type: 'button', classe: 'info-bouton danger', texte: 'Envoyer : incomplète', surclick: () => repondreCommande(echeance, 'incomplete', champ.value) }),
+          el('button', { type: 'button', classe: 'info-bouton', texte: 'Retour', surclick: () => { brouillonsCommandes.delete(cle); rendre(); } })),
+      ];
+    } else {
+      actions = [el('div', { classe: 'mur-commande-boutons' },
+        el('button', { type: 'button', classe: 'info-bouton info-bouton-suivi', texte: 'Complète', surclick: () => repondreCommande(echeance, 'complete') }),
+        el('button', { type: 'button', classe: 'info-bouton', texte: 'Incomplète', surclick: () => {
+          brouillonsCommandes.set(cle, { incomplete: true, texte: '' });
+          rendre();
+          const champ = zone.querySelector(`[data-commande="${CSS.escape(cle)}"] textarea`);
+          if (champ) champ.focus();
+        } }))];
+    }
+    if (enCorrection) {
+      actions.push(el('button', { type: 'button', classe: 'lien', texte: 'Annuler la correction', surclick: () => { correctionsCommandes.delete(cle); brouillonsCommandes.delete(cle); rendre(); } }));
+    }
+    return el('div', { classe, 'data-commande': cle },
+      el('p', { classe: 'mur-rappel-titre' }, el('strong', { texte: def.titre })),
+      el('p', { classe: 'mur-rappel-echeance', texte: enCorrection ? 'Corriger la réponse' : echeanceTexte }),
+      ...actions);
+  }
+
+  /** Rappels hebdomadaires des commandes pharmacie et magasin (pas pour les comptes étudiants, qui ne répondent pas). */
+  function blocRappelsCommandes() {
+    if (App.role() === 'etudiant-iade') return null;
+    const echeances = echeancesCommandes();
+    if (!echeances.length) return null;
+    const aTraiter = echeances.filter((e) => !e.rep).length;
+    return el('section', { classe: 'mur-section mur-rappels-commandes', 'aria-label': 'Commandes' },
+      el('h2', { classe: 'mur-titre-section' }, 'Commandes', aTraiter ? el('span', { classe: 'mur-compte', texte: String(aTraiter) }) : null),
+      el('div', { classe: 'mur-grille' }, echeances.map(carteCommande)));
   }
 
   /** Maintenances à cycle fixe du matériel (suivi du matériel) à faire aujourd'hui ou en retard. Disparaissent une fois acquittées. */
@@ -1232,6 +1366,8 @@ const Infos = (() => {
       ouverts.clear();
       deplies.clear();
       brouillons.clear();
+      brouillonsCommandes.clear();
+      correctionsCommandes.clear();
       cachePieces.clear();
       try { localStorage.removeItem(CLE_MUR); localStorage.removeItem(CLE_FILTRE); } catch (e) { /* rien */ }
     },
