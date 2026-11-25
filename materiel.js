@@ -1280,7 +1280,7 @@ const Materiel = (() => {
   // ---------- Contrôle semestriel des appareils à glycémie ----------
   const LIBELLE_GLYCEMIE = 'Contrôle appareil glycémie';
   const MOIS_GLYCEMIE = 6;
-  const estGlycemie = (f) => /glyc/.test(normaliser(`${f.type || ''} ${f.modele || ''}`));
+  const estGlycemie = (f) => /glyc|glucom|glucot|hemogluc|dextro/.test(normaliser(`${f.type || ''} ${f.modele || ''}`));
   const controlesGlycemie = (interventions, id) => interventions
     .filter((i) => (id === undefined || i.materiel === id) && String(i.description || '').startsWith(LIBELLE_GLYCEMIE))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.saisiLe || '').localeCompare(String(a.saisiLe || '')));
@@ -1328,7 +1328,7 @@ const Materiel = (() => {
     });
     zone.replaceChildren(ongletsMateriel(), entete, aide,
       lignes.length ? el('ul', { classe: 'mat-lignes' }, lignes)
-        : el('p', { classe: 'mat-vide', texte: 'Aucun appareil à glycémie en service dans la base du matériel : créez-en un dans l\'onglet Appareils avec le type « Appareil glycémie ».' }));
+        : el('p', { classe: 'mat-vide', texte: 'Aucun appareil à glycémie en service dans la base du matériel : créez-en un dans l\'onglet Appareils (type ou modèle contenant « glycémie » ou « glucomètre », par exemple « Hémoglucomètre »).' }));
   }
 
   /** Formulaire du contrôle d'un appareil à glycémie ; lots et péremptions repris du dernier contrôle. */
