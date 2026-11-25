@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <!-- ?v= : à incrémenter à chaque mise à jour, avec CACHE dans sw.js -->
-  <link rel="stylesheet" href="style.css?v=133">
+  <link rel="stylesheet" href="style.css?v=134">
   <title>Check-lists SMUR Avignon</title>
 </head>
 <body>
@@ -213,6 +213,8 @@
 
       <!-- Annuaire du personnel : agents de DB_SMUR, numéros partagés par leur titulaire (annuaire.js) -->
       <div id="zone-annuaire" class="annuaire" hidden></div>
+      <!-- Fluides médicaux : inventaire hebdomadaire des obus et bon de commande (fluides.js) -->
+      <div id="zone-fluides" class="regulation fluides" hidden></div>
 
       <!-- Fiche régulation du matin : état du parc et bips, envoyée en PDF par mail (regulation.js) -->
       <div id="zone-regulation" class="regulation" hidden></div>
@@ -250,7 +252,7 @@
           <ul id="liste-rubrique-vehicules" hidden>
           <li><button type="button" class="tiroir-lien" data-vue="fiche-regulation"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 4h16v12H8l-4 4z"/><path d="M8 8h8M8 12h5"/></svg><span class="tiroir-texte">Fiche régulation<small>Parc et personnels du jour, envoi au SAMU</small></span></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="checklist-ambulancier"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M8 5H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M9 13l2 2 4-4"/></svg><span class="tiroir-texte">Check-list ambulancier<small>Vérification du matin</small></span></button></li>
-          <li><button type="button" class="tiroir-lien a-venir" aria-disabled="true"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 2h4M12 2v3"/><path d="M9 8a3 3 0 0 1 6 0v12a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1z"/><path d="M9 12h6"/></svg><span class="tiroir-texte">Commande d'oxygène<span class="etiquette">À venir</span></span></button></li>
+          <li><button type="button" class="tiroir-lien" data-vue="fluides"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 2h4M12 2v3"/><path d="M9 8a3 3 0 0 1 6 0v12a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1z"/><path d="M9 12h6"/></svg><span class="tiroir-texte">Fluides médicaux<small>Inventaire des obus et commande du jeudi</small></span></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="carburant"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M3 21h12M4 10h10"/><path d="M14 8l3 2v7.5a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg><span class="tiroir-texte">Carburant<small>Signaler un plein</small></span></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="carrosserie"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 17v-4l2.5-5h13l2.5 5v4z"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/><path d="M5.5 13h13"/></svg><span class="tiroir-texte">Carrosserie<small>Rayures, impacts, réparations</small></span></button></li>
           <li><button type="button" class="tiroir-lien" data-vue="mecanique"><svg class="tiroir-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="tiroir-texte">Suivi mécanique<small>Passages au garage</small></span></button></li>
@@ -323,10 +325,11 @@
   <script src="lib/qrcode.js?v=1"></script>
   <script src="traceurs.js?v=1"></script>
   <script src="inventaires.js?v=92"></script>
-  <script src="infos.js?v=12"></script>
+  <script src="infos.js?v=13"></script>
   <script src="materiel.js?v=38"></script>
   <script src="profil.js?v=6"></script>
   <script src="annuaire.js?v=3"></script>
+  <script src="fluides.js?v=1"></script>
   <script src="desarmement.js?v=8"></script>
   <script src="regulation.js?v=12"></script>
   <script src="meteo.js?v=1"></script>
@@ -340,6 +343,6 @@
       <button type="button" id="barre-notifications" aria-label="Notifications" title="Notifications"><span class="barre-cloche"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><b class="barre-compteur" hidden></b></span><span>Notifications</span></button>
     </div>
   </nav>
-  <script src="app.js?v=71"></script>
+  <script src="app.js?v=72"></script>
 </body>
 </html>

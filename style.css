@@ -3568,3 +3568,38 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .mat-pastille.situation-recup { background: #FDE8E6; color: var(--erreur); }
 .mat-statut-ligne { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
 .mat-statut-ligne input[type="text"] { flex: 1; min-width: 0; }
+
+/* ---------- Fluides médicaux (fluides.js) ---------- */
+.flu-ligne { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.6rem 0; border-bottom: 1px solid var(--trait); }
+.flu-ligne:last-of-type { border-bottom: 0; }
+.flu-stock { background: #fff; border-radius: var(--rayon); padding: 0.6rem; }
+.flu-nom { display: flex; align-items: center; gap: 0.6rem; min-width: 9rem; }
+.flu-vignette { width: 3.2rem; height: auto; border-radius: 6px; }
+.flu-comptes { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+.flu-type { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; font-size: 0.85rem; color: var(--gris); }
+.flu-compteur { display: flex; align-items: center; gap: 0.25rem; }
+.flu-pas { width: 2.6rem; height: 2.6rem; font-size: 1.4rem; font-weight: 700; color: var(--bleu); background: #fff; border: 2px solid var(--bleu); border-radius: 50%; }
+.flu-champ { width: 3.2rem; height: 2.6rem; text-align: center; font: inherit; font-size: 1.15rem; font-weight: 700; border: 2px solid var(--trait); border-radius: 8px; -moz-appearance: textfield; }
+.flu-champ::-webkit-inner-spin-button, .flu-champ::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.flu-total { font-weight: 700; color: var(--rhone); }
+.flu-total.manque { color: var(--erreur); }
+.flu-note { flex-basis: 100%; margin: 0; font-size: 0.85rem; color: var(--gris); }
+.flu-sig { display: flex; flex-direction: column; gap: 0.2rem; margin: 0.8rem 0 0.4rem; }
+.flu-signataire { min-height: 2.6rem; padding: 0 0.6rem; font: inherit; border: 2px solid var(--trait); border-radius: 8px; }
+.flu-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1.2rem 0; }
+.flu-lien { display: inline-flex; align-items: center; text-decoration: none; }
+.flu-envoyee { color: #fff; background: var(--rhone); border-color: var(--rhone); }
+.flu-historique { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
+.flu-historique li { margin: 0.3rem 0; }
+#flu-impression { display: none; }
+@media print {
+  body.impression-fluides { display: block; background: #fff; }
+  body.impression-fluides > *:not(#flu-impression) { display: none !important; }
+  body.impression-fluides #flu-impression { display: block; color: #000; font-size: 11pt; }
+  #flu-impression h1 { font-size: 15pt; text-align: center; }
+  #flu-impression h2 { font-size: 12pt; margin-top: 8mm; }
+  #flu-impression table { width: 100%; border-collapse: collapse; margin: 3mm 0; }
+  #flu-impression th, #flu-impression td { border: 1px solid #000; padding: 1.5mm 3mm; text-align: center; }
+  #flu-impression tbody th { text-align: left; }
+  #flu-impression .flu-imp-total { font-weight: 700; }
+}

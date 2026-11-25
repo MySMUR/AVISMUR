@@ -753,6 +753,7 @@ function vueAutorisee(vue) {
   if ((vue === 'suivi-materiel' || vue === 'materiel-prets' || vue === 'materiel-monnal' || vue === 'materiel-glycemie') && !accesInventaires() && !aDroit('MATERIEL')) return 'aujourdhui';
   if (vue === 'inventaires' && !accesInventaires()) return 'aujourdhui';
   if (vue === 'fiche-regulation' && !accesVehicules()) return 'aujourdhui';
+  if (vue === 'fluides' && estEtudiant()) return 'accueil';
   if (DROITS_VUES[vue] && !aUnDroit(...DROITS_VUES[vue])) return 'accueil';
   return vue;
 }
@@ -817,6 +818,10 @@ function ouvrirVue(demandee) {
   if (annuaire) Annuaire.ouvrir();
   else Annuaire.masquer();
 
+  const fluides = vue === 'fluides';
+  if (fluides) Fluides.ouvrir();
+  else Fluides.masquer();
+
   const regulation = vue === 'fiche-regulation';
   if (regulation) { try { Regulation.ouvrir(ficheExigee); } catch (err) { console.error(err); } }
   else Regulation.masquer();
@@ -827,7 +832,7 @@ function ouvrirVue(demandee) {
   else Infos.masquer();
   cibleInfo = '';
 
-  const vehicules = !parc && !inventaires && !config && !utilisateurs && !infos && !materiel && !monProfil && !annuaire && !regulation;
+  const vehicules = !parc && !inventaires && !config && !utilisateurs && !infos && !materiel && !monProfil && !annuaire && !regulation && !fluides;
   $('zone-ambulancier').hidden = !vehicules;
   if (vehicules) {
     const def = VUES_VEHICULES[vue] || VUES_VEHICULES['checklist-ambulancier'];
@@ -988,6 +993,7 @@ Desarmement.initialiser({
   surChangement: () => { if (!$('zone-ambulancier').hidden) Ambulancier.afficher(); },
 });
 Regulation.initialiser({ appeler, mettreEnFile, ouvrirVue: (v) => ouvrirVue(v), vignette: (id, classe) => (Ambulancier.vignette ? Ambulancier.vignette(id, classe) : null), fileAttente: () => fileAttente.lire() });
+Fluides.initialiser({ appeler, mettreEnFile, agent: () => (session.lire() || appareil.lire() || {}).identifiant || '', fileAttente: () => fileAttente.lire(), vignette: (id, classe) => (Ambulancier.vignette ? Ambulancier.vignette(id, classe) : null) });
 ConfigAdmin.initialiser({ appeler, surEnregistrement: majConfig });
 Utilisateurs.initialiser({ appeler, aDroit, estPrincipal: () => roleCourant === 'admin' });
 Annuaire.initialiser({

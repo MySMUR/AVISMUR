@@ -387,6 +387,7 @@ const Infos = (() => {
       { id: 'scan-magasin', titre: 'Scanner la commande magasin', jours: [3], cible: ['iade'], type: 'fait' },
       { id: 'reception-pharmacie', titre: 'Réception commande pharmacie', jours: [2, 5], cible: null, type: 'reception' },
       { id: 'reception-magasin', titre: 'Réception commande magasin', jours: [5], cible: null, type: 'reception' },
+      { id: 'fluides', titre: 'Inventaire et commande des fluides médicaux', jours: [4], cible: ['ambulancier'], type: 'fluides', vue: 'fluides' },
     ],
   };
   const brouillonsCommandes = new Map(); // « rappel|jour » → { incomplete: bool, texte } (garde la saisie entre deux affichages)
@@ -406,6 +407,13 @@ const Infos = (() => {
     App.fileAttente().filter((e) => e.action === 'repondreRappelCommande' && e.donnees).forEach((e) => {
       const d = e.donnees;
       reponses.set(`${d.rappel}|${d.jour}`, { rappel: d.rappel, jour: d.jour, reponse: d.reponse, commentaire: d.commentaire || '', par: e.agent || agent(), le: e.date, enAttente: true });
+    });
+    // Commande des fluides envoyée depuis cet appareil, pas encore reçue : clôt le rappel du jeudi de la semaine.
+    App.fileAttente().filter((e) => e.action === 'enregistrerFluides' && e.donnees && e.donnees.envoyee).forEach((e) => {
+      const j = dateLocale(e.donnees.jour);
+      j.setDate(j.getDate() - ((j.getDay() + 3) % 7)); // jeudi précédent ou le jour même
+      const jeudi = `${j.getFullYear()}-${String(j.getMonth() + 1).padStart(2, '0')}-${String(j.getDate()).padStart(2, '0')}`;
+      reponses.set(`fluides|${jeudi}`, { rappel: 'fluides', jour: jeudi, reponse: 'fait', par: e.agent || agent(), le: e.date, enAttente: true });
     });
     return reponses;
   }
@@ -440,7 +448,7 @@ const Infos = (() => {
     rendre();
   }
 
-  const LIBELLES_COMMANDE = { fait: 'Fait', complete: 'Commande complète', incomplete: 'Commande incomplète' };
+  const LIBELLES_COMMANDE = { fait: 'Fait', fluides: 'Commande envoyée', complete: 'Commande complète', incomplete: 'Commande incomplète' };
 
   function carteCommande(echeance) {
     const { def, rep } = echeance;
@@ -456,12 +464,14 @@ const Infos = (() => {
         el('p', { classe: 'mur-commande-resultat', texte: `${rep.reponse === 'incomplete' ? '⚠ ' : '✓ '}${LIBELLES_COMMANDE[rep.reponse] || 'Fait'}` }),
         rep.commentaire ? el('p', { classe: 'mur-commande-manque', texte: rep.commentaire }) : null,
         el('p', { classe: 'mur-rappel-echeance', texte: [rep.par ? `par ${rep.par}` : '', rep.le ? relatif(rep.le) : '', rep.enAttente ? 'en attente d\'envoi' : ''].filter(Boolean).join(' · ') }),
-        el('button', { type: 'button', classe: 'info-bouton', texte: 'Corriger', surclick: () => { correctionsCommandes.add(cle); rendre(); } }));
+        def.type === 'fluides' ? null : el('button', { type: 'button', classe: 'info-bouton', texte: 'Corriger', surclick: () => { correctionsCommandes.add(cle); rendre(); } }));
     }
 
     const brouillon = brouillonsCommandes.get(cle) || { incomplete: false, texte: '' };
     let actions;
-    if (def.type === 'fait') {
+    if (def.type === 'fluides') {
+      actions = [el('button', { type: 'button', classe: 'info-bouton info-bouton-suivi', texte: 'Faire l\'inventaire', surclick: () => App.ouvrirVue(def.vue || 'fluides') })];
+    } else if (def.type === 'fait') {
       actions = [el('button', { type: 'button', classe: 'info-bouton info-bouton-suivi', texte: 'Fait', surclick: () => repondreCommande(echeance, 'fait') })];
     } else if (brouillon.incomplete) {
       const champ = el('textarea', {
