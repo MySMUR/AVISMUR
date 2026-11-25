@@ -25,9 +25,12 @@
  */
 const Materiel = (() => {
   const CLE_CACHE = 'avismur_materiel';
-  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret', 'signalerMateriel', 'avancerSuiviBiomed', 'enregistrerEtiquettePret', 'realiserMaintenance'];
+  const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret', 'signalerMateriel', 'avancerSuiviBiomed', 'enregistrerEtiquettePret', 'realiserMaintenance', 'definirSituationMateriel', 'enregistrerStatutsMateriel'];
   const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle', 'Appareil glycémie'];
-  const STATUTS_DEFAUT = ['En service', 'En maintenance', 'En panne', 'Prêté', 'Réformé'];
+  const STATUTS_DEFAUT = ['En service', 'En panne', 'En réparation', 'En maintenance', 'Prêté', 'Réformé'];
+  const COULEURS_STATUT = { 'En service': '#1b7f4c', 'En panne': '#c0392b', 'En réparation': '#d9822b', 'En maintenance': '#b7791f', 'Prêté': '#6b46c1', 'Réformé': '#6b7280' };
+  const LIEUX_DEFAUT = ['Hôpital', 'Maison mère'];
+  const A_RECUPERER_DEFAUT = ['Au biomédical', 'Oublié dans un service'];
   const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Envoi en maintenance', 'Note', 'Réforme', 'Remise en service', 'Autre'];
   // Entrées écrites automatiquement dans la main courante : jamais retirées.
   const JOURNAL = ['Création', 'Modification'];
@@ -164,6 +167,41 @@ const Materiel = (() => {
     return [...base, ...new Set(autres)];
   };
   const statuts = () => (donnees && donnees.statuts) || STATUTS_DEFAUT;
+  const statutsDetail = () => (donnees && donnees.statutsDetail) || statuts().map((nom) => ({ nom, couleur: COULEURS_STATUT[nom] || '#6b7280', verrouille: nom in COULEURS_STATUT }));
+  const couleurStatut = (nom) => (statutsDetail().find((s) => s.nom === nom) || {}).couleur || COULEURS_STATUT[nom] || '#6b7280';
+  const lieux = () => (donnees && donnees.situation && donnees.situation.lieux) || LIEUX_DEFAUT;
+  const aRecuperer = () => (donnees && donnees.situation && donnees.situation.aRecuperer) || A_RECUPERER_DEFAUT;
+  /** Pastille de statut en clair, colorée selon la liste administrable. */
+  const pastilleStatut = (nom) => el('span', { classe: `mat-pastille statut-${normaliser(nom || 'En service').replace(/\W+/g, '-')}`, texte: nom || 'En service', style: `background:${couleurStatut(nom || 'En service')}22;color:${couleurStatut(nom || 'En service')}` });
+  /** Présence, prêt à un tiers et matériel à récupérer, en pastilles. */
+  function pastillesSituation(f) {
+    const p = (texte, classe) => el('span', { classe: `mat-pastille ${classe}`, texte });
+    return [
+      f.presence === 'Parti' ? p(`Parti · ${f.lieu || '?'}`, 'situation-parti') : p('Dans les locaux', 'situation-locaux'),
+      f.pretA ? p(`Prêté à ${f.pretA}`, 'situation-pret') : null,
+      f.aRecuperer ? p(f.aRecuperer === 'Au biomédical' ? 'À récupérer · biomédical' : `À récupérer · ${f.aRecupererPrecision || 'service ?'}`, 'situation-recup') : null,
+    ].filter(Boolean);
+  }
+  /** Même effet que le serveur (definirSituationMateriel), pour l'affichage immédiat hors ligne. Renvoie les lignes de main courante. */
+  function appliquerSituation(f, d) {
+    const notes = [];
+    if ('statut' in d && d.statut && d.statut !== f.statut) { notes.push(`Statut : ${f.statut} → ${d.statut}`); f.statut = d.statut; }
+    if ('presence' in d) {
+      const pres = d.presence === 'Parti' ? 'Parti' : 'Dans les locaux';
+      const lieu = pres === 'Parti' ? d.lieu || '' : '';
+      if (pres !== (f.presence || 'Dans les locaux') || lieu !== (f.lieu || '')) { f.presence = pres; f.lieu = lieu; notes.push(pres === 'Parti' ? `Parti à : ${lieu}` : 'Revenu dans les locaux'); }
+    }
+    if ('pretA' in d && (d.pretA || '') !== (f.pretA || '')) {
+      notes.push(d.pretA ? `Prêté à : ${d.pretA}` : `Prêt terminé (rendu par ${f.pretA})`);
+      f.pretA = d.pretA || ''; f.pretLe = d.pretA ? aujourdhui() : '';
+    }
+    if ('aRecuperer' in d && ((d.aRecuperer || '') !== (f.aRecuperer || '') || (d.precision || '') !== (f.aRecupererPrecision || ''))) {
+      notes.push(d.aRecuperer ? `À récupérer : ${d.aRecuperer.toLowerCase()}${d.precision ? ` (${d.precision})` : ''}` : 'Récupéré');
+      f.aRecupererDepuis = d.aRecuperer ? (f.aRecuperer === d.aRecuperer ? f.aRecupererDepuis : aujourdhui()) : '';
+      f.aRecuperer = d.aRecuperer || ''; f.aRecupererPrecision = d.aRecuperer ? d.precision || '' : '';
+    }
+    return notes;
+  }
   const typesIntervention = () => ((donnees && donnees.typesIntervention) || INTERVENTIONS_DEFAUT).filter((t) => !['Évènement', 'Réforme', 'Remise en service'].includes(t));
   /** Appareil utilisable : ni archivé ni réformé. Un appareil réformé disparaît de tous les listings. */
   const enService = (f) => !f.archive && f.statut !== 'Réformé';
@@ -299,6 +337,16 @@ const Materiel = (() => {
           if (!c.conforme && c.signaler !== false && (f0.statut === 'En service' || f0.statut === 'Prêté')) f0.statut = 'En panne';
           attente.add(c.materiel);
         });
+      } else if (e.action === 'definirSituationMateriel') {
+        // Statut, présence, prêt, à récupérer : affichés tout de suite, même hors ligne.
+        const f = parId.get(d.materiel);
+        if (f) {
+          const notes = appliquerSituation(f, d);
+          if (notes.length) {
+            interventions.push({ id: `${e.id}-0`, materiel: d.materiel, date: d.date || aujourdhui(), type: 'Situation', description: notes.join('\n'), saisiPar: e.agent || '', attente: true, idFile: e.id });
+            attente.add(f.id);
+          }
+        }
       } else if (e.action === 'signalerMateriel') {
         // Action rapide (scan) : entrée de main courante et statut affichés tout de suite, même hors ligne.
         const f = parId.get(d.materiel);
@@ -618,7 +666,10 @@ const Materiel = (() => {
       if (filtre.statut !== 'archives' && !enService(f)) return false;
       if (filtre.statut === 'archives' && !f.archive && f.statut !== 'Réformé') return false;
       if (filtre.statut === 'prets' && !f.pret) return false;
-      if (filtre.statut && !['actifs', 'archives', 'tous', 'prets'].includes(filtre.statut) && f.statut !== filtre.statut) return false;
+      if (filtre.statut === 'parti' && f.presence !== 'Parti') return false;
+      if (filtre.statut === 'pretes' && !f.pretA) return false;
+      if (filtre.statut === 'recuperer' && !f.aRecuperer) return false;
+      if (filtre.statut && !['actifs', 'archives', 'tous', 'prets', 'parti', 'pretes', 'recuperer'].includes(filtre.statut) && f.statut !== filtre.statut) return false;
       if (filtre.type && f.type !== filtre.type) return false;
       if (filtre.alerte === 'retard' && !etatRevision(f).retard) return false;
       if (filtre.alerte === 'bientot' && !etatRevision(f).bientot) return false;
@@ -664,6 +715,7 @@ const Materiel = (() => {
       el('h1', { texte: 'Suivi du matériel' }),
       estAdmin() ? el('button', { type: 'button', classe: 'principal mat-nouveau', texte: '+ Nouveau', title: 'Nouveau matériel', surclick: () => ouvrirFiche(null, true) }) : null,
       el('div', { classe: 'mat-boutons mat-boutons-secondaires' },
+        estAdmin() ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Statuts', surclick: ouvrirStatuts }) : null,
         el('button', { type: 'button', classe: 'cfg-mini', texte: `Matériels types (${modeles().filter((m) => !m.archive).length})`, surclick: ouvrirModeles }),
         'NDEFReader' in window ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Lire une puce NFC', surclick: lireNfc }) : null));
 
@@ -682,7 +734,7 @@ const Materiel = (() => {
       el('option', { value: '', texte: 'Tous les types' }),
       types().map((t) => el('option', { value: t, texte: t, selected: filtre.type === t })));
     const choixStatut = el('select', { 'aria-label': 'Statut', surchange: (e) => { filtre.statut = e.target.value; rendre(); } },
-      [['actifs', 'En service, panne, maintenance'], ['tous', 'Tout le matériel (hors réformés)'], ...statuts().filter((s) => s !== 'Réformé').map((s) => [s, s]), ['prets', 'Matériel de prêt'], ['archives', 'Réformés et archivés']]
+      [['actifs', 'Tous les statuts actifs'], ['tous', 'Tout le matériel (hors réformés)'], ...statuts().filter((s) => s !== 'Réformé').map((s) => [s, s]), ['prets', 'Matériel de prêt (emprunté)'], ['parti', 'Hors des locaux'], ['pretes', 'Prêtés à un tiers'], ['recuperer', 'À récupérer'], ['archives', 'Réformés et archivés']]
         .map(([v, t]) => el('option', { value: v, texte: t, selected: filtre.statut === v })));
     // Recherche toujours visible ; type, statut et traceur repliés derrière « Filtres » (nombre de filtres actifs).
     const nbFiltres = [filtre.type, filtre.statut && filtre.statut !== 'actifs', filtre.alerte === 'traceur'].filter(Boolean).length;
@@ -755,6 +807,7 @@ const Materiel = (() => {
     acquitter: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/><path d="M16 19l2 2 4-4"/></svg>',
     statut: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg>',
     note: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"/><path d="M12 7v4M12 13.5v.5"/></svg>',
+    situation: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 0 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
     deplier: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   };
   function icone(nom, libelle, action, attributs = {}) {
@@ -781,6 +834,7 @@ const Materiel = (() => {
     const actions = el('span', { classe: 'mat-actions' },
       admin && actif && f.maintenance !== false && (f.plans || []).length
         ? icone('acquitter', `Acquitter une maintenance : ${nomAppareil(f)}`, () => { const p = planPrioritaire(f); ouvrirIntervention([f.id], { type: 'Révision', plan: p && p.id }); }) : null,
+      actif ? icone('situation', `Situation (présence, prêt, à récupérer) : ${nomAppareil(f)}`, () => ouvrirSituation(f)) : null,
       admin && actif && !f.provisoire ? icone('statut', `Changer le statut : ${nomAppareil(f)}`, () => ouvrirStatut(f)) : null,
       admin && actif ? icone('note', `Évènement ou note (casse, panne, problème) : ${nomAppareil(f)}`, () => ouvrirSignalement(f)) : null,
       icone('deplier', ouvert ? 'Replier le détail' : 'Déplier le détail', () => {
@@ -800,17 +854,19 @@ const Materiel = (() => {
           el('span', { classe: 'mat-nom' }, el('strong', { texte: nomAppareil(f) }),
             f.traceur ? el('span', { classe: 'mat-traceur', title: `Traceur GeoTraceSMUR${f.nomTraceur ? ` : ${f.nomTraceur}` : ''}`, texte: '📡' }) : null),
           f.pret ? el('span', { classe: 'mat-pret-info', texte: `Prêt ${f.pret} · ${f.proprietaire || 'propriétaire non renseigné'}` }) : null,
-          el('span', { classe: 'mat-ids', texte: [f.numBiomed && `Biomed ${f.numBiomed}`, f.numSerie && `S/N ${f.numSerie}`].filter(Boolean).join(' · ') || 'N° biomed et série non renseignés' }),
-          f.emplacement ? el('span', { classe: 'mat-emplacement', texte: `📍 ${texteEmplacement(f)}` }) : null,
-          derniere ? el('span', { classe: 'mat-derniere', texte: `Dernière entrée : ${(derniere.type === 'Évènement' && derniere.evenement ? derniere.evenement : derniere.type).toLowerCase()} le ${dateFr(derniere.date)}` }) : null),
+          // Une seule ligne condensée : n° biomed (ou série), dernier emplacement connu si l'appareil est dans les locaux.
+          el('span', { classe: 'mat-ids', texte: [f.numBiomed ? `Biomed ${f.numBiomed}` : (f.numSerie ? `S/N ${f.numSerie}` : 'N° non renseigné'),
+            f.emplacement && f.presence !== 'Parti' ? `📍 ${f.emplacement}${f.vuLe ? ` (${dateFr(f.vuLe.slice(0, 10)).slice(0, 5)})` : ''}` : null].filter(Boolean).join(' · '), title: texteEmplacement(f) || undefined })),
         el('span', { classe: 'mat-etats' },
-          f.statut !== 'En service' ? el('span', { classe: `mat-pastille statut-${normaliser(f.statut).replace(/\W+/g, '-')}`, texte: f.statut }) : null,
+          pastilleStatut(f.statut),
+          ...pastillesSituation(f),
           el('span', { classe: `mat-pastille rev-${rev.classe}`, texte: rev.texte }),
           attente.has(f.id) ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null)),
       actions,
       ouvert ? detailLigne(f, historique) : null);
   }
 
+  const derniere0 = (h) => (h[0] ? `${(h[0].type === 'Évènement' && h[0].evenement ? h[0].evenement : h[0].type).toLowerCase()} le ${dateFr(h[0].date)}` : '');
   /** Détail déplié sous la ligne : maintenances, évènements, emplacement, numéros, dernières entrées. */
   function detailLigne(f, historique) {
     const info = (t, v) => (v ? [el('dt', { texte: t }), el('dd', { texte: v })] : null);
@@ -821,6 +877,10 @@ const Materiel = (() => {
         info('Matériel type', f.modeleType ? nomModele(modeleDe(f.modeleType)) : 'Matériel unique'),
         info('Dernier emplacement', texteEmplacement(f) || 'Jamais pointé dans un inventaire'),
         info('Statut', f.statut),
+        info('Présence', f.presence === 'Parti' ? `Parti · ${f.lieu || '?'}` : 'Dans les locaux'),
+        f.pretA ? info('Prêté à', `${f.pretA}${f.pretLe ? ` depuis le ${dateFr(f.pretLe)}` : ''}`) : null,
+        f.aRecuperer ? info('À récupérer', `${f.aRecuperer}${f.aRecupererPrecision ? ` (${f.aRecupererPrecision})` : ''}${f.aRecupererDepuis ? ` depuis le ${dateFr(f.aRecupererDepuis)}` : ''}`) : null,
+        derniere0(historique) ? info('Dernière entrée', derniere0(historique)) : null,
         info('N° biomed', f.biomed ? (f.numBiomed || '—') : 'Sans n° biomed'),
         info('N° de série', f.numSerie),
         f.logiciel ? info('Version logiciel', f.versionLogiciel || '—') : null,
@@ -932,7 +992,7 @@ const Materiel = (() => {
         aPhoto(f) ? vignette(f, 'mat-rapide-photo') : null,
         el('div', {},
           el('p', { classe: 'mat-rapide-ids', texte: [f.numBiomed && `Biomed ${f.numBiomed}`, f.numSerie && `S/N ${f.numSerie}`].filter(Boolean).join(' · ') || 'Sans n° biomed ni n° de série' }),
-          el('p', {}, el('span', { classe: `mat-pastille statut-${normaliser(f.statut || 'En service').replace(/\W+/g, '-')}`, texte: f.archive ? 'Archivé' : (f.statut || 'En service') }),
+          el('p', {}, f.archive ? el('span', { classe: 'mat-pastille rev-neutre', texte: 'Archivé' }) : pastilleStatut(f.statut), ...pastillesSituation(f),
             attente.has(f.id) ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null))),
       el('p', { classe: 'mat-rapide-lieu' }, el('span', { 'aria-hidden': 'true', texte: '📍 ' }),
         el('strong', { texte: 'Dernier contenant : ' }), texteEmplacement(f) || 'jamais pointé dans un inventaire'),
@@ -1414,18 +1474,73 @@ const Materiel = (() => {
 
   /** Changement rapide de statut : un appui sur le nouveau statut, consigné automatiquement dans la main courante (« Statut : X → Y »). */
   function ouvrirStatut(f) {
-    const choix = ['En service', 'En maintenance', 'En panne'];
-    if (f.pret) choix.push('Prêté');
+    const choix = statuts().filter((n) => n !== 'Réformé' && (n !== 'Prêté' || f.pret));
     let d;
     const contenu = el('div', { classe: 'mat-statut' },
       el('p', { classe: 'aide-question', texte: `Statut actuel : ${f.statut || 'En service'}. Le changement est consigné dans la main courante.` }),
-      el('div', { classe: 'mat-boutons', role: 'group', 'aria-label': 'Nouveau statut' }, choix.map((s) => el('button', {
-        type: 'button', classe: `cfg-bouton mat-pastille statut-${normaliser(s).replace(/\W+/g, '-')}`, texte: s,
-        disabled: s === (f.statut || 'En service'),
-        surclick: () => { d.close(); enfiler('enregistrerMateriel', { fiches: [{ ...f, statut: s }] }); },
-      }))),
+      el('div', { classe: 'mat-boutons', role: 'group', 'aria-label': 'Nouveau statut' }, choix.map((n) => {
+        const b = el('button', { type: 'button', classe: `cfg-bouton mat-pastille statut-${normaliser(n).replace(/\W+/g, '-')}`, texte: n,
+          disabled: n === (f.statut || 'En service'), style: `background:${couleurStatut(n)}22;color:${couleurStatut(n)}`,
+          surclick: () => { d.close(); enfiler('definirSituationMateriel', { materiel: f.id, statut: n, date: aujourdhui(), idSaisie: idFiche() }); } });
+        return b;
+      })),
+      estAdmin() ? el('p', {}, el('button', { type: 'button', classe: 'lien', texte: 'Gérer la liste des statuts', surclick: () => { d.close(); ouvrirStatuts(); } })) : null,
       el('p', { classe: 'aide-question', texte: 'Pour retirer l\'appareil des listings, utilisez « Réformer » dans sa fiche.' }));
     d = fenetre(`Statut · ${nomAppareil(f)}`, contenu);
+  }
+
+  /** Présence dans les locaux, prêt à un tiers, matériel à récupérer (tout agent connecté). */
+  function ouvrirSituation(f) {
+    let d;
+    const presence = el('select', { 'aria-label': 'Présence' }, ['Dans les locaux', 'Parti'].map((v) => el('option', { value: v, texte: v, selected: (f.presence || 'Dans les locaux') === v })));
+    const lieu = el('select', { 'aria-label': 'Lieu' }, lieux().map((v) => el('option', { value: v, texte: v, selected: f.lieu === v })));
+    const pretA = el('input', { type: 'text', maxlength: '80', valeur: f.pretA || '', placeholder: 'Nom ou service (vide = pas prêté)' });
+    const recup = el('select', { 'aria-label': 'À récupérer' }, [['', 'Rien à récupérer'], ...aRecuperer().map((v) => [v, v])].map(([v, t]) => el('option', { value: v, texte: t, selected: (f.aRecuperer || '') === v })));
+    const precision = el('input', { type: 'text', maxlength: '80', valeur: f.aRecupererPrecision || '', placeholder: 'Quel service ?' });
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
+    const lieuChamp = champ('Parti où ?', lieu); const precisionChamp = champ('Service où il a été oublié', precision);
+    const maj = () => { lieuChamp.hidden = presence.value !== 'Parti'; precisionChamp.hidden = recup.value !== 'Oublié dans un service'; };
+    presence.addEventListener('change', maj); recup.addEventListener('change', maj); maj();
+    const contenu = el('form', { classe: 'mat-form', novalidate: true, sursubmit: (ev) => {
+      ev.preventDefault();
+      if (recup.value === 'Oublié dans un service' && !precision.value.trim()) { message.textContent = 'Dans quel service l\'appareil a-t-il été oublié ?'; return; }
+      d.close();
+      enfiler('definirSituationMateriel', { materiel: f.id, presence: presence.value, lieu: presence.value === 'Parti' ? lieu.value : '', pretA: pretA.value.trim(),
+        aRecuperer: recup.value, precision: recup.value ? precision.value.trim() : '', date: aujourdhui(), idSaisie: idFiche() });
+    } },
+    champ('Présence', presence), lieuChamp, champ('Prêté à', pretA), champ('À récupérer', recup), precisionChamp,
+    message, el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Enregistrer' })));
+    d = fenetre(`Situation · ${nomAppareil(f)}`, contenu);
+  }
+
+  /** Administration de la liste des statuts : ajout, renommage, couleur, suppression (les six de base sont verrouillés). */
+  function ouvrirStatuts() {
+    let d;
+    let lignes = statutsDetail().map((x) => ({ ...x }));
+    const zone = el('div', { classe: 'mat-statuts-liste' });
+    const message = el('p', { classe: 'message erreur', role: 'alert' });
+    const dessiner = () => zone.replaceChildren(...lignes.map((x, i) => el('div', { classe: 'mat-statut-ligne' },
+      el('input', { type: 'color', valeur: x.couleur, 'aria-label': `Couleur de ${x.nom || 'nouveau statut'}`, surchange: (e) => { x.couleur = e.target.value; } }),
+      el('input', { type: 'text', valeur: x.nom, maxlength: '30', readOnly: x.verrouille, 'aria-label': 'Nom du statut', surinput: (e) => { x.nom = e.target.value; } }),
+      el('button', { type: 'button', classe: 'cfg-mini', texte: '↑', disabled: i === 0, 'aria-label': 'Monter', surclick: () => { [lignes[i - 1], lignes[i]] = [lignes[i], lignes[i - 1]]; dessiner(); } }),
+      x.verrouille ? el('span', { classe: 'aide-question', texte: 'de base' }) : el('button', { type: 'button', classe: 'cfg-mini', texte: 'Retirer', surclick: () => { lignes.splice(i, 1); dessiner(); } }))));
+    dessiner();
+    const contenu = el('div', { classe: 'mat-form' },
+      el('p', { classe: 'aide-question', texte: 'Les statuts de base ne se renomment ni ne se retirent ; leur couleur est modifiable. Un statut encore utilisé par un appareil ne peut pas être retiré.' }),
+      zone,
+      el('button', { type: 'button', classe: 'cfg-mini', texte: '+ Ajouter un statut', surclick: () => { lignes.push({ nom: '', couleur: '#2563eb', verrouille: false }); dessiner(); } }),
+      message,
+      el('div', { classe: 'mat-boutons' }, el('button', { type: 'button', classe: 'principal', texte: 'Enregistrer', surclick: () => {
+        const utiles = lignes.filter((x) => x.nom.trim()).map((x) => ({ nom: x.nom.trim(), couleur: x.couleur }));
+        if (new Set(utiles.map((x) => normaliser(x.nom))).size !== utiles.length) { message.textContent = 'Deux statuts portent le même nom.'; return; }
+        const utilises = new Set(fiches().map((f) => normaliser(f.statut)));
+        const retire = statutsDetail().find((x) => !utiles.some((u) => normaliser(u.nom) === normaliser(x.nom)) && utilises.has(normaliser(x.nom)));
+        if (retire) { message.textContent = `« ${retire.nom} » est encore utilisé : changez d'abord le statut des appareils concernés.`; return; }
+        d.close();
+        if (donnees) { donnees.statutsDetail = utiles.map((u) => ({ ...u, verrouille: u.nom in COULEURS_STATUT })); donnees.statuts = utiles.map((u) => u.nom); ecrireCache(donnees); }
+        enfiler('enregistrerStatutsMateriel', { statuts: utiles });
+      } })));
+    d = fenetre('Statuts du matériel', contenu);
   }
 
   /** Main courante de l'appareil depuis l'action rapide (« Retirer » réservé aux administrateurs du matériel). */

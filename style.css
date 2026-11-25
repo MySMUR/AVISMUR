@@ -3558,3 +3558,13 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 /* Fusion de doublons dans la base des articles */
 .inv-fusion { display: flex; flex-direction: column; gap: 0.5rem; margin: 0 0 0.9rem; padding: 0.7rem 0.8rem; background: var(--ciel); border-radius: var(--rayon); }
 .inv-fusion h2 { margin: 0; font-size: 1.05rem; }
+
+/* Suivi du matériel : ligne condensée, situation (présence, prêt, à récupérer), administration des statuts */
+.mat-ids { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mat-etats { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.mat-pastille.situation-locaux { background: var(--ciel); color: var(--gris); font-weight: 600; }
+.mat-pastille.situation-parti { background: #FFF1DC; color: #8A4B00; }
+.mat-pastille.situation-pret { background: #E6F0FF; color: #1D4F9F; }
+.mat-pastille.situation-recup { background: #FDE8E6; color: var(--erreur); }
+.mat-statut-ligne { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+.mat-statut-ligne input[type="text"] { flex: 1; min-width: 0; }
