@@ -43,6 +43,7 @@ const Inventaires = (() => {
   const optionsOuvertes = new Set(); // gestion : sous-inventaires dont les options sont dépliées
   let ongletDemande = ''; // gestion : onglet à ouvrir sur le prochain contenant affiché (sinon « Contenu »)
   let baseOuverte = ''; // fiche dépliée dans la base des articles ('nouvelle' : création)
+  let fusion = null; // fusion de doublons en cours dans la base : { source, cible, texte }
   let baseFiltre = { texte: '', categorie: '', archives: false, sansPhoto: false };
   let baseFiltresOuverts = false; // base des articles : panneau « Filtres » déplié
   const brouillonsBase = new Map(); // tableau de la base (ordinateur) : fiches modifiées, pas encore enregistrées
@@ -3974,11 +3975,38 @@ const Inventaires = (() => {
     });
   }
 
+  /**
+   * Fusionne une fiche en doublon (`src`) dans la fiche à conserver (`cib`) : tous les articles d'inventaire
+   * qui pointaient vers `src` pointent désormais vers `cib`, les champs vides de `cib` sont complétés
+   * avec ceux de `src` (catégorie, réfs, photo), puis `src` est archivée.
+   */
+  function fusionnerFiches(src, cib) {
+    const touches = new Set();
+    const doubles = new Set(); // inventaires qui contenaient déjà les deux fiches
+    Object.values(structure.contenants).forEach((c) => {
+      const avait = c.articles.some((a) => a.ref === cib.id);
+      let change = false;
+      c.articles.forEach((a) => { if (a.ref === src.id) { a.ref = cib.id; change = true; } });
+      if (change) { touches.add(c.id); if (avait) doubles.add(c.id); }
+    });
+    const photoReprise = !cib.photo && Boolean(src.photo);
+    enregistrerFicheEtInventaires(normaliserFiche({
+      ...cib, categorie: cib.categorie || src.categorie, refInterne: cib.refInterne || src.refInterne,
+      refFournisseur: cib.refFournisseur || src.refFournisseur, photo: cib.photo || src.photo,
+    }));
+    touches.forEach(marquer);
+    enregistrerFiche({ ...src, archive: true, photo: photoReprise ? '' : src.photo });
+    brouillonsBase.delete(src.id);
+    brouillonsBase.delete(cib.id);
+    return { inventaires: touches.size, doubles: doubles.size };
+  }
+
   const icone = (...formes) => el('svg:svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' },
     ...formes.map((d) => el('svg:path', { d })));
   const iconeAppareil = () => icone('M3 8h3.5l2-3h7l2 3H21v11H3z', 'M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z');
   const iconeImage = () => icone('M3 4h18v16H3z', 'M3 16l5-5 4 4 3-3 6 6', 'M15.5 9.5a1.5 1.5 0 1 0 0-.01');
   const iconeArchive = () => icone('M3 4h18v4H3z', 'M5 8v12h14V8', 'M10 12h4');
+  const iconeFusion = () => icone('M6 3v6a6 6 0 0 0 6 6', 'M18 3v6a6 6 0 0 1-6 6', 'M12 15v6');
   const iconeReactiver = () => icone('M4 12a8 8 0 1 0 2.5-5.8', 'M4 4v4h4');
 
   /** Miniature carrée de la photo d'une fiche (ou pictogramme gris s'il n'y en a pas). */
@@ -4131,6 +4159,8 @@ const Inventaires = (() => {
           el('input', { type: 'file', id: idPrendre, accept: 'image/*', capture: 'environment', classe: 'invisible', surchange: recevoir }),
           el('label', { for: idChoisir, classe: 'cfg-mini inv-tb-base-icone', title: 'Choisir une photo', 'aria-label': `Choisir une photo : ${f0.denomination}` }, iconeImage()),
           el('input', { type: 'file', id: idChoisir, accept: 'image/*', classe: 'invisible', surchange: recevoir }),
+          el('button', { type: 'button', classe: 'cfg-mini inv-tb-base-icone', title: `Fusionner « ${f0.denomination} » avec un autre article (doublon)`, 'aria-label': `Fusionner : ${f0.denomination}`,
+            disabled: f.archive, surclick: () => { fusion = { source: f0.id, cible: '', texte: f0.denomination }; rendre({ garderPosition: true }); } }, iconeFusion()),
           archive));
       corps.append(tr);
     });
@@ -4373,6 +4403,53 @@ const Inventaires = (() => {
     });
   }
 
+  /** Fusion d'un doublon : choix de la fiche à conserver, récapitulatif, confirmation. */
+  function blocFusion(usages) {
+    const src = structure.catalogue[fusion.source];
+    if (!src) { fusion = null; return null; }
+    const annuler = () => { fusion = null; rendre({ garderPosition: true }); };
+    const nb = (usages[src.id] || []).length;
+    const cib = fusion.cible && structure.catalogue[fusion.cible];
+    const entete = el('h2', { texte: `Fusionner « ${src.denomination} »` });
+    if (cib) {
+      const communs = (usages[src.id] || []).filter((c) => (usages[cib.id] || []).includes(c)).length;
+      const reprises = [!cib.categorie && src.categorie ? 'catégorie' : '', !cib.refInterne && src.refInterne ? 'réf. interne' : '',
+        !cib.refFournisseur && src.refFournisseur ? 'réf. fournisseur' : '', !cib.photo && src.photo ? 'photo' : ''].filter(Boolean);
+      return el('section', { classe: 'inv-fusion' }, entete,
+        el('p', { texte: `« ${src.denomination} » sera remplacé par « ${cib.denomination} » dans ${nb ? pluriel(nb, 'inventaire') : 'aucun inventaire'}, puis archivé.` }),
+        reprises.length ? el('p', { classe: 'aide-question', texte: `Repris de la fiche fusionnée, car vide sur celle conservée : ${reprises.join(', ')}.` }) : null,
+        communs ? el('p', { classe: 'message erreur', texte: `${pluriel(communs, 'inventaire contient', 'inventaires contiennent')} déjà les deux articles : les deux lignes seront conservées, à regrouper à la main.` }) : null,
+        el('p', { classe: 'aide-question', texte: 'Les dates de péremption déjà saisies et l\'historique des vérifications sont conservés.' }),
+        el('div', { classe: 'cfg-actions' },
+          el('button', { type: 'button', classe: 'cfg-bouton danger', texte: 'Confirmer la fusion', surclick: () => {
+            const r = fusionnerFiches(src, cib);
+            fusion = null; baseOuverte = ''; baseFiltre.texte = cib.denomination;
+            avis = `« ${src.denomination} » fusionné dans « ${cib.denomination} » (${pluriel(r.inventaires, 'inventaire')} mis à jour).`;
+            rendre({ garderPosition: true });
+          } }),
+          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Choisir un autre article', surclick: () => { fusion.cible = ''; rendre({ garderPosition: true }); } }),
+          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Annuler', surclick: annuler })));
+    }
+    const liste = el('ul', { classe: 'inv-base-liste' });
+    const champ = idChamp();
+    const remplir = () => {
+      liste.innerHTML = '';
+      const trouvees = chercherFiches(fusion.texte || src.denomination).filter((f) => f.id !== src.id).slice(0, 8);
+      if (!trouvees.length) liste.append(el('li', {}, el('small', { texte: 'Aucun article ne correspond.' })));
+      trouvees.forEach((f) => liste.append(el('li', { classe: 'inv-base-article' },
+        el('button', { type: 'button', classe: 'inv-resultat inv-resultat-photo', surclick: () => { fusion.cible = f.id; rendre({ garderPosition: true }); } },
+          el('span', { classe: 'inv-miniature' }, miniatureFiche(f.photo)),
+          el('span', { classe: 'inv-resultat-texte' }, el('strong', { texte: f.denomination }), el('small', { texte: resumeFiche(f) }))))));
+    };
+    remplir();
+    return el('section', { classe: 'inv-fusion' }, entete,
+      el('p', { classe: 'aide-question', texte: 'Quel article faut-il conserver ? Celui-ci sera remplacé par lui dans tous les inventaires.' }),
+      el('label', { for: champ, classe: 'invisible', texte: 'Chercher l\'article à conserver' }),
+      el('input', { id: champ, type: 'search', autocomplete: 'off', placeholder: 'Nom ou référence de l\'article à conserver', valeur: fusion.texte || src.denomination, surinput: (e) => { fusion.texte = e.target.value; remplir(); } }),
+      liste,
+      el('div', { classe: 'cfg-actions' }, el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Annuler', surclick: annuler })));
+  }
+
   function vueBase() {
     const admin = aDroitApp('ARTICLES');
     // Sur ordinateur (écran large), les gestionnaires éditent la base dans un tableau.
@@ -4408,7 +4485,8 @@ const Inventaires = (() => {
             rendre({ garderPosition: true });
           },
           surAnnuler: fermer,
-          actions: [archiver],
+          actions: [archiver, f.archive ? null : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Fusionner avec un autre article…', title: 'Cet article est un doublon : le remplacer par un autre dans les inventaires',
+            surclick: () => { fusion = { source: f.id, cible: '', texte: f.denomination }; baseOuverte = ''; rendre({ garderPosition: true }); } })],
         }),
         lieux, ou.length && !f.archive ? el('p', { classe: 'aide-question', texte: 'Pour l\'archiver, retirez-le d\'abord de ces inventaires.' }) : null);
     };
@@ -4472,6 +4550,7 @@ const Inventaires = (() => {
       ligneSynchro(), ligneAvis(),
       el('p', { classe: 'aide-question', texte: 'Chaque article est décrit ici une seule fois : une modification de fiche s\'applique à tous les inventaires qui l\'utilisent.' }),
       nouvelle,
+      fusion && admin ? blocFusion(usages) : null,
       el('div', { classe: 'inv-base-recherche' },
         el('label', { for: champ, classe: 'invisible', texte: 'Rechercher (nom ou référence)' }),
         el('input', { id: champ, type: 'search', autocomplete: 'off', placeholder: 'Nom ou référence', valeur: baseFiltre.texte, surinput: (e) => { baseFiltre.texte = e.target.value; remplir(); } }),
