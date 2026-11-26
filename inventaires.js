@@ -30,7 +30,7 @@ const Inventaires = (() => {
   let App = null; // fonctions de app.js (appeler, mettreEnFile, role, agent, fileAttente)
   let zone = null;
   let structure = { contenants: {}, catalogue: {}, reglages: { alerteJours: 30 } };
-  let etat = { verifs: {}, peremptions: {} };
+  let etat = { verifs: {}, peremptions: {}, dernierOui: {} };
   let brouillons = { jour: '', liste: {} };
   let modifs = { ids: {}, fiches: {}, reglages: false }; // contenants et fiches modifiés sur l'appareil, pas encore envoyés
   let rattacher = ''; // article sans fiche que l'on rattache à la base des articles
@@ -1132,7 +1132,10 @@ const Inventaires = (() => {
     Object.entries(etat.peremptions).forEach(([cle, p]) => {
       if (peremptions[cle] ? (p.maj || '') > (peremptions[cle].maj || '') : new Date(p.maj || 0).getTime() > recent) peremptions[cle] = p;
     });
-    etat = { verifs, peremptions };
+    // Dernier « Oui » coché par contrôle : le plus récent entre l'appareil et le serveur (s'il le fournit).
+    const dernierOui = { ...((rep.etat && rep.etat.dernierOui) || {}) };
+    Object.entries(etat.dernierOui || {}).forEach(([cle, d]) => { if (!dernierOui[cle] || d > dernierOui[cle]) dernierOui[cle] = d; });
+    etat = { verifs, peremptions, dernierOui };
     reappliquerDeplacements();
     sauverStructure();
     sauverEtat();
@@ -1298,6 +1301,9 @@ const Inventaires = (() => {
     articles.filter((a) => a.controle).forEach((a) => { valeurs[a.id] = a.valeur; });
     etat.verifs[c.id] = { date: maintenant, agent: App.agent(), manquants: manquants.map((a) => ({ id: a.id, nom: a.controle ? `${a.nom} (${a.libelle})` : (a.ok ? `${a.nom} (${texteQuantite(a.quantite, a.attendu, a.min)})` : a.nom) })), remarque: b.remarque.trim(), valeurs };
     articles.filter((a) => a.peremption !== undefined).forEach((a) => { etat.peremptions[`${c.id}/${a.id}`] = { date: a.peremption, maj: maintenant }; });
+    // Contrôle Oui / Non : on retient la dernière fois que « Oui » a été coché.
+    if (!etat.dernierOui) etat.dernierOui = {};
+    articles.filter((a) => a.controle === 'oui' && a.valeur === 'Oui').forEach((a) => { etat.dernierOui[`${c.id}/${a.id}`] = maintenant; });
     delete brouillons.liste[c.id];
     sauverEtat();
     sauverBrouillons();
@@ -3567,7 +3573,8 @@ const Inventaires = (() => {
           if (e.rempli && !e.ok && !estFacultatif(a)) controleKo = true;
           return;
         }
-        detail.controles.push({ nom: nomArticle(a), ou: ici, texte: texteValeur(a, val), ok: e.ok, rempli: e.rempli });
+        detail.controles.push({ nom: nomArticle(a), ou: ici, texte: texteValeur(a, val), ok: e.ok, rempli: e.rempli, facultatif: estFacultatif(a),
+          ...(a.controle === 'oui' ? { dernierOui: (etat.dernierOui || {})[`${d.id}/${a.id}`] || '' } : {}) });
         if (e.rempli && !e.ok && !estFacultatif(a)) controleKo = true;
         if (a.controle === 'batterie' && e.rempli) {
           const niveau = Number(String(val).replace(',', '.')) / (a.echelle === '4' ? 4 : 100);
@@ -3620,7 +3627,8 @@ const Inventaires = (() => {
       rubrique('Manquants', r.detail.manquants.map((x) => el('li', { classe: 'rouge' }, x.nom, ou(x)))),
       rubrique('Péremptions', r.detail.peremptions.map((x) => el('li', { classe: x.pe.niveau === 'perime' ? 'rouge' : 'orange' }, `${x.nom} : ${afficherDate(x.date)} (${x.pe.texte})`, ou(x)))),
       rubrique('Appareils', r.detail.appareils.map((x) => el('li', { classe: x.ok ? '' : 'rouge' }, el('strong', { texte: x.nom }), ou(x)))),
-      rubrique('Contrôles', r.detail.controles.map((x) => el('li', { classe: x.rempli && !x.ok ? 'rouge' : '' }, `${x.nom} : ${x.texte}`, ou(x)))),
+      rubrique('Contrôles', r.detail.controles.map((x) => el('li', { classe: x.rempli && !x.ok && !x.facultatif ? 'rouge' : '' }, `${x.nom}${x.facultatif ? ' (facultatif)' : ''} : ${x.texte}`, ou(x),
+        x.dernierOui !== undefined ? el('small', { classe: 'inv-dernier-oui', texte: x.dernierOui ? ` — dernier Oui : ${new Date(x.dernierOui).toLocaleDateString('fr-FR')} à ${heure(x.dernierOui)}` : ' — jamais coché Oui' }) : null))),
       estVrac(c) && etat.verifs[c.id] ? el('section', { classe: 'inv-tb-rubrique' },
         el('h3', { texte: `Matériel présent (relevé ${verifDuJour(c.id) ? 'du jour' : `du ${new Date(etat.verifs[c.id].date).toLocaleDateString('fr-FR')}`})` }),
         comptesVrac(itemsDeVerif(etat.verifs[c.id]))) : null,
@@ -7340,7 +7348,7 @@ const Inventaires = (() => {
       Object.values(garde.catalogue || {}).forEach((f) => { if (f && ID.test(f.id)) structure.catalogue[f.id] = normaliserFiche(f); });
     }
     const etatGarde = lireJson(CLE_ETAT, null);
-    if (etatGarde && etatGarde.verifs && etatGarde.peremptions) etat = etatGarde;
+    if (etatGarde && etatGarde.verifs && etatGarde.peremptions) etat = { dernierOui: {}, ...etatGarde };
     brouillons = lireJson(CLE_BROUILLONS, brouillons);
     if (!brouillons.liste) brouillons = { jour: '', liste: {}, pointes: {} };
     const modifsGardees = lireJson(CLE_MODIFS, null);
