@@ -1917,9 +1917,10 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .inv-edition-controle .inv-edition-outils { flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-end; padding-left: 1.8rem; }
 .inv-bouton-lecture { display: inline-flex; align-items: center; justify-content: center; padding: 0.25rem; }
 .inv-bouton-lecture svg { width: 1.3rem; height: 1.3rem; }
-.inv-controle-scan .inv-ligne { flex-wrap: wrap; }
-.inv-controle-scan .inv-valeur-zone { flex: 1 1 100%; justify-content: flex-end; }
-.inv-controle-scan .inv-valeur-texte { flex: 1; max-width: 14rem; }
+.inv-controle-scan .inv-ligne, .inv-controle-materiel .inv-ligne { flex-wrap: wrap; }
+.inv-controle-scan .inv-valeur-zone, .inv-controle-materiel .inv-valeur-zone { flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-end; }
+.inv-controle-scan .inv-valeur-texte, .inv-controle-materiel .inv-valeur-texte { flex: 1 1 8rem; max-width: 14rem; min-width: 6rem; }
+.inv-liste-appareils { flex: 1 1 100%; min-width: 0; padding: 0.35rem 0.4rem; border-radius: 0.5rem; }
 
 /* Barre du bas : QR code et NFC (téléphone, agent connecté) */
 .barre-scan { display: none; }

@@ -2413,6 +2413,20 @@ const Inventaires = (() => {
   const mentionFacultatif = (a) => (estFacultatif(a) ? el('small', { classe: 'inv-facultatif', title: 'Facultatif : son absence ne rend pas l\'inventaire non conforme', texte: ' facultatif' }) : null);
   /** Commentaire d'un article (saisi en gestion), visible de tous sous l'article. */
   const noteCommentaire = (a) => (a && a.commentaire ? el('p', { classe: 'inv-commentaire', texte: a.commentaire }) : null);
+  /** Liste déroulante des appareils du suivi du matériel (du type attendu) : le choix inscrit son n° interne SMUR. */
+  function listeAppareils(a, remplir) {
+    const appareils = appareilsPour(a).sort((x, y) => x.type.localeCompare(y.type, 'fr') || String(x.numInterne).localeCompare(String(y.numInterne), 'fr', { numeric: true }));
+    if (!appareils.length) return null;
+    const sel = el('select', { classe: 'inv-liste-appareils', 'aria-label': `Choisir dans la liste : ${nomArticle(a)}`, title: 'Choisir dans la liste' },
+      el('option', { value: '', texte: 'Liste…' }),
+      ...appareils.map((x, i) => el('option', { value: String(i), texte: libelleAppareil(x) })));
+    sel.addEventListener('change', () => {
+      const x = appareils[Number(sel.value)];
+      sel.value = '';
+      if (x) remplir(codeAppareil(a, x));
+    });
+    return sel;
+  }
   /**
    * `precedent` : valeur relevée à la dernière check-list (n° de matériel). Pour un contrôle qui attend un numéro,
    * elle s'affiche en grisé dans le champ vide, avec une coche au bout pour la reprendre ; laissé tel quel, le champ
@@ -2469,7 +2483,7 @@ const Inventaires = (() => {
       saisie = el('span', { classe: 'inv-valeur-zone' }, entree, rep && rep.coche,
         bouton('', 'Scanner le QR code', 'QR code / code-barres', logoQr(), () => lireCode(remplir, { qr: true, nfc: false, article: a })),
         bouton('', 'Lire la puce NFC', 'Puce NFC', logoNfc(), () => lireCode(remplir, { qr: false, nfc: true, article: a })),
-        bouton('inv-bouton-liste', 'Choisir dans la liste', 'Choisir dans la liste', '☰', () => choisirAppareil(a, remplir)));
+        listeAppareils(a, remplir));
       etiquette.append(nomAppareil);
       majNom();
     } else if (a.controle === 'scan') {
@@ -2479,8 +2493,7 @@ const Inventaires = (() => {
       rep = reprise(entree, remplir);
       const boutonQr = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Scanner le QR code ou code-barres : ${nomArticle(a)}`, title: 'QR code / code-barres', surclick: () => lireCode(remplir, { qr: true, nfc: false, article: a }) }, logoQr());
       const boutonNfc = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Lire la puce NFC : ${nomArticle(a)}`, title: 'Puce NFC', surclick: () => lireCode(remplir, { qr: false, nfc: true, article: a }) }, logoNfc());
-      const boutonListe = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture inv-bouton-liste', 'aria-label': `Choisir dans la liste : ${nomArticle(a)}`, title: 'Choisir dans la liste', surclick: () => choisirAppareil(a, remplir) }, '☰');
-      saisie = el('span', { classe: 'inv-valeur-zone' }, entree, rep && rep.coche, boutonQr, boutonNfc, boutonListe);
+      saisie = el('span', { classe: 'inv-valeur-zone' }, entree, rep && rep.coche, boutonQr, boutonNfc, listeAppareils(a, remplir));
     } else {
       const unite = a.controle === 'temperature' ? '°C' : (a.controle === 'batterie' ? '%' : (a.unite || ''));
       const entree = el('input', { id: champ, type: 'text', inputmode: 'decimal', classe: 'inv-valeur', autocomplete: 'off', maxlength: '8', valeur: val(), surfocus: (e) => e.target.select(),
