@@ -1857,6 +1857,7 @@ const Inventaires = (() => {
         el('ul', { classe: 'inv-liste' }, ...aClasser.map((c) => el('li', {}, carte(c)))));
     }
 
+    if (edition) noeuds.push(blocSupprimes());
     if (edition) {
       const champ = idChamp();
       noeuds.push(el('section', { classe: 'inv-groupe-reglages inv-outils-gestion' },
@@ -3147,6 +3148,31 @@ const Inventaires = (() => {
   const stocks = () => Object.values(structure.contenants).filter((c) => !c.supprime && c.stock && c.categorie === 'primaire' && !c.parent)
     .map((c) => ({ id: c.id, nom: c.nom, vehicule: c.stock.vehicule || '' }));
 
+  /** Contenants supprimés par erreur : la suppression est douce (drapeau `supprime`), on peut les restaurer avec leurs sous-inventaires. */
+  function blocSupprimes() {
+    const tousC = Object.values(structure.contenants);
+    const sup = tousC.filter((c) => c.supprime && !(c.parent && structure.contenants[c.parent] && structure.contenants[c.parent].supprime));
+    if (!sup.length) return null;
+    const sousArbre = (id, vus = new Set()) => {
+      if (vus.has(id)) return [];
+      vus.add(id);
+      return [id, ...tousC.filter((x) => x.parent === id).flatMap((x) => sousArbre(x.id, vus))];
+    };
+    return el('details', { classe: 'inv-groupe-reglages' },
+      el('summary', { texte: `Contenants supprimés (${sup.length})` }),
+      el('p', { classe: 'aide-question', texte: 'Supprimé par erreur ? « Restaurer » remet le contenant avec ses sous-inventaires. S\'il était dans un autre contenant, replacez sa gommette sur la photo du parent.' }),
+      el('ul', { classe: 'inv-liste' }, ...sup.map((c) => el('li', {},
+        el('strong', { texte: c.nom + (c.categorie ? ` (${c.categorie})` : '') }), ' ',
+        el('button', {
+          type: 'button', classe: 'cfg-bouton', texte: 'Restaurer',
+          surclick: () => {
+            const ids = sousArbre(c.id);
+            ids.forEach((id) => { const x = structure.contenants[id]; if (x) { delete x.supprime; marquer(id); } });
+            avis = `« ${c.nom} » restauré${ids.length > 1 ? ` avec ses ${ids.length - 1} sous-inventaires` : ''}.`;
+            rendre({ garderPosition: true });
+          },
+        })))));
+  }
   function encadreARetrouver() {
     const liste = aRetrouver();
     if (!liste.length) return null;
