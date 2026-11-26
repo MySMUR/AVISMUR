@@ -448,7 +448,7 @@ const Inventaires = (() => {
   const nomSeparation = (a) => (estReperePhoto(a) ? 'emplacement de la photo' : `séparation « ${a.nom} »`);
   // ---------- Contrôles : valeur à relever au lieu d'une case ----------
   const CONTROLES = {
-    scan: { nom: 'À scanner / renseigner', aide: 'n° de série, matériel biomédical', defaut: 'Numéro de série' },
+    scan: { nom: 'À renseigner', aide: 'valeur libre, choix dans une liste, durée ou valeur entre 2 bornes', defaut: 'Valeur' },
     materiel: { nom: 'Matériel attendu', aide: 'appareil filtré par type (PSE, respirateur…) : QR, NFC, saisie ou liste', defaut: 'Appareil' },
     temperature: { nom: 'Température', aide: '°C, avec plage', defaut: 'Température', unite: '°C' },
     batterie: { nom: 'Niveau de batterie', aide: '% ou 0 à 4', defaut: 'Batterie' },
@@ -459,8 +459,31 @@ const Inventaires = (() => {
   /** Article facultatif (ex. détecteur de CO présent sur certains sacs) : son absence ne rend pas l'inventaire non conforme. */
   const estFacultatif = (a) => Boolean(a && a.facultatif === true);
   const seuilBatterie = (a) => (a.seuil !== undefined ? a.seuil : (a.echelle === '4' ? 2 : 50));
-  /** Contrôle dont la valeur désigne un appareil (n° scanné, ou matériel attendu). */
-  const estIdentifiant = (a) => a.controle === 'scan' || a.controle === 'materiel';
+  /** Contrôle dont la valeur désigne un appareil : seul le « Matériel attendu » (le contrôle « À renseigner » est une valeur libre). */
+  const estIdentifiant = (a) => a.controle === 'materiel';
+  // ---------- Contrôle « À renseigner » : une valeur à relever, paramétrable ----------
+  const MODES_SCAN = { libre: 'Totalement libre', liste: 'Choix dans une liste', duree: 'Durée', plage: 'Valeur entre 2 bornes' };
+  const modeScan = (a) => (MODES_SCAN[a.mode] ? a.mode : 'libre');
+  const choixScan = (a) => (Array.isArray(a.choix) ? a.choix.filter(Boolean) : []);
+  /** Durée en minutes → « 1 h 30 », « 45 min ». */
+  const texteDuree = (min) => {
+    const m = Math.round(Number(min));
+    if (!Number.isFinite(m) || m < 0) return '';
+    const h = Math.floor(m / 60);
+    return h ? `${h} h${m % 60 ? ` ${String(m % 60).padStart(2, '0')}` : ''}` : `${m} min`;
+  };
+  /** Durée saisie (« 1h30 », « 1:30 », « 2 h », « 45 », « 45 min ») → minutes, ou null si illisible (un nombre seul = minutes). */
+  function minutesDe(texte) {
+    const t = String(texte === undefined || texte === null ? '' : texte).trim().toLowerCase().replace(',', '.');
+    let m = t.match(/^(\d+)\s*(?:h|:)\s*(\d{1,2})?\s*(?:min|m)?$/);
+    if (m) return Number(m[1]) * 60 + Number(m[2] || 0);
+    m = t.match(/^(\d+(?:\.\d+)?)\s*h$/);
+    if (m) return Math.round(Number(m[1]) * 60);
+    m = t.match(/^(\d+(?:\.\d+)?)\s*(?:min|m)?$/);
+    return m ? Math.round(Number(m[1])) : null;
+  }
+  /** Contrôles dont la valeur du jour peut être reprise en grisé à la prochaine check-list (n° de matériel, valeur libre ou chiffrée). */
+  const reprendPrecedent = (a) => estIdentifiant(a) || (a.controle === 'scan' && ['libre', 'plage'].includes(modeScan(a)));
   const appareilsConnus = () => (typeof Materiel !== 'undefined' && Materiel.appareils ? Materiel.appareils() : []);
   /** Appareils proposés pour un matériel attendu : ceux du type demandé (tous si aucun type). */
   const appareilsPour = (a) => appareilsConnus().filter((x) => !a.typeMateriel || cle(x.type) === cle(a.typeMateriel));
@@ -497,7 +520,17 @@ const Inventaires = (() => {
       if (a.typeMateriel && appareilsConnus().length && !appareilDe(a, t)) return { ok: false, rempli: true };
       return { ok: true, rempli: true };
     }
-    if (a.controle === 'scan') return { ok: !a.attendu || t.toLowerCase() === String(a.attendu).trim().toLowerCase(), rempli: true };
+    if (a.controle === 'scan') {
+      const mode = modeScan(a);
+      if (mode === 'libre') return { ok: !a.attendu || t.toLowerCase() === String(a.attendu).trim().toLowerCase(), rempli: true };
+      if (mode === 'liste') { const ch = choixScan(a); return { ok: !ch.length || ch.some((x) => x.toLowerCase() === t.toLowerCase()), rempli: true }; }
+      if (mode === 'duree') {
+        const n = Number(t);
+        if (!Number.isFinite(n)) return { ok: false, rempli: true };
+        return { ok: (a.min === undefined || n >= a.min) && (a.max === undefined || n <= a.max), rempli: true };
+      }
+      // « plage » : valeur chiffrée comparée aux bornes, comme une mesure (suite ci-dessous).
+    }
     if (a.controle === 'oui') return { ok: t === 'Oui', rempli: true };
     const n = Number(t.replace(',', '.'));
     if (!Number.isFinite(n)) return { ok: false, rempli: true };
@@ -508,6 +541,8 @@ const Inventaires = (() => {
   function texteValeur(a, v) {
     if (v === '' || v === undefined) return 'non renseigné';
     if (a.controle === 'materiel') { const x = appareilDe(a, v); return x ? libelleAppareil(x, x.numInterne || v) : `n° ${v}`; }
+    if (a.controle === 'scan' && modeScan(a) === 'duree') return texteDuree(v) || String(v);
+    if (a.controle === 'scan' && modeScan(a) === 'plage' && a.unite) return `${v} ${a.unite}`;
     if (a.controle === 'temperature') return `${v} °C`;
     if (a.controle === 'batterie') return a.echelle === '4' ? `${v}/4` : `${v} %`;
     if (a.controle === 'valeur' && a.unite) return `${v} ${a.unite}`;
@@ -516,7 +551,16 @@ const Inventaires = (() => {
   /** Plage attendue, en clair. */
   function texteAttente(a) {
     // Check-list : le n° attendu n'est jamais dévoilé, l'agent lit ou scanne l'appareil présent.
-    if (a.controle === 'scan') return a.attendu && gestion ? `attendu : ${a.attendu}` : '';
+    if (a.controle === 'scan') {
+      const mode = modeScan(a);
+      if (mode === 'libre') return a.attendu && gestion ? `attendu : ${a.attendu}` : '';
+      if (mode === 'liste') return gestion ? choixScan(a).join(' / ') : '';
+      if (mode === 'duree') {
+        if (a.min !== undefined && a.max !== undefined) return `${texteDuree(a.min)} à ${texteDuree(a.max)}`;
+        if (a.min !== undefined) return `≥ ${texteDuree(a.min)}`;
+        return a.max !== undefined ? `≤ ${texteDuree(a.max)}` : '';
+      }
+    }
     if (a.controle === 'materiel') return [a.typeMateriel, a.attendu && gestion ? `n° ${a.attendu}` : ''].filter(Boolean).join(' ');
     if (a.controle === 'batterie') return `≥ ${seuilBatterie(a)}${a.echelle === '4' ? '/4' : ' %'}`;
     if (a.controle === 'oui') return '';
@@ -2487,13 +2531,33 @@ const Inventaires = (() => {
       etiquette.append(nomAppareil);
       majNom();
     } else if (a.controle === 'scan') {
-      const entree = el('input', { id: champ, classe: 'inv-valeur inv-valeur-texte', autocomplete: 'off', maxlength: '120', placeholder: 'Scanner ou saisir', valeur: val(), surinput: (e) => poser(e.target.value.trim()) });
-      let rep = null;
-      const remplir = (t) => { entree.value = t; poser(t); if (rep) rep.maj(); };
-      rep = reprise(entree, remplir);
-      const boutonQr = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Scanner le QR code ou code-barres : ${nomArticle(a)}`, title: 'QR code / code-barres', surclick: () => lireCode(remplir, { qr: true, nfc: false, article: a }) }, logoQr());
-      const boutonNfc = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Lire la puce NFC : ${nomArticle(a)}`, title: 'Puce NFC', surclick: () => lireCode(remplir, { qr: false, nfc: true, article: a }) }, logoNfc());
-      saisie = el('span', { classe: 'inv-valeur-zone' }, entree, rep && rep.coche, boutonQr, boutonNfc, listeAppareils(a, remplir));
+      const mode = modeScan(a);
+      if (mode === 'liste') {
+        // Choix dans une liste : un seul menu, rien à scanner ni à saisir.
+        const choix = choixScan(a);
+        if (val() && !choix.includes(val())) choix.push(val());
+        saisie = el('span', { classe: 'inv-valeur-zone' }, el('select', { id: champ, classe: 'inv-valeur inv-liste-choix', 'aria-label': nomArticle(a), surchange: (e) => poser(e.target.value) },
+          el('option', { value: '', selected: val() === '', texte: 'Choisir…' }),
+          ...choix.map((x) => el('option', { value: x, selected: x === val(), texte: x }))));
+      } else if (mode === 'duree') {
+        // Durée saisie en clair (1h30, 45 min, 90) et conservée en minutes.
+        const entree = el('input', { id: champ, classe: 'inv-valeur inv-valeur-texte', autocomplete: 'off', maxlength: '12', placeholder: 'ex. 1 h 30', 'aria-label': `${nomArticle(a)} (durée)`, valeur: val() === '' ? '' : texteDuree(val()),
+          surinput: (e) => { const n = minutesDe(e.target.value); poser(n === null ? '' : String(n)); },
+          surchange: (e) => { const n = minutesDe(e.target.value); e.target.value = n === null ? '' : texteDuree(n); } });
+        saisie = el('span', { classe: 'inv-valeur-zone' }, entree);
+      } else {
+        // Libre ou valeur chiffrée entre 2 bornes : simple champ, avec la valeur de la dernière check-list en grisé.
+        const plage = mode === 'plage';
+        const entree = el('input', { id: champ, classe: `inv-valeur${plage ? '' : ' inv-valeur-texte'}`, ...(plage ? { type: 'text', inputmode: 'decimal', maxlength: '10' } : { autocomplete: 'off', maxlength: '120', placeholder: 'Saisir' }), valeur: val(),
+          surinput: (e) => poser(plage ? e.target.value.trim().replace(',', '.') : e.target.value.trim()) });
+        let rep = null;
+        const remplir = (t) => { entree.value = t; poser(t); if (rep) rep.maj(); };
+        rep = reprendPrecedent(a) ? reprise(entree, remplir) : null;
+        const lecture = (classe, label, title, logo, opts) => el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `${label} : ${nomArticle(a)}`, title, surclick: () => lireCode(remplir, { ...opts, brut: true }) }, logo);
+        saisie = el('span', { classe: 'inv-valeur-zone' }, entree, rep && rep.coche, plage && a.unite ? el('span', { classe: 'inv-qte-attendue', texte: a.unite }) : null,
+          a.qr ? lecture('', 'Scanner le QR code ou code-barres', 'QR code / code-barres', logoQr(), { qr: true, nfc: false }) : null,
+          a.nfc ? lecture('', 'Lire la puce NFC', 'Puce NFC', logoNfc(), { qr: false, nfc: true }) : null);
+      }
     } else {
       const unite = a.controle === 'temperature' ? '°C' : (a.controle === 'batterie' ? '%' : (a.unite || ''));
       const entree = el('input', { id: champ, type: 'text', inputmode: 'decimal', classe: 'inv-valeur', autocomplete: 'off', maxlength: '8', valeur: val(), surfocus: (e) => e.target.select(),
@@ -2568,7 +2632,7 @@ const Inventaires = (() => {
     const lu = (t, tout) => {
       const brut = String(t || '').trim();
       if (!brut || fini) return;
-      const appareil = typeof Materiel !== 'undefined' ? Materiel.identifier(tout || brut) || Materiel.identifier(brut) : null;
+      const appareil = typeof Materiel !== 'undefined' && !choix.brut ? Materiel.identifier(tout || brut) || Materiel.identifier(brut) : null;
       const v = ((appareil && codeAppareil(choix.article, appareil)) || brut).slice(0, 120);
       fermer();
       surLu(v);
@@ -2674,7 +2738,7 @@ const Inventaires = (() => {
       if (estControle(a)) {
         // N° de matériel relevé à la dernière check-list validée : proposé en grisé (jamais repris d'office).
         const der = etat.verifs[c.id];
-        const precedent = estIdentifiant(a) && der && der.valeurs && der.valeurs[a.id] !== undefined ? String(der.valeurs[a.id]).trim() : '';
+        const precedent = reprendPrecedent(a) && der && der.valeurs && der.valeurs[a.id] !== undefined ? String(der.valeurs[a.id]).trim() : '';
         const dateDer = precedent && der.date ? new Date(der.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '';
         liste.append(ligneControle(a, b, modifie, precedent, dateDer));
         return;
@@ -3379,7 +3443,7 @@ const Inventaires = (() => {
   }
   const articleBiomed = (a) => Boolean(fiche(a)) && ['Matériel', 'Biomed', 'Biomédical'].includes(fiche(a).categorie); // « Biomédical » : ancien nom de « Matériel »
   /** Contenant d'un appareil biomédical (ex. un scope et ses pochettes) : sa liste attend un article « Matériel ». */
-  // Un contrôle « scan » (n° d'appareil scanné : puce MySMUR, étiquette biomed, n° de série) désigne aussi un appareil biomédical.
+  // Seul le contrôle « Matériel attendu » désigne un appareil biomédical (le contrôle « À renseigner » est une valeur libre).
   const appareilScanne = (a) => !a.separateur && estIdentifiant(a);
   const contenantBiomed = (c) => aCocher(c).some((a) => articleBiomed(a) || appareilScanne(a));
   /**
@@ -3438,10 +3502,6 @@ const Inventaires = (() => {
           if (val) detail.appareils.push({ nom: texteValeur(a, val), ou: ici, ok: e.ok });
           else if (!estFacultatif(a)) detail.controles.push({ nom: nomArticle(a), ou: ici, texte: 'non identifié', ok: false, rempli: false });
           if (e.rempli && !e.ok && !estFacultatif(a)) controleKo = true;
-          return;
-        }
-        if (a.controle === 'scan') {
-          if (val) detail.appareils.push({ nom: `${nomArticle(a).replace(/\s*(n°|no|num(éro)?)\.?\s*$/i, '')} n° ${val}`, ou: ici, ok: e.ok });
           return;
         }
         detail.controles.push({ nom: nomArticle(a), ou: ici, texte: texteValeur(a, val), ok: e.ok, rempli: e.rempli });
@@ -3841,7 +3901,36 @@ const Inventaires = (() => {
       ...types.map((t) => el('option', { value: t, selected: cle(t) === cle(a.typeMateriel), texte: t })))),
       el('label', { classe: 'inv-qte-libelle' }, 'N° précis ', el('input', { classe: 'inv-qte', maxlength: '60', placeholder: 'tout', valeur: a.attendu || '', 'aria-label': `N° interne attendu, facultatif (${a.nom})`, surchange: (e) => { const t = e.target.value.trim(); if (t) a.attendu = t; else delete a.attendu; marquer(c.id); } })));
     }
-    if (a.controle === 'scan') reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Attendu ', el('input', { classe: 'inv-attendu', maxlength: '60', placeholder: 'facultatif', valeur: a.attendu || '', 'aria-label': `Valeur attendue (${a.nom})`, surchange: (e) => { const t = e.target.value.trim(); if (t) a.attendu = t; else delete a.attendu; marquer(c.id); } })));
+    if (a.controle === 'scan') {
+      const mode = modeScan(a);
+      const duree = (cle, libelle) => el('label', { classe: 'inv-qte-libelle' }, `${libelle} `, el('input', {
+        classe: 'inv-qte', maxlength: '12', placeholder: '–', valeur: a[cle] === undefined ? '' : texteDuree(a[cle]), 'aria-label': `${libelle} (${a.nom}), en durée`,
+        surchange: (e) => { const n = minutesDe(e.target.value); if (n === null) { delete a[cle]; e.target.value = ''; } else { a[cle] = n; e.target.value = texteDuree(n); } marquer(c.id); },
+      }));
+      reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Saisie ', el('select', { 'aria-label': `Type de saisie (${a.nom})`, surchange: (e) => {
+        const nv = e.target.value;
+        // Chaque saisie a ses propres réglages : on repart de zéro pour ne rien garder d'une autre.
+        ['attendu', 'choix', 'min', 'max', 'unite', ...(nv === 'liste' || nv === 'duree' ? ['qr', 'nfc'] : [])].forEach((k) => delete a[k]);
+        if (nv === 'libre') delete a.mode; else a.mode = nv;
+        marquer(c.id); rendre({ garderPosition: true });
+      } }, ...Object.entries(MODES_SCAN).map(([k, t]) => el('option', { value: k, selected: k === mode, texte: t })))));
+      if (mode === 'libre' || mode === 'plage') {
+        const coche = (cle, libelle) => el('label', { classe: 'inv-qte-libelle' }, el('input', { type: 'checkbox', checked: a[cle] === true, 'aria-label': `${libelle} autorisé (${a.nom})`,
+          surchange: (e) => { if (e.target.checked) a[cle] = true; else delete a[cle]; marquer(c.id); } }), ` ${libelle}`);
+        reglages.push(coche('qr', 'Scan QR'), coche('nfc', 'NFC'));
+      }
+      if (mode === 'libre') reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Attendu ', el('input', { classe: 'inv-attendu', maxlength: '60', placeholder: 'facultatif', valeur: a.attendu || '', 'aria-label': `Valeur attendue (${a.nom})`, surchange: (e) => { const t = e.target.value.trim(); if (t) a.attendu = t; else delete a.attendu; marquer(c.id); } })));
+      if (mode === 'liste') reglages.push(el('label', { classe: 'inv-qte-libelle' }, 'Choix ', el('input', { classe: 'inv-attendu', maxlength: '300', placeholder: 'séparés par ;', valeur: choixScan(a).join(' ; '), 'aria-label': `Choix proposés, séparés par des points-virgules (${a.nom})`, surchange: (e) => {
+        const l = e.target.value.split(/[;\n]/).map((x) => x.trim()).filter(Boolean);
+        if (l.length) a.choix = [...new Set(l)]; else delete a.choix;
+        e.target.value = choixScan(a).join(' ; '); marquer(c.id);
+      } })));
+      if (mode === 'duree') reglages.push(duree('min', 'Min'), duree('max', 'Max'));
+      if (mode === 'plage') {
+        reglages.push(nombre('min', 'Min'), nombre('max', 'Max'),
+          el('label', { classe: 'inv-qte-libelle' }, 'Unité ', el('input', { classe: 'inv-qte', maxlength: '10', valeur: a.unite || '', 'aria-label': `Unité (${a.nom})`, surchange: (e) => { const t = e.target.value.trim(); if (t) a.unite = t; else delete a.unite; marquer(c.id); } })));
+      }
+    }
     return el('div', { classe: 'inv-edition-article inv-edition-fiche inv-edition-controle', 'data-cle': a.id }, poignee(a.nom),
       el('div', { classe: 'inv-edition-nom' },
         el('input', { 'aria-label': 'Libellé du contrôle', maxlength: '120', valeur: a.nom, classe: 'inv-nom-article', surchange: (e) => { const t = e.target.value.trim(); if (t) { a.nom = t; marquer(c.id); } else e.target.value = a.nom; } }),
@@ -4747,7 +4836,7 @@ const Inventaires = (() => {
   const copieProfonde = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   /** Article réduit à ce qui se répercute (le nom des articles de la base vient de la fiche). */
   const sigArticle = (a) => (a.separateur ? { separateur: true, nom: a.nom, photo: a.photo === true || undefined }
-    : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu, typeMateriel: a.typeMateriel, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined }
+    : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu, mode: a.mode, choix: a.choix, qr: a.qr, nfc: a.nfc, typeMateriel: a.typeMateriel, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined }
       : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || ''), quantiteMin: a.quantiteMin === true || undefined, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined });
   /** Gommette réduite à ce qui se répercute : position, texte et taille éventuels. */
   const sigPoint = (p) => ({ cible: p.cible, x: p.x, y: p.y, ...(typeof p.texte === 'string' ? { texte: p.texte } : {}), ...(Number(p.taille) > 0 && Number(p.taille) !== 1 ? { taille: Number(p.taille) } : {}) });
@@ -4839,7 +4928,7 @@ const Inventaires = (() => {
           if (a.separateur) d.push(`nom « ${sb.nom} » → « ${sa.nom} »`);
           else if (sa.controle || sb.controle) {
             if (sa.nom !== sb.nom) d.push(`nom « ${sb.nom} » → « ${sa.nom} »`);
-            if (['controle', 'min', 'max', 'unite', 'echelle', 'seuil', 'attendu', 'typeMateriel'].some((c) => !egal(sa[c], sb[c]))) d.push('réglages du contrôle');
+            if (['controle', 'min', 'max', 'unite', 'echelle', 'seuil', 'attendu', 'mode', 'choix', 'qr', 'nfc', 'typeMateriel'].some((c) => !egal(sa[c], sb[c]))) d.push('réglages du contrôle');
           } else {
             if (sa.ref !== sb.ref || sa.nom !== sb.nom) d.push(`était « ${nomBase(B[a.id])} »`);
             if (sa.quantite !== sb.quantite) d.push(`quantité ${sb.quantite || '—'} → ${sa.quantite || '—'}`);

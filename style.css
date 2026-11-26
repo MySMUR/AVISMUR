@@ -1921,6 +1921,7 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .inv-controle-scan .inv-valeur-zone, .inv-controle-materiel .inv-valeur-zone { flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-end; }
 .inv-controle-scan .inv-valeur-texte, .inv-controle-materiel .inv-valeur-texte { flex: 1 1 8rem; max-width: 14rem; min-width: 6rem; }
 .inv-liste-appareils { flex: 1 1 100%; min-width: 0; padding: 0.35rem 0.4rem; border-radius: 0.5rem; }
+.inv-liste-choix { width: auto; min-width: 9rem; max-width: 100%; text-align: left; padding: 0.35rem 0.4rem; border-radius: 0.5rem; }
 
 /* Barre du bas : QR code et NFC (téléphone, agent connecté) */
 .barre-scan { display: none; }
