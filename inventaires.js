@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 28;
+  const VERSION_SERVEUR = 29;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -37,6 +37,7 @@ const Inventaires = (() => {
   let rechercheAjout = ''; // recherche en cours dans « Ajouter un article »
   let toutAfficherAjout = false; // tous les résultats de cette recherche affichés, sans limite
   let creation = null; // fiche en cours de création ({ denomination, … }) depuis « Ajouter un article »
+  let filtreVehicule = ''; // gestion : inventaires types immobiles filtrés par véhicule ('' = tous, '-' = sans véhicule précisé, sinon id du contenant primaire)
   let ajoutSousOuvert = false; // formulaire « Ajouter un sous-inventaire » déplié (mode Modifier)
   let ajoutRacineOuvert = false; // gestion : formulaire « Nouveau contenant » de la page d'accueil déplié
   let ongletGestion = 'contenu'; // gestion d'un contenant : onglet affiché (contenu, reglages, etiquette, exemplaires)
@@ -206,6 +207,9 @@ const Inventaires = (() => {
       // Étiquette QR : largeur × hauteur imprimées (mm) et logo central (puce NFC au dos, croix SMUR ou aucun).
       ...(c.etiquette ? { etiquette: normEtiquette(c.etiquette) } : {}),
       ...(c.modele ? { modele: true } : {}),
+      // Inventaire type (immobile surtout) : contenants primaires (véhicules…) auxquels il est destiné. Vide = non précisé.
+      ...(c.modele && Array.isArray(c.destinataires) && c.destinataires.some((x) => ID.test(String(x)))
+        ? { destinataires: [...new Set(c.destinataires.map(String).filter((x) => ID.test(x)))] } : {}),
       ...(c.desaffecte ? { desaffecte: c.desaffecte } : {}), // mobile dont la place a été prise : à retrouver
       // Caisses d'un véhicule désarmé (répertoire virtuel, Desarmement.gs) : véhicule, date, agent ; copie : contenant d'origine.
       ...(c.stock && typeof c.stock === 'object' ? { stock: { ...c.stock } } : {}),
@@ -1888,7 +1892,7 @@ const Inventaires = (() => {
           : el('p', { classe: 'aide-question', texte: 'Aucun pour l\'instant : créez un contenant (+), puis Réglages › « Inventaire type ».' }),
         el('h2', { classe: 'inv-titre-modeles', texte: 'Inventaires types immobiles' }),
         el('p', { classe: 'aide-question', texte: 'Tiroirs et placards des véhicules : une seule structure, modifiée une fois, répercutée sur tous les véhicules.' }),
-        immobiles.length ? listeTuiles(immobiles)
+        immobiles.length ? filtreImmobiles(immobiles)
           : el('p', { classe: 'aide-question', texte: 'Aucun pour l\'instant.' }));
     }
     // Administrateurs : inventaires de premier niveau pas encore classés.
@@ -2462,8 +2466,20 @@ const Inventaires = (() => {
     const types = Object.values(structure.contenants).filter((x) => !x.supprime && x.modele && x.id !== (racineModele(c.id) || {}).id)
       .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
     const idType = idChamp();
+    // Types immobiles destinés à un véhicule : ceux prévus pour le véhicule où l'on se trouve passent en premier ;
+    // un type destiné à d'autres véhicules seulement l'indique dans son libellé (rien n'est interdit).
+    const ici = primaireDe(c.id);
+    const prevusIci = (t) => Boolean(ici && (t.destinataires || []).includes(ici.id));
+    const optionType = (t) => {
+      const ailleurs = t.categorie === 'immobile' && !prevusIci(t) ? nomsDestinataires(t) : [];
+      return el('option', { value: t.id, texte: t.categorie === 'immobile' ? `${t.nom} (immobile${ailleurs.length ? ` — prévu pour ${ailleurs.join(', ')}` : ''})` : t.nom });
+    };
+    const typesIci = types.filter(prevusIci);
+    const autresTypes = types.filter((t) => !prevusIci(t));
     const choixType = el('select', { id: idType }, el('option', { value: '', texte: types.length ? 'Choisir l\'inventaire type attendu…' : 'Aucun inventaire type' }),
-      ...types.map((t) => el('option', { value: t.id, texte: t.categorie === 'immobile' ? `${t.nom} (immobile)` : t.nom })));
+      typesIci.length ? el('optgroup', { label: `Prévus pour ${ici.nom}` }, ...typesIci.map(optionType)) : null,
+      typesIci.length && autresTypes.length ? el('optgroup', { label: 'Autres inventaires types' }, ...autresTypes.map(optionType)) : null,
+      typesIci.length ? null : autresTypes.map(optionType));
     const ajoutEmplacement = el('div', { classe: 'inv-ajout inv-ajout-emplacement', hidden: !ajoutSousOuvert },
       el('label', { for: idType, texte: 'Ou ajouter un inventaire type (emplacement pour un contenant mobile)' }),
       el('p', { classe: 'aide-question', texte: 'Type mobile : en check-list, l\'agent identifiera l\'exemplaire présent (QR, NFC ou liste) ; seuls les exemplaires de ce type seront acceptés. Type immobile : ajouté directement, sans rien à identifier.' }),
@@ -5072,6 +5088,7 @@ const Inventaires = (() => {
   function copierDepuisModele(m, parent, ordre) {
     const copie = normaliser({ ...copieProfonde(m), id: nouvelId(), parent, ordre, source: m.id, base: instantane(m) });
     delete copie.modele;
+    delete copie.destinataires; // la destination appartient au type, pas à ses exemplaires
     structure.contenants[copie.id] = copie;
     const fils = enfants(m.id).map((f) => copierDepuisModele(f, copie.id, f.ordre));
     traduireCibles(copie, (cible) => (fils.find((x) => x.source === cible) || {}).id);
@@ -5294,15 +5311,77 @@ const Inventaires = (() => {
       el('span', { classe: 'inv-repercuter-aide', texte: 'Cet inventaire type a été modifié.' }));
   }
 
+  /** Gestion : liste des types immobiles, filtrable par véhicule (contenant primaire) auquel ils sont destinés. */
+  function filtreImmobiles(immobiles) {
+    const primaires = primairesDestinataires();
+    if (filtreVehicule && filtreVehicule !== '-' && !primaires.some((p) => p.id === filtreVehicule)) filtreVehicule = '';
+    const garde = (t) => (!filtreVehicule ? true : filtreVehicule === '-' ? !nomsDestinataires(t).length : (t.destinataires || []).includes(filtreVehicule));
+    const visibles = immobiles.filter(garde);
+    const id = idChamp();
+    const option = (valeur, texte) => el('option', { value: valeur, texte, selected: filtreVehicule === valeur });
+    return el('div', {},
+      el('div', { classe: 'champ inv-filtre-vehicule' }, el('label', { for: id, texte: 'Véhicule' }),
+        el('select', { id, surchange: (e) => { filtreVehicule = e.target.value; rendre({ garderPosition: true }); } },
+          option('', 'Tous les véhicules'), ...primaires.map((p) => option(p.id, p.nom)), option('-', 'Sans véhicule précisé'))),
+      visibles.length ? listeTuiles(visibles) : el('p', { classe: 'aide-question', texte: 'Aucun inventaire type immobile pour ce véhicule.' }));
+  }
+
+  /** Contenants primaires (véhicules, réserve, locaux…) auxquels un inventaire type peut être destiné. */
+  const primairesDestinataires = () => Object.values(structure.contenants)
+    .filter((x) => !x.supprime && x.categorie === 'primaire' && !x.modele && !x.stock && !dansUnModele(x.id))
+    .sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { numeric: true }));
+  /** Noms des contenants primaires encore existants auxquels ce type est destiné. */
+  const nomsDestinataires = (m) => {
+    const ids = new Set(m.destinataires || []);
+    return primairesDestinataires().filter((p) => ids.has(p.id)).map((p) => p.nom);
+  };
+
+  /**
+   * Gestion d'un inventaire type immobile : véhicules (contenants primaires) auxquels il est destiné. Sert de repère :
+   * le « + » d'un véhicule propose d'abord les types prévus pour lui, et la liste ci-dessous montre où le type reste à ajouter.
+   */
+  function blocDestinataires(m, exemplaires) {
+    const primaires = primairesDestinataires();
+    const choisis = new Set(m.destinataires || []);
+    const presents = new Set(exemplaires.map((e) => (primaireDe(e.id) || {}).id).filter(Boolean));
+    const regler = (id, coche) => {
+      const s = new Set(m.destinataires || []);
+      if (coche) s.add(id); else s.delete(id);
+      if (s.size) m.destinataires = [...s]; else delete m.destinataires;
+      marquer(m.id);
+      rendre({ garderPosition: true });
+    };
+    const manquants = primaires.filter((p) => choisis.has(p.id) && !presents.has(p.id)).length;
+    return el('div', { classe: 'champ inv-destinataires' },
+      el('span', { classe: 'inv-libelle', texte: 'Destiné aux véhicules' }),
+      primaires.length ? el('div', { classe: 'inv-destinataires-liste' }, ...primaires.map((p) => {
+        const i = idChamp();
+        const prevu = choisis.has(p.id);
+        const present = presents.has(p.id);
+        return el('label', { classe: 'cfg-case', for: i },
+          el('input', { type: 'checkbox', id: i, checked: prevu, surchange: (e) => regler(p.id, e.target.checked) }),
+          el('span', {}, p.nom,
+            prevu && present ? el('small', { classe: 'inv-attente', texte: ' — déjà ajouté' }) : null,
+            prevu && !present ? el('small', { classe: 'inv-attente' }, ' — ', el('a', { href: lien(p.id), texte: 'à ajouter' })) : null,
+            !prevu && present ? el('small', { classe: 'inv-attente', texte: ' — présent, non prévu' }) : null));
+      })) : el('p', { classe: 'aide-question', texte: 'Aucun contenant primaire (véhicule) n\'existe pour l\'instant.' }),
+      el('p', { classe: 'aide-question', texte: !choisis.size
+        ? 'Aucun véhicule précisé : ce type est proposé partout. Cochez les véhicules qui doivent le contenir ; il sera alors proposé en premier dans leur « + ».'
+        : (manquants ? `${pluriel(manquants, 'véhicule')} ${manquants > 1 ? 'n\'ont' : 'n\'a'} pas encore ce type : ouvrez-le (« à ajouter ») puis ajoutez le type depuis le « + » d'un de ses contenants.`
+          : 'Tous les véhicules prévus contiennent ce type.') }));
+  }
+
   const diffsOuvertes = new Set(); // exemplaires dont le détail « personnalisé » est déplié
   /** Bloc affiché en tête d'un inventaire type (racine ou sous-inventaire). */
   function blocModele(c) {
     const m = racineModele(c.id);
     if (!m) return null;
     const exemplaires = exemplairesDe(m.id);
+    const destines = m.categorie === 'immobile' ? nomsDestinataires(m) : [];
     if (!edition) {
       return el('p', { classe: 'note-parc inv-note-modele' }, el('strong', { texte: 'Inventaire type. ' }),
-        `Il ne se vérifie pas : il sert de structure à ${pluriel(exemplaires.length, 'exemplaire')}. Modifiez-le puis répercutez les changements.`);
+        `Il ne se vérifie pas : il sert de structure à ${pluriel(exemplaires.length, 'exemplaire')}. Modifiez-le puis répercutez les changements.`,
+        destines.length ? ` Destiné à : ${destines.join(', ')}.` : '');
     }
     const resultat = el('p', { classe: 'message', role: 'status' });
     const liste = el('div', { classe: 'inv-exemplaires' });
@@ -5378,6 +5457,8 @@ const Inventaires = (() => {
       el('h2', { texte: 'Inventaire type' }),
       c.id !== m.id ? el('p', { classe: 'aide-question' }, 'Ce sous-inventaire fait partie de l\'inventaire type ', el('a', { href: lien(m.id), texte: m.nom }), '.') : null,
       el('p', { classe: 'aide-question', texte: 'Les modifications du type ne partent pas toutes seules : appuyez sur « Répercuter ». Tout est répercuté (photos, gommettes, sous-inventaires, articles) ; si un sac a une personnalisation contraire, on vous demande s\'il faut l\'écraser.' }),
+      // Type immobile (racine) : véhicules auxquels il est destiné.
+      m.categorie === 'immobile' && c.id === m.id ? blocDestinataires(m, exemplaires) : null,
       exemplaires.length ? liste : el('p', { texte: 'Aucun exemplaire pour l\'instant.' }),
       exemplaires.length ? el('div', { classe: 'cfg-actions' }, boutonRepercuter, boutonSupprimer,
         // Étiquettes QR de tous les exemplaires et de ce qu'ils contiennent (pré-cochées, modifiables dans la fenêtre).

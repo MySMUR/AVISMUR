@@ -1498,6 +1498,7 @@ h1 .inv-tag-scellable { font-size: 0.8rem; vertical-align: 0.35em; }
 .inv-note-modele { background: #F4EEFB; border-left: 6px solid #6B3FA0; }
 .inv-note-modele p { margin: 0.2rem 0; }
 .inv-bloc-modele { border-top-color: #6B3FA0; }
+.inv-destinataires-liste { display: grid; gap: .25rem; margin: .4rem 0; }
 .inv-exemplaires { display: grid; gap: 0.1rem; margin: 0.4rem 0; }
 .inv-exemplaires a { color: var(--bleu); font-weight: 700; }
 .inv-exemplaire { display: flex; flex-wrap: wrap; align-items: center; column-gap: 0.4rem; }
