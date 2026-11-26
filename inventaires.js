@@ -1794,10 +1794,16 @@ const Inventaires = (() => {
     // Inventaires types : visibles des administrateurs seulement.
     const modeles = racines.filter((c) => c.modele);
     if (gestion) {
-      noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Inventaires types' }),
-        el('p', { classe: 'aide-question', texte: 'Structures des contenants identiques (sacs, ampouliers…) : on modifie le type, puis on répercute sur ses exemplaires. Ils ne se vérifient pas.' }),
-        modeles.length ? listeTuiles(modeles)
-          : el('p', { classe: 'aide-question', texte: 'Aucun pour l\'instant : créez un contenant (+), puis Réglages › « Inventaire type ».' }));
+      const immobiles = modeles.filter((c) => c.categorie === 'immobile');
+      const mobiles = modeles.filter((c) => c.categorie !== 'immobile');
+      noeuds.push(el('h2', { classe: 'inv-titre-modeles', texte: 'Inventaires types mobiles' }),
+        el('p', { classe: 'aide-question', texte: 'Contenants qui se déplacent (sacs, ampouliers, scopes…) : on modifie le type, puis on répercute sur ses exemplaires. Ils ne se vérifient pas.' }),
+        mobiles.length ? listeTuiles(mobiles)
+          : el('p', { classe: 'aide-question', texte: 'Aucun pour l\'instant : créez un contenant (+), puis Réglages › « Inventaire type ».' }),
+        el('h2', { classe: 'inv-titre-modeles', texte: 'Inventaires types immobiles' }),
+        el('p', { classe: 'aide-question', texte: 'Tiroirs et placards des véhicules : une seule structure, modifiée une fois, répercutée sur tous les véhicules.' }),
+        immobiles.length ? listeTuiles(immobiles)
+          : el('p', { classe: 'aide-question', texte: 'Aucun pour l\'instant.' }));
     }
     // Administrateurs : inventaires de premier niveau pas encore classés.
     const aClasser = racines.filter((c) => !c.modele && !c.categorie);
