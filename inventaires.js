@@ -5077,7 +5077,9 @@ const Inventaires = (() => {
         } }) : null;
       liste.append(el('div', { classe: 'inv-exemplaire' },
         el('label', { classe: 'cfg-case', for: i }, el('input', { type: 'checkbox', id: i, checked: true, value: e.id }),
-          el('span', {}, el('a', { href: lien(e.id), texte: e.nom }))),
+          el('span', {}, el('a', { href: lien(e.id), texte: e.nom }),
+            // Type immobile : un exemplaire n'a ni numéro ni identification, on le situe par son véhicule (contenant primaire).
+            m.categorie === 'immobile' && chemin(e.id).length > 1 ? el('small', { classe: 'inv-attente', texte: ` — ${chemin(e.id)[0].nom}` }) : null)),
         bouton, panneau));
     });
     const boutonRepercuter = el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: `Répercuter sur les exemplaires cochés`, surclick: () => {
@@ -5119,7 +5121,11 @@ const Inventaires = (() => {
         el('button', { type: 'button', classe: 'cfg-bouton', texte: `Imprimer les étiquettes QR des exemplaires (${etiquettesExemplaires(exemplaires).length})…`,
           surclick: () => imprimerEtiquettes(etiquettesExemplaires(exemplaires)) })) : null,
       resultat,
-      c.id === m.id ? el('div', { classe: 'cfg-ligne inv-creer-exemplaires' }, el('label', { for: champNb, texte: 'Créer des exemplaires :' }), nb, creer) : null);
+      // Type immobile : pas de création d'exemplaires libres (non numérotés, on s'y perdrait). Il s'ajoute directement dans
+      // le contenant d'un véhicule (« + » d'un sous-inventaire) ; une modification du type se répercute ensuite sur tous les véhicules.
+      m.categorie === 'immobile'
+        ? (c.id === m.id ? el('p', { classe: 'aide-question', texte: 'Type immobile : ajoutez-le dans chaque véhicule depuis « + » d\'un contenant. Pas de numéro ni d\'identification ; l\'état (vérification, péremptions) reste propre à chaque véhicule.' }) : null)
+        : (c.id === m.id ? el('div', { classe: 'cfg-ligne inv-creer-exemplaires' }, el('label', { for: champNb, texte: 'Créer des exemplaires :' }), nb, creer) : null));
   }
 
   /** Bloc affiché dans un contenant d'exemplaire (mode Modifier) : lien vers le modèle, personnalisations. */
