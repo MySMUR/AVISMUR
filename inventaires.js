@@ -3186,7 +3186,28 @@ const Inventaires = (() => {
             avis = `« ${c.nom} » restauré${ids.length > 1 ? ` avec ses ${ids.length - 1} sous-inventaires` : ''}.`;
             rendre({ garderPosition: true });
           },
-        })))));
+        }), ' ',
+        el('button', {
+          type: 'button', classe: 'cfg-bouton danger', texte: confirmer === `purge-${c.id}` ? 'Confirmer : effacer pour toujours' : 'Purger',
+          surclick: async (e) => {
+            if (confirmer !== `purge-${c.id}`) { confirmer = `purge-${c.id}`; rendre({ garderPosition: true }); return; }
+            confirmer = '';
+            e.target.disabled = true;
+            const ids = sousArbre(c.id);
+            let rep;
+            try { rep = await App.appeler('purgerContenants', { ids }); } catch (err) { rep = { ok: false, erreur: 'pas de réseau' }; }
+            if (!rep || !rep.ok) {
+              avis = `Purge impossible : ${(rep && rep.erreur) || 'erreur inconnue'}${rep && rep.erreur === 'Action inconnue' ? ' (déployez la nouvelle version du serveur)' : ''}.`;
+            } else {
+              ids.forEach((id) => { if (structure.contenants[id] && structure.contenants[id].supprime) delete structure.contenants[id]; });
+              supprimesServeur = supprimesServeur.filter((x) => !ids.includes(x.id));
+              sauverStructure();
+              avis = `« ${c.nom} » purgé définitivement${ids.length > 1 ? ` avec ses ${ids.length - 1} sous-inventaires` : ''}.`;
+            }
+            rendre({ garderPosition: true });
+          },
+        })))),
+      sup.length > 1 ? el('p', { classe: 'aide-question', texte: 'La purge est définitive : le contenant ne pourra plus être restauré. Elle ne touche que des contenants déjà supprimés.' }) : null);
   }
   function encadreARetrouver() {
     const liste = aRetrouver();
