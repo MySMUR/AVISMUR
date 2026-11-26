@@ -63,7 +63,7 @@ setInterval(() => {
 window.addEventListener('online', majLumiere);
 window.addEventListener('offline', majLumiere);
 
-// « Rester connecté » : jeton d'appareil durable, gardé sur le téléphone (30 jours sans utilisation).
+// « Rester connecté » : jeton d'appareil durable, gardé sur le téléphone jusqu'à la déconnexion manuelle.
 const CLE_APPAREIL = 'avismur_appareil';
 const appareil = {
   lire() {
