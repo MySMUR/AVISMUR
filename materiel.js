@@ -1366,6 +1366,61 @@ const Materiel = (() => {
     return { bandelettes: lire('Bandelettes'), solutions: lire('Solutions test'), unite };
   }
 
+  // ---------- Historique des contrôles glycémie : tableau par appareil, 5 dernières années, export PDF ----------
+  const ANNEES_HISTORIQUE_GLYCEMIE = 5;
+  /** Décompose la description d'un contrôle enregistré en colonnes de tableau. */
+  function lireControleGlycemie(i) {
+    const t = String(i.description || '');
+    const lot = (titre) => { const m = t.match(new RegExp(`${titre} : lot (.*?) · péremption (\\d{2}/\\d{2}/\\d{4}|—)`)); return m ? { lot: m[1], per: m[2] } : { lot: '—', per: '—' }; };
+    const val = (titre) => { const m = t.match(new RegExp(`${titre} : ([\\d,.]+(?: \\S+)?)`)); return m ? m[1] : '—'; };
+    const resultat = (t.match(/Résultat : (\S+)/) || [])[1] || '—';
+    const com = (t.match(/Commentaires : ([\s\S]*)$/) || [])[1] || '';
+    const band = lot('Bandelettes'); const sol = lot('Solutions test');
+    return { date: i.date, resultat, lotBand: band.lot, perBand: band.per, bas: val('Contrôle bas'), haut: val('Contrôle haut'), lotSol: sol.lot, perSol: sol.per, commentaires: com.trim(), par: i.saisiPar || '' };
+  }
+  /** Contrôles de chaque appareil à glycémie depuis 5 ans, du plus récent au plus ancien. */
+  function historiqueGlycemie() {
+    const { fiches: toutes, interventions } = etat();
+    const limite = ajouterMois(aujourdhui(), -12 * ANNEES_HISTORIQUE_GLYCEMIE);
+    return toutes.filter((f) => !f.provisoire && estGlycemie(f))
+      .sort((a, b) => String(a.numInterne).localeCompare(String(b.numInterne), 'fr', { numeric: true }))
+      .map((f) => ({ fiche: f, controles: controlesGlycemie(interventions, f.id).filter((i) => String(i.date) >= limite).map(lireControleGlycemie) }));
+  }
+  const COLONNES_GLYCEMIE = ['Date', 'Résultat', 'Bandelettes (lot)', 'Péremption', 'Contrôle bas', 'Contrôle haut', 'Solution test (lot)', 'Péremption', 'Commentaires'];
+  function tableauGlycemie(controles, classe) {
+    return el('table', { classe: `glyc-tableau ${classe || ''}` },
+      el('thead', {}, el('tr', {}, COLONNES_GLYCEMIE.map((c) => el('th', { texte: c })))),
+      el('tbody', {}, controles.length ? controles.map((c) => el('tr', { classe: c.resultat === 'anomalie' ? 'glyc-anomalie' : '' },
+        [dateFr(c.date), c.resultat, c.lotBand, c.perBand, c.bas, c.haut, c.lotSol, c.perSol, c.commentaires].map((x) => el('td', { texte: x }))))
+        : el('tr', {}, el('td', { colspan: String(COLONNES_GLYCEMIE.length), texte: `Aucun contrôle enregistré sur les ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années.` }))));
+  }
+  function ouvrirHistoriqueGlycemie() {
+    const donnees = historiqueGlycemie();
+    const contenu = el('div', { classe: 'glyc-histo' },
+      el('p', { classe: 'aide-question', texte: `Contrôles des ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années, un tableau par appareil, un contrôle par ligne.` }),
+      el('div', { classe: 'cfg-actions' }, el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: 'Exporter en PDF', surclick: () => imprimerHistoriqueGlycemie(donnees) })),
+      donnees.length ? donnees.map(({ fiche, controles }) => el('section', { classe: 'glyc-appareil' },
+        el('h3', { texte: `${nomAppareil(fiche)} · ${controles.length} contrôle${controles.length > 1 ? 's' : ''}` }),
+        el('div', { classe: 'glyc-defilement' }, tableauGlycemie(controles))))
+        : el('p', { classe: 'mat-vide', texte: 'Aucun appareil à glycémie dans la base du matériel.' }));
+    fenetre('Historique des contrôles glycémie', contenu, { large: true });
+  }
+  /** Export PDF : une page A4 paysage par appareil, via l'impression du navigateur (« Enregistrer au format PDF »). */
+  function imprimerHistoriqueGlycemie(donnees) {
+    const jour = dateFr(aujourdhui());
+    const page = el('div', { id: 'glyc-impression' }, donnees.map(({ fiche, controles }) => el('section', { classe: 'glyc-imp-page' },
+      el('h1', { texte: 'Contrôle des appareils à glycémie' }),
+      el('h2', { texte: nomAppareil(fiche) }),
+      el('p', { classe: 'glyc-imp-infos', texte: [fiche.numBiomed && `N° biomed : ${fiche.numBiomed}`, fiche.numSerie && `N° de série : ${fiche.numSerie}`, `Contrôles des ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années, édité le ${jour}`].filter(Boolean).join(' · ') }),
+      tableauGlycemie(controles, 'glyc-imp'))));
+    document.body.append(page);
+    document.body.classList.add('impression-glycemie');
+    const fin = () => { document.body.classList.remove('impression-glycemie'); page.remove(); window.removeEventListener('afterprint', fin); };
+    window.addEventListener('afterprint', fin);
+    window.print();
+    setTimeout(() => { if (document.body.contains(page) && !matchMedia('print').matches) fin(); }, 60000);
+  }
+
   function rendreGlycemie() {
     const { fiches: toutes, interventions, attente } = etat();
     const appareils = toutes.filter((f) => enService(f) && !f.provisoire && estGlycemie(f))
@@ -1386,7 +1441,8 @@ const Materiel = (() => {
           attente.has(f.id) ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null),
         peutControler() ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Faire le contrôle', surclick: () => ouvrirGlycemie(f) }) : null);
     });
-    zone.replaceChildren(ongletsMateriel(), entete, aide,
+    const boutonHisto = el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Historique des contrôles (5 ans) · PDF', surclick: ouvrirHistoriqueGlycemie });
+    zone.replaceChildren(ongletsMateriel(), entete, aide, el('div', { classe: 'cfg-actions' }, boutonHisto),
       lignes.length ? el('ul', { classe: 'mat-lignes' }, lignes)
         : el('p', { classe: 'mat-vide', texte: 'Aucun appareil à glycémie en service dans la base du matériel : créez-en un dans l\'onglet Appareils (type ou modèle contenant « glycémie » ou « glucomètre », par exemple « Hémoglucomètre »).' }));
   }

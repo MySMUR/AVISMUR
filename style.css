@@ -3603,3 +3603,28 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
   #flu-impression tbody th { text-align: left; }
   #flu-impression .flu-imp-total { font-weight: 700; }
 }
+
+/* Historique des contrôles glycémie : tableaux à l'écran et export PDF (1 page A4 paysage par appareil) */
+.glyc-appareil { margin: 1rem 0; }
+.glyc-appareil h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+.glyc-defilement { overflow-x: auto; }
+.glyc-tableau { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.glyc-tableau th, .glyc-tableau td { border: 1px solid #c5cdd9; padding: 0.3rem 0.5rem; text-align: left; vertical-align: top; }
+.glyc-tableau th { background: #eef2f8; white-space: nowrap; }
+.glyc-tableau tr.glyc-anomalie td { background: #fde8e8; font-weight: 700; }
+#glyc-impression { display: none; }
+@media print {
+  @page { size: A4 landscape; margin: 12mm; }
+  body.impression-glycemie { display: block; background: #fff; }
+  body.impression-glycemie > *:not(#glyc-impression) { display: none !important; }
+  body.impression-glycemie #glyc-impression { display: block; color: #000; font-size: 10pt; }
+  .glyc-imp-page { break-after: page; page-break-after: always; }
+  .glyc-imp-page:last-child { break-after: auto; page-break-after: auto; }
+  .glyc-imp-page h1 { font-size: 15pt; margin: 0 0 1mm; }
+  .glyc-imp-page h2 { font-size: 13pt; margin: 0 0 1mm; }
+  .glyc-imp-infos { margin: 0 0 4mm; font-size: 9pt; }
+  .glyc-tableau.glyc-imp { font-size: 9pt; }
+  .glyc-tableau.glyc-imp th { background: #e6e6e6; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .glyc-tableau.glyc-imp tr { break-inside: avoid; }
+  .glyc-tableau.glyc-imp thead { display: table-header-group; }
+}
