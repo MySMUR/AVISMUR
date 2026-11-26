@@ -1257,6 +1257,53 @@ const Inventaires = (() => {
   const trouvee = (a, b) => (b.quantites[a.id] !== undefined ? b.quantites[a.id] : attendue(a));
   const dateCourante = (c, a, b) => (b.dates[a.id] !== undefined ? b.dates[a.id] : datePeremption(c.id, a.id));
 
+  /** Ce que la vérification en cours relève pour un article (coché, valeur du contrôle, quantité trouvée, date). */
+  function articleDuJour(c, a, b) {
+    if (estControle(a)) {
+      const val = String(b.valeurs[a.id] === undefined ? '' : b.valeurs[a.id]).trim();
+      return { id: a.id, nom: nomArticle(a), controle: a.controle, ok: evaluer(a, val).ok, valeur: val, libelle: texteValeur(a, val), ...(estFacultatif(a) ? { facultatif: true } : {}) };
+    }
+    const att = attendue(a);
+    const qte = trouvee(a, b);
+    return {
+      id: a.id, nom: nomArticle(a), ok: Boolean(b.coches[a.id]), ...(estFacultatif(a) ? { facultatif: true } : {}),
+      ...(att !== null ? { attendu: att, quantite: qte === null || qte === '' ? 0 : Number(qte), ...(estMinimum(a) ? { min: true } : {}) } : {}),
+      ...(suiviPeremption(a) ? { peremption: dateCourante(c, a, b) } : {}),
+    };
+  }
+  /** Manquant : non coché, ou coché avec une quantité inférieure à celle attendue (jamais pour un article facultatif). */
+  const articleIncomplet = (a) => !a.facultatif && (!a.ok || (a.attendu !== undefined && ecartQuantite(a.attendu, a.quantite, a.min)));
+  /** Le champ à corriger pour un article incomplet : la saisie du contrôle, la quantité, ou la ligne à cocher. */
+  function champIncomplet(li, x) {
+    if (x.controle) return li.querySelector('.inv-valeur-zone, .inv-oui-non, .inv-batterie4');
+    if (x.ok && x.attendu !== undefined) return li.querySelector('.inv-qte');
+    return li.querySelector('.inv-ligne');
+  }
+  /** Entoure en rouge les champs des articles incomplets et amène l'utilisateur sur le premier. */
+  function signalerManquants(c, ids) {
+    zone.querySelectorAll('.champ-manquant').forEach((n) => n.classList.remove('champ-manquant'));
+    const b = brouillon(c);
+    let premier = null;
+    ids.forEach((id) => {
+      const li = zone.querySelector(`li[data-article="${id}"]`);
+      const a = aCocher(c).find((x) => x.id === id);
+      const champ = li && a && champIncomplet(li, articleDuJour(c, a, b));
+      if (!champ) return;
+      champ.classList.add('champ-manquant');
+      if (!premier) premier = champ;
+    });
+    if (!premier) return;
+    premier.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+  /** Retire le cadre rouge des champs qui viennent d'être corrigés. */
+  function majSignalement(c, b) {
+    zone.querySelectorAll('.champ-manquant').forEach((champ) => {
+      const li = champ.closest('li[data-article]');
+      const a = li && aCocher(c).find((x) => x.id === li.getAttribute('data-article'));
+      if (!a || !articleIncomplet(articleDuJour(c, a, b))) champ.classList.remove('champ-manquant');
+    });
+  }
+
   function valider(c) {
     if (enConsultation(c)) { messageVue('Consultation seule : indiquez d\'abord le contenant primaire où vous êtes.', 'erreur'); return; }
     const b = brouillon(c);
@@ -1264,27 +1311,14 @@ const Inventaires = (() => {
       messageVue('Une date de péremption n\'est pas reconnue : corrigez-la (ex. 03/2027 ou 15/03/2027).', 'erreur');
       return;
     }
-    const articles = aCocher(c).map((a) => {
-      if (estControle(a)) {
-        const val = String(b.valeurs[a.id] === undefined ? '' : b.valeurs[a.id]).trim();
-        return { id: a.id, nom: nomArticle(a), controle: a.controle, ok: evaluer(a, val).ok, valeur: val, libelle: texteValeur(a, val), ...(estFacultatif(a) ? { facultatif: true } : {}) };
-      }
-      const att = attendue(a);
-      const qte = trouvee(a, b);
-      return {
-        id: a.id, nom: nomArticle(a), ok: Boolean(b.coches[a.id]), ...(estFacultatif(a) ? { facultatif: true } : {}),
-        ...(att !== null ? { attendu: att, quantite: qte === null || qte === '' ? 0 : Number(qte), ...(estMinimum(a) ? { min: true } : {}) } : {}),
-        ...(suiviPeremption(a) ? { peremption: dateCourante(c, a, b) } : {}),
-      };
-    });
-    // Manquant : non coché, ou coché avec une quantité inférieure à celle attendue (jamais pour un article facultatif).
-    const incomplet = (a) => !a.facultatif && (!a.ok || (a.attendu !== undefined && ecartQuantite(a.attendu, a.quantite, a.min)));
-    const manquants = articles.filter(incomplet);
+    const articles = aCocher(c).map((a) => articleDuJour(c, a, b));
+    const manquants = articles.filter(articleIncomplet);
     if (manquants.length && confirmer !== `valider-${c.id}`) {
       confirmer = `valider-${c.id}`;
       const libelle = (a) => (a.controle ? `${a.nom} (${a.libelle})` : (a.ok ? `${a.nom} (${texteQuantite(a.quantite, a.attendu, a.min)})` : a.nom));
       messageVue(`Sera noté manquant ou en anomalie : ${manquants.map(libelle).join(' ; ')}. Corrigez ou appuyez de nouveau pour valider quand même.`, 'erreur');
       zone.querySelector('.inv-valider').textContent = 'Valider quand même';
+      signalerManquants(c, manquants.map((a) => a.id));
       return;
     }
     const ok = App.mettreEnFile({
@@ -2486,7 +2520,7 @@ const Inventaires = (() => {
    * reste non renseigné.
    */
   function ligneControle(a, b, modifie, precedent = '', datePrecedent = '') {
-    const li = el('li', { classe: `inv-article inv-controle inv-controle-${a.controle}` });
+    const li = el('li', { classe: `inv-article inv-controle inv-controle-${a.controle}`, 'data-article': a.id });
     const champ = idChamp();
     const attente = texteAttente(a);
     const etiquette = el('label', { for: champ, classe: 'inv-nom' }, nomArticle(a), attente ? el('small', { classe: 'inv-attente', texte: ` (${attente})` }) : null, mentionFacultatif(a));
@@ -2719,6 +2753,7 @@ const Inventaires = (() => {
     const modifie = () => {
       sauverBrouillons();
       if (confirmer) { confirmer = ''; messageVue(''); zone.querySelector('.inv-valider').textContent = 'Valider cet inventaire'; }
+      majSignalement(c, b);
       maj();
     };
     // Photo placée dans la liste par le repère (sauf en tête : elle passe alors avant toute la section).
@@ -2755,7 +2790,7 @@ const Inventaires = (() => {
       }
       const champCase = idChamp();
       const coche = el('input', { type: 'checkbox', id: champCase, 'data-article': a.id, checked: Boolean(b.coches[a.id]), surchange: (e) => { b.coches[a.id] = e.target.checked; modifie(); } });
-      const li = el('li', { classe: 'inv-article' });
+      const li = el('li', { classe: 'inv-article', 'data-article': a.id });
       const ligne = el('div', { classe: 'inv-ligne' }, coche, el('label', { for: champCase, classe: 'inv-nom' }, nomArticle(a), mentionFacultatif(a)));
       const ficheA = fiche(a);
       if (ficheA && ficheA.photo) {

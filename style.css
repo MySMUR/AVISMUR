@@ -3641,3 +3641,6 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
   .glyc-tableau.glyc-imp tr { break-inside: avoid; }
   .glyc-tableau.glyc-imp thead { display: table-header-group; }
 }
+
+/* Valider un inventaire incomplet : le champ à renseigner est entouré en rouge. */
+.champ-manquant { outline: 3px solid #c62828; outline-offset: 3px; border-radius: 8px; }
