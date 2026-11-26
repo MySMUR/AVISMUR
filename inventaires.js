@@ -375,6 +375,10 @@ const Inventaires = (() => {
     defib: { nom: 'Cœur avec éclair (défibrillateur)', dessin: () => [
       el('svg:path', { d: 'M12 20.5s-7.5-4.8-7.5-10.4a4.3 4.3 0 0 1 7.5-2.9 4.3 4.3 0 0 1 7.5 2.9c0 5.6-7.5 10.4-7.5 10.4z', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.9', 'stroke-linejoin': 'round' }),
       el('svg:path', { d: 'M13.2 6.8 9.3 12.6h2.6l-1 4.6 4-6.2h-2.7z', fill: 'currentColor' })] },
+    echo: { nom: 'Sonde (échographe)', dessin: () => [
+      el('svg:rect', { x: '9.5', y: '2', width: '5', height: '6.5', rx: '1.6', fill: 'currentColor' }),
+      el('svg:path', { d: 'M12 10.5 5.2 19.8Q12 23.6 18.8 19.8z', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.9', 'stroke-linejoin': 'round' }),
+      el('svg:path', { d: 'M8.8 16.2q3.2 1.8 6.4 0', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round' })] },
   };
   const iconeValide = (i) => (typeof i === 'string' && ICONES_GOMMETTE[i] ? i : undefined);
   function iconeChoisie(c, cible) {
