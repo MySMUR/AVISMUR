@@ -5728,7 +5728,7 @@ const Inventaires = (() => {
         if (f.scellable) aIdentifier.push(f);
         return;
       }
-      if (x.scellable) { const bx = bilan(x.id); if (bx.total > 0 && !bx.complet) prets.push(x); return; }
+      if (x.scellable) { const bx = bilan(x.id); if (bx.total > 0 && !bx.complet && !reponsesScelle.has(x.id)) prets.push(x); return; }
       parcourir(x);
     });
     parcourir(c);
@@ -5744,7 +5744,7 @@ const Inventaires = (() => {
    * « Tout est scellé » : les sous-contenants scellables pas encore vérifiés passent en « scellé ». Les non scellables
    * ne sont jamais touchés. S'il ne reste rien à vérifier ici, retour au niveau du dessus ; sinon on reste.
    */
-  function validerScellesGroupes(c, liste) {
+  function validerScellesGroupes(c, liste, ouverts = []) {
     let n = 0;
     const faits = [];
     for (const x of liste) {
@@ -5752,8 +5752,14 @@ const Inventaires = (() => {
       if (k < 0) { avis = `Non enregistré : la mémoire de l'appareil est pleine${faits.length ? ` (validés avant l'erreur : ${faits.join(', ')})` : ''}.`; rendre({ garderPosition: true }); return; }
       n += k;
       faits.push(x.nom);
+      scellesDecoches.delete(x.id);
     }
-    avis = `Scellés : ${faits.map((f) => `« ${f} »`).join(', ')}.`;
+    // Déclarés ouverts : l'agent fera l'inventaire, sans qu'on lui redemande s'ils sont scellés.
+    ouverts.forEach((x) => { reponsesScelle.add(x.id); scellesDecoches.delete(x.id); });
+    const morceaux = [];
+    if (faits.length) morceaux.push(`Scellés : ${faits.map((f) => `« ${f} »`).join(', ')}`);
+    if (ouverts.length) morceaux.push(`Ouverts : ${ouverts.map((x) => `« ${x.nom} »`).join(', ')}`);
+    avis = morceaux.length ? `${morceaux.join(' — ')}.` : '';
     const bc = bilan(c.id);
     if (bc.complet) {
       const dessus = etagesAuDessus(c)[0];
@@ -5853,7 +5859,7 @@ const Inventaires = (() => {
   const scellesChoisis = new Map();
   /** Places à identifier d'un contenant, dans l'ordre d'affichage (stable après chaque identification). */
   const scellesPlaces = new Map();
-  /** Scellables décochés par l'agent (non inclus dans « Tout est scellé ») ; par défaut tout est coché. */
+  /** Scellables passés en « Ouvert » par l'agent dans la liste ; par défaut tout est scellé. */
   const scellesDecoches = new Set();
   function blocScellesGroupes(c) {
     const { prets, aIdentifier } = scellablesSous(c);
@@ -5868,10 +5874,19 @@ const Inventaires = (() => {
       const contenu = [el('strong', { texte: x.nom }), ou ? el('small', { texte: ` · ${ou}` }) : null,
         el('span', { classe: 'inv-scelles-etat', texte: etat })];
       if (!cochable) return el('li', {}, el('span', { classe: 'inv-scelles-case-vide' }), ...contenu);
-      const cb = el('input', { type: 'checkbox', classe: 'inv-scelles-case' });
-      cb.checked = !scellesDecoches.has(x.id);
-      cb.addEventListener('change', () => { if (cb.checked) scellesDecoches.delete(x.id); else scellesDecoches.add(x.id); majBouton(); });
-      return el('li', {}, el('label', { classe: 'inv-scelles-ligne' }, cb, ...contenu));
+      const ouvert = scellesDecoches.has(x.id);
+      const bascule = el('button', { type: 'button', classe: `inv-scelles-bascule ${ouvert ? 'ouvert' : 'scelle'}`, 'aria-pressed': String(!ouvert),
+        'aria-label': `${x.nom} : ${ouvert ? 'ouvert' : 'scellé'}. Appuyer pour changer`, texte: ouvert ? '🔓 Ouvert' : '🔒 Scellé' });
+      bascule.addEventListener('click', () => {
+        const devientOuvert = !scellesDecoches.has(x.id);
+        if (devientOuvert) scellesDecoches.add(x.id); else scellesDecoches.delete(x.id);
+        bascule.className = `inv-scelles-bascule ${devientOuvert ? 'ouvert' : 'scelle'}`;
+        bascule.setAttribute('aria-pressed', String(!devientOuvert));
+        bascule.setAttribute('aria-label', `${x.nom} : ${devientOuvert ? 'ouvert' : 'scellé'}. Appuyer pour changer`);
+        bascule.textContent = devientOuvert ? '🔓 Ouvert' : '🔒 Scellé';
+        majBouton();
+      });
+      return el('li', {}, el('span', { classe: 'inv-scelles-ligne' }, ...contenu.slice(0, -1), bascule));
     };
     // Place à identifier : nom et liste déroulante sur une seule ligne ; une fois choisi, le contenant remplace le prévu, avec une coche verte.
     const lignePlace = (id) => {
@@ -5885,28 +5900,30 @@ const Inventaires = (() => {
     };
     const cochables = prets.filter((x) => !bloques.has(x.id));
     const choisis = () => cochables.filter((x) => !scellesDecoches.has(x.id));
+    const ouvertsChoisis = () => cochables.filter((x) => scellesDecoches.has(x.id));
     let bouton = null;
     const majBouton = () => {
       if (!bouton) return;
       const k = choisis().length;
-      bouton.disabled = !k;
-      bouton.textContent = k === cochables.length ? 'Tout est scellé' : `Valider ${pluriel(k, 'scellé')}`;
+      const o = ouvertsChoisis().length;
+      bouton.disabled = !cochables.length;
+      bouton.textContent = !o ? (k === cochables.length ? 'Tout est scellé' : 'Valider') : `Valider : ${k} scellé${k > 1 ? 's' : ''}, ${o} ouvert${o > 1 ? 's' : ''}`;
     };
     const deroule = el('details', { classe: 'inv-scelles-details' },
       el('summary', { classe: 'inv-scelles-resume' }, logoCadenas(),
         el('span', { texte: n ? `${pluriel(n, 'contenant')} scellable${n > 1 ? 's' : ''} non vérifié${n > 1 ? 's' : ''}` : 'Contenants identifiés' }),
         el('span', { classe: 'inv-scelles-chevron', 'aria-hidden': 'true', texte: '▾' })),
       el('ul', { classe: 'inv-scelles-detail-liste' },
-        ...prets.map((x) => ligne(x, bloques.has(x.id) ? 'inventaire incomplet' : 'à vérifier', !bloques.has(x.id))),
+        ...prets.map((x) => ligne(x, 'inventaire incomplet', !bloques.has(x.id))),
         ...places.map(lignePlace)));
     if (scellesDeroules.has(c.id)) deroule.open = true;
     deroule.addEventListener('toggle', () => { if (deroule.open) scellesDeroules.add(c.id); else scellesDeroules.delete(c.id); });
     const section = el('section', { classe: 'inv-scelles-groupes' },
       deroule,
       el('div', { classe: 'inv-boutons-scelle' },
-        prets.length ? (bouton = el('button', { type: 'button', classe: 'principal', texte: 'Tout est scellé', surclick: () => {
-          const sel = new Set(choisis().map((x) => x.id));
-          confirmerScelles(c, prets.filter((x) => sel.has(x.id) || bloques.has(x.id)), bloques, aIdentifier);
+        cochables.length ? (bouton = el('button', { type: 'button', classe: 'principal', texte: 'Tout est scellé', surclick: () => {
+          // Ce que l'agent n'a pas passé en « Ouvert » est scellé ; plus de confirmation ni de question ensuite.
+          validerScellesGroupes(c, choisis(), ouvertsChoisis());
         } })) : null,
         aIdentifier.length ? el('button', { type: 'button', classe: 'cfg-bouton inv-bouton-lecture', surclick: () => scannerScelles(c) },
           logoQr(), el('span', { texte: ` Identifier ${aIdentifier.length > 1 ? `les ${aIdentifier.length}` : 'le contenant'}` })) : null));
