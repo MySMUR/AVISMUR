@@ -1368,6 +1368,7 @@ const Materiel = (() => {
 
   // ---------- Historique des contrôles glycémie : tableau par appareil, 5 dernières années, export PDF ----------
   const ANNEES_HISTORIQUE_GLYCEMIE = 5;
+  const LIGNES_PAR_PAGE_GLYCEMIE = 14; // lignes de contrôle par page A4 paysage à l'impression
   /** Décompose la description d'un contrôle enregistré en colonnes de tableau. */
   function lireControleGlycemie(i) {
     const t = String(i.description || '');
@@ -1408,11 +1409,16 @@ const Materiel = (() => {
   /** Export PDF : une page A4 paysage par appareil, via l'impression du navigateur (« Enregistrer au format PDF »). */
   function imprimerHistoriqueGlycemie(donnees) {
     const jour = dateFr(aujourdhui());
-    const page = el('div', { id: 'glyc-impression' }, donnees.map(({ fiche, controles }) => el('section', { classe: 'glyc-imp-page' },
+    const parPage = LIGNES_PAR_PAGE_GLYCEMIE;
+    const pages = donnees.flatMap(({ fiche, controles }) => {
+      const n = Math.max(1, Math.ceil(controles.length / parPage));
+      return Array.from({ length: n }, (_, k) => ({ fiche, lignes: controles.slice(k * parPage, (k + 1) * parPage), k, n }));
+    });
+    const page = el('div', { id: 'glyc-impression' }, pages.map(({ fiche, lignes, k, n }) => el('section', { classe: 'glyc-imp-page' },
       el('h1', { texte: 'Contrôle des appareils à glycémie' }),
       el('h2', { texte: nomAppareil(fiche) }),
-      el('p', { classe: 'glyc-imp-infos', texte: [fiche.numBiomed && `N° biomed : ${fiche.numBiomed}`, fiche.numSerie && `N° de série : ${fiche.numSerie}`, `Contrôles des ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années, édité le ${jour}`].filter(Boolean).join(' · ') }),
-      tableauGlycemie(controles, 'glyc-imp'))));
+      el('p', { classe: 'glyc-imp-infos', texte: [fiche.numBiomed && `N° biomed : ${fiche.numBiomed}`, fiche.numSerie && `N° de série : ${fiche.numSerie}`, `Contrôles des ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années, édité le ${jour}`, n > 1 && `page ${k + 1}/${n}`].filter(Boolean).join(' · ') }),
+      tableauGlycemie(lignes, 'glyc-imp'))));
     document.body.append(page);
     document.body.classList.add('impression-glycemie');
     const fin = () => { document.body.classList.remove('impression-glycemie'); page.remove(); window.removeEventListener('afterprint', fin); };

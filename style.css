@@ -3613,17 +3613,20 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .glyc-tableau th { background: #eef2f8; white-space: nowrap; }
 .glyc-tableau tr.glyc-anomalie td { background: #fde8e8; font-weight: 700; }
 #glyc-impression { display: none; }
+@page { size: A4 landscape; margin: 10mm; }
 @media print {
-  @page { size: A4 landscape; margin: 12mm; }
+  @page { size: A4 landscape; margin: 10mm; }
   body.impression-glycemie { display: block; background: #fff; }
   body.impression-glycemie > *:not(#glyc-impression) { display: none !important; }
-  body.impression-glycemie #glyc-impression { display: block; color: #000; font-size: 10pt; }
+  body.impression-glycemie #glyc-impression { display: block; color: #000; font-size: 11pt; }
   .glyc-imp-page { break-after: page; page-break-after: always; }
   .glyc-imp-page:last-child { break-after: auto; page-break-after: auto; }
-  .glyc-imp-page h1 { font-size: 15pt; margin: 0 0 1mm; }
-  .glyc-imp-page h2 { font-size: 13pt; margin: 0 0 1mm; }
-  .glyc-imp-infos { margin: 0 0 4mm; font-size: 9pt; }
-  .glyc-tableau.glyc-imp { font-size: 9pt; }
+  .glyc-imp-page h1 { font-size: 17pt; margin: 0 0 1mm; }
+  .glyc-imp-page h2 { font-size: 15pt; margin: 0 0 1mm; }
+  .glyc-imp-infos { margin: 0 0 3mm; font-size: 10pt; }
+  .glyc-tableau.glyc-imp { font-size: 10.5pt; }
+  .glyc-tableau.glyc-imp th, .glyc-tableau.glyc-imp td { padding: 2mm 1.8mm; vertical-align: middle; }
+  .glyc-tableau.glyc-imp tbody tr { height: 10mm; }
   .glyc-tableau.glyc-imp th { background: #e6e6e6; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .glyc-tableau.glyc-imp tr { break-inside: avoid; }
   .glyc-tableau.glyc-imp thead { display: table-header-group; }
