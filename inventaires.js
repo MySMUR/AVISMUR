@@ -314,7 +314,7 @@ const Inventaires = (() => {
   const photosDe = (c) => [c.photo, c.vignette, ...c.vues.map((v) => v.photo)].filter(Boolean);
   /**
    * Texte des gommettes d'un sous-inventaire (le même sur toutes les vues) : `undefined` = numéro automatique
-   * (rang dans la liste), '' = gommette sans texte, sinon 1 à 3 caractères (lettres, chiffres…).
+   * (rang dans la liste), '' = gommette sans texte, sinon 1 à 4 caractères (lettres, chiffres…).
    */
   function texteChoisi(c, cible) {
     const p = vuesDe(c).flatMap((v) => v.points).find((x) => x.cible === cible && typeof x.texte === 'string');
@@ -358,7 +358,7 @@ const Inventaires = (() => {
     majVue(c, vc.cle, { points: vc.points.filter((p) => p.cible !== cible).concat({ cible, x: pos.x, y: pos.y, ...(t === undefined ? {} : { texte: t }), ...(taille === 1 ? {} : { taille }) }) });
   }
   /** Classes d'affichage d'une gommette selon son texte (vide, texte long). */
-  const classesTexte = (t) => (t === '' ? ' vierge' : Array.from(t).length > 1 ? ` long${Array.from(t).length > 2 ? ' tres-long' : ''}` : '');
+  const classesTexte = (t) => (t === '' ? ' vierge' : Array.from(t).length > 1 ? ` long${Array.from(t).length > 2 ? ' tres-long' : ''}${Array.from(t).length > 3 ? ' quatre' : ''}` : '');
 
   // ---------- Base des articles (catalogue) ----------
   const CATEGORIES = ['Médicament', 'DM', 'Magasin', 'Kit', 'Matériel', 'Biomed', 'Documents', 'Autre'];
@@ -2268,7 +2268,7 @@ const Inventaires = (() => {
 
   /**
    * Texte de la gommette d'un sous-inventaire : numéro automatique (champ vide), lettres ou chiffres
-   * au choix (3 caractères au plus), ou « Vide » : gommette sans texte.
+   * au choix (4 caractères au plus), ou « Vide » : gommette sans texte.
    */
   function champTexteGommette(c, f, i) {
     const actuel = texteChoisi(c, f.id);
@@ -2277,9 +2277,9 @@ const Inventaires = (() => {
     return el('span', { classe: 'inv-texte-gommette' },
       el('label', { for: id, texte: 'Gommette' }),
       el('input', {
-        id, maxlength: '3', size: '3', autocomplete: 'off', valeur: actuel || '', placeholder: actuel === '' ? '—' : String(i + 1),
+        id, maxlength: '4', size: '4', autocomplete: 'off', valeur: actuel || '', placeholder: actuel === '' ? '—' : String(i + 1),
         title: 'Texte de la gommette : laisser vide pour le numéro automatique',
-        surchange: (e) => { const v = Array.from(e.target.value.trim()).slice(0, 3).join(''); appliquer(v ? v : undefined); },
+        surchange: (e) => { const v = Array.from(e.target.value.trim()).slice(0, 4).join(''); appliquer(v ? v : undefined); },
       }),
       el('button', {
         type: 'button', classe: `cfg-mini${actuel === '' ? ' inv-actif' : ''}`, 'aria-pressed': String(actuel === ''),
