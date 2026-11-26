@@ -3465,10 +3465,10 @@ const Inventaires = (() => {
     // Emplacement : seuls les exemplaires de l'inventaire type attendu sont proposés.
     const emp = (() => { const p = contenant(y ? y.parent : dans); return p && p.emplacement ? p : null; })();
     // Plusieurs inventaires types acceptés : l'agent choisit d'abord, sur photo, le modèle présent.
-    // Un modèle sans aucun exemplaire (configuration pas utilisée en ce moment) n'est pas proposé.
+    // Tous les modèles acceptés par l'emplacement sont proposés, même sans exemplaire pour l'instant
+    // (le nombre d'exemplaires est indiqué sous chaque photo).
     const typesTous = emp ? modelesEmplacement(emp).map(contenant).filter(Boolean) : [];
-    const typesUtilises = typesTous.filter((t) => exemplairesDe(t.id).length);
-    const typesAcceptes = typesUtilises.length ? typesUtilises : typesTous;
+    const typesAcceptes = typesTous;
     if (typeChoisi && !typesAcceptes.some((t) => t.id === typeChoisi)) typeChoisi = '';
     const plusieurs = typesAcceptes.length > 1;
     const groupes = famillesDe(typesAcceptes);
