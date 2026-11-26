@@ -58,6 +58,7 @@ const Inventaires = (() => {
   let typePropose = ''; // emplacement dont le premier modèle a déjà été proposé (pour ne pas le reproposer)
   let placement = ''; // sous-inventaire dont on place le point sur la photo
   let avis = ''; // message affiché une fois en haut de la vue
+  let supprimesServeur = []; // contenants supprimés connus du serveur (restaurables)
   let confirmer = ''; // action en attente d'une deuxième pression (valider avec manquants, supprimer)
   let recherche = '';
   let rechercheOuverte = false; // loupe de la page des inventaires dépliée
@@ -1099,6 +1100,7 @@ const Inventaires = (() => {
     synchro.serveurInconnu = false;
     versionServeur = Number(rep.version) || 0;
     if (typeof Desarmement !== 'undefined') Desarmement.majServeur(rep.armement, rep.desarmements);
+    supprimesServeur = (Array.isArray(rep.supprimes) ? rep.supprimes : []).filter((c) => c && ID.test(c.id));
     const contenants = {};
     rep.contenants.forEach((c) => {
       if (!c || !ID.test(c.id)) return;
@@ -3150,8 +3152,13 @@ const Inventaires = (() => {
 
   /** Contenants supprimés par erreur : la suppression est douce (drapeau `supprime`), on peut les restaurer avec leurs sous-inventaires. */
   function blocSupprimes() {
-    const tousC = Object.values(structure.contenants);
-    const sup = tousC.filter((c) => c.supprime && !(c.parent && structure.contenants[c.parent] && structure.contenants[c.parent].supprime));
+    // Supprimés pendant cette session (encore en mémoire) ou connus du serveur.
+    const parId = {};
+    supprimesServeur.forEach((c) => { parId[c.id] = c; });
+    Object.values(structure.contenants).filter((c) => c.supprime).forEach((c) => { parId[c.id] = c; });
+    const tousC = Object.values(parId);
+    const vivant = (id) => Boolean(id) && Boolean(structure.contenants[id]) && !structure.contenants[id].supprime;
+    const sup = tousC.filter((c) => !vivant(c.id) && !(c.parent && parId[c.parent]));
     if (!sup.length) return null;
     const sousArbre = (id, vus = new Set()) => {
       if (vus.has(id)) return [];
@@ -3167,7 +3174,15 @@ const Inventaires = (() => {
           type: 'button', classe: 'cfg-bouton', texte: 'Restaurer',
           surclick: () => {
             const ids = sousArbre(c.id);
-            ids.forEach((id) => { const x = structure.contenants[id]; if (x) { delete x.supprime; marquer(id); } });
+            ids.forEach((id) => {
+              const brut = parId[id];
+              if (!brut) return;
+              const x = normaliser({ ...brut, supprime: undefined });
+              delete x.supprime;
+              structure.contenants[id] = x;
+              marquer(id);
+            });
+            supprimesServeur = supprimesServeur.filter((x) => !ids.includes(x.id));
             avis = `« ${c.nom} » restauré${ids.length > 1 ? ` avec ses ${ids.length - 1} sous-inventaires` : ''}.`;
             rendre({ garderPosition: true });
           },
