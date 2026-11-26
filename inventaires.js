@@ -5282,6 +5282,26 @@ const Inventaires = (() => {
             m.categorie === 'immobile' && chemin(e.id).length > 1 ? el('small', { classe: 'inv-attente', texte: ` — ${chemin(e.id)[0].nom}` }) : null)),
         bouton, panneau));
     });
+    // Suppression d'exemplaires (douce, comme « Supprimer ce contenant » : restaurable). Le type n'est jamais touché.
+    const boutonSupprimer = el('button', { type: 'button', classe: 'cfg-bouton danger', texte: 'Supprimer les exemplaires cochés', surclick: () => {
+      const choisis = [...liste.querySelectorAll('input:checked')].map((x) => contenant(x.value)).filter(Boolean);
+      if (!choisis.length) { resultat.textContent = 'Cochez au moins un exemplaire.'; return; }
+      const cle = `supprimer-exemplaires-${choisis.map((x) => x.id).sort().join(',')}`;
+      if (confirmer !== cle) {
+        confirmer = cle;
+        const nbSous = choisis.reduce((n, x) => n + descendants(x.id).length - 1, 0);
+        boutonSupprimer.textContent = `Confirmer : supprimer ${pluriel(choisis.length, 'exemplaire')}${nbSous ? ` et ${pluriel(nbSous, 'sous-inventaire')}` : ''}`;
+        return;
+      }
+      confirmer = '';
+      choisis.forEach((e) => {
+        const parent = contenant(e.parent);
+        if (parent) { retirerCible(parent, e.id); marquer(parent.id); }
+        descendants(e.id).forEach((x) => { x.supprime = true; marquer(x.id); });
+      });
+      avis = `${pluriel(choisis.length, 'exemplaire')} supprimé${choisis.length > 1 ? 's' : ''} (le type n'est pas modifié).`;
+      rendre({ garderPosition: true });
+    } });
     const boutonRepercuter = el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: `Répercuter sur les exemplaires cochés`, surclick: () => {
       const choisis = [...liste.querySelectorAll('input:checked')].map((x) => contenant(x.value)).filter(Boolean);
       if (!choisis.length) { resultat.textContent = 'Cochez au moins un exemplaire.'; return; }
@@ -5316,7 +5336,7 @@ const Inventaires = (() => {
       c.id !== m.id ? el('p', { classe: 'aide-question' }, 'Ce sous-inventaire fait partie de l\'inventaire type ', el('a', { href: lien(m.id), texte: m.nom }), '.') : null,
       el('p', { classe: 'aide-question', texte: 'Les modifications du type ne partent pas toutes seules : appuyez sur « Répercuter ». Tout est répercuté (photos, gommettes, sous-inventaires, articles) ; si un sac a une personnalisation contraire, on vous demande s\'il faut l\'écraser.' }),
       exemplaires.length ? liste : el('p', { texte: 'Aucun exemplaire pour l\'instant.' }),
-      exemplaires.length ? el('div', { classe: 'cfg-actions' }, boutonRepercuter,
+      exemplaires.length ? el('div', { classe: 'cfg-actions' }, boutonRepercuter, boutonSupprimer,
         // Étiquettes QR de tous les exemplaires et de ce qu'ils contiennent (pré-cochées, modifiables dans la fenêtre).
         el('button', { type: 'button', classe: 'cfg-bouton', texte: `Imprimer les étiquettes QR des exemplaires (${etiquettesExemplaires(exemplaires).length})…`,
           surclick: () => imprimerEtiquettes(etiquettesExemplaires(exemplaires)) })) : null,
