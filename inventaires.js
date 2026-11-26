@@ -2418,7 +2418,7 @@ const Inventaires = (() => {
    * elle s'affiche en grisé dans le champ vide, avec une coche au bout pour la reprendre ; laissé tel quel, le champ
    * reste non renseigné.
    */
-  function ligneControle(a, b, modifie, precedent = '') {
+  function ligneControle(a, b, modifie, precedent = '', datePrecedent = '') {
     const li = el('li', { classe: `inv-article inv-controle inv-controle-${a.controle}` });
     const champ = idChamp();
     const attente = texteAttente(a);
@@ -2434,10 +2434,10 @@ const Inventaires = (() => {
     // Coche « reprendre le n° de la dernière check-list » : visible tant que le champ est vide.
     const reprise = (entree, remplir) => {
       if (!precedent) return null;
-      entree.placeholder = precedent;
+      entree.placeholder = datePrecedent ? `${precedent} (${datePrecedent})` : precedent;
       entree.classList.add('inv-valeur-fantome');
       const coche = el('button', { type: 'button', classe: 'cfg-mini inv-reprendre', 'aria-label': `Reprendre le numéro de la dernière check-list (${precedent}) : ${nomArticle(a)}`,
-        title: `Reprendre ${precedent}`, texte: '✓', surclick: () => { remplir(precedent); } });
+        title: `Reprendre ${precedent}${datePrecedent ? ` (relevé le ${datePrecedent})` : ''}`, texte: '✓', surclick: () => { remplir(precedent); } });
       const maj = () => { coche.hidden = entree.value.trim() !== ''; };
       entree.addEventListener('input', maj);
       maj();
@@ -2479,7 +2479,8 @@ const Inventaires = (() => {
       rep = reprise(entree, remplir);
       const boutonQr = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Scanner le QR code ou code-barres : ${nomArticle(a)}`, title: 'QR code / code-barres', surclick: () => lireCode(remplir, { qr: true, nfc: false, article: a }) }, logoQr());
       const boutonNfc = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Lire la puce NFC : ${nomArticle(a)}`, title: 'Puce NFC', surclick: () => lireCode(remplir, { qr: false, nfc: true, article: a }) }, logoNfc());
-      saisie = el('span', { classe: 'inv-valeur-zone' }, entree, rep && rep.coche, boutonQr, boutonNfc);
+      const boutonListe = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture inv-bouton-liste', 'aria-label': `Choisir dans la liste : ${nomArticle(a)}`, title: 'Choisir dans la liste', surclick: () => choisirAppareil(a, remplir) }, '☰');
+      saisie = el('span', { classe: 'inv-valeur-zone' }, entree, rep && rep.coche, boutonQr, boutonNfc, boutonListe);
     } else {
       const unite = a.controle === 'temperature' ? '°C' : (a.controle === 'batterie' ? '%' : (a.unite || ''));
       const entree = el('input', { id: champ, type: 'text', inputmode: 'decimal', classe: 'inv-valeur', autocomplete: 'off', maxlength: '8', valeur: val(), surfocus: (e) => e.target.select(),
@@ -2661,7 +2662,8 @@ const Inventaires = (() => {
         // N° de matériel relevé à la dernière check-list validée : proposé en grisé (jamais repris d'office).
         const der = etat.verifs[c.id];
         const precedent = estIdentifiant(a) && der && der.valeurs && der.valeurs[a.id] !== undefined ? String(der.valeurs[a.id]).trim() : '';
-        liste.append(ligneControle(a, b, modifie, precedent));
+        const dateDer = precedent && der.date ? new Date(der.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '';
+        liste.append(ligneControle(a, b, modifie, precedent, dateDer));
         return;
       }
       const champCase = idChamp();
