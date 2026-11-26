@@ -1213,7 +1213,8 @@ const Materiel = (() => {
           attente.has(f.id) ? el('span', { classe: 'mat-pastille attente', texte: 'En attente d\'envoi' }) : null),
         peutControler() ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Faire la maintenance', surclick: () => ouvrirMonnal(f) }) : null);
     });
-    zone.replaceChildren(ongletsMateriel(), entete, aide,
+    const boutonHisto = el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Historique des maintenances (5 ans) · PDF', surclick: ouvrirHistoriqueMonnal });
+    zone.replaceChildren(ongletsMateriel(), entete, aide, el('div', { classe: 'cfg-actions' }, boutonHisto),
       lignes.length ? el('ul', { classe: 'mat-lignes' }, lignes)
         : el('p', { classe: 'mat-vide', texte: 'Aucun respirateur Monnal en service dans la base du matériel (modèle contenant « Monnal » ou « T60 », par exemple « Monnal T60 »).' }));
   }
@@ -1388,26 +1389,28 @@ const Materiel = (() => {
       .map((f) => ({ fiche: f, controles: controlesGlycemie(interventions, f.id).filter((i) => String(i.date) >= limite).map(lireControleGlycemie) }));
   }
   const COLONNES_GLYCEMIE = ['Date', 'Résultat', 'Bandelettes (lot)', 'Péremption', 'Contrôle bas', 'Contrôle haut', 'Solution test (lot)', 'Péremption', 'Commentaires'];
-  function tableauGlycemie(controles, classe) {
+  /** Tableau d'historique générique : colonnes, lignes { cellules, anomalie }. */
+  function tableauHisto(colonnes, lignes, classe, vide) {
     return el('table', { classe: `glyc-tableau ${classe || ''}` },
-      el('thead', {}, el('tr', {}, COLONNES_GLYCEMIE.map((c) => el('th', { texte: c })))),
-      el('tbody', {}, controles.length ? controles.map((c) => el('tr', { classe: c.resultat === 'anomalie' ? 'glyc-anomalie' : '' },
-        [dateFr(c.date), c.resultat, c.lotBand, c.perBand, c.bas, c.haut, c.lotSol, c.perSol, c.commentaires].map((x) => el('td', { texte: x }))))
-        : el('tr', {}, el('td', { colspan: String(COLONNES_GLYCEMIE.length), texte: `Aucun contrôle enregistré sur les ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années.` }))));
+      el('thead', {}, el('tr', {}, colonnes.map((c) => el('th', { texte: c })))),
+      el('tbody', {}, lignes.length ? lignes.map((l) => el('tr', { classe: l.anomalie ? 'glyc-anomalie' : '' }, l.cellules.map((x) => el('td', { texte: x }))))
+        : el('tr', {}, el('td', { colspan: String(colonnes.length), texte: vide }))));
   }
-  function ouvrirHistoriqueGlycemie() {
-    const donnees = historiqueGlycemie();
+  const ligneGlycemie = (c) => ({ anomalie: c.resultat === 'anomalie', cellules: [dateFr(c.date), c.resultat, c.lotBand, c.perBand, c.bas, c.haut, c.lotSol, c.perSol, c.commentaires] });
+  const tableauGlycemie = (controles, classe) => tableauHisto(COLONNES_GLYCEMIE, controles.map(ligneGlycemie), classe, `Aucun contrôle enregistré sur les ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années.`);
+  /** Fenêtre d'historique : un tableau par appareil. */
+  function fenetreHistorique(titre, introduction, donnees, colonnes, versLigne, vide, imprimer, aucunAppareil) {
     const contenu = el('div', { classe: 'glyc-histo' },
-      el('p', { classe: 'aide-question', texte: `Contrôles des ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années, un tableau par appareil, un contrôle par ligne.` }),
-      el('div', { classe: 'cfg-actions' }, el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: 'Exporter en PDF', surclick: () => imprimerHistoriqueGlycemie(donnees) })),
+      el('p', { classe: 'aide-question', texte: introduction }),
+      el('div', { classe: 'cfg-actions' }, el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: 'Exporter en PDF', surclick: imprimer })),
       donnees.length ? donnees.map(({ fiche, controles }) => el('section', { classe: 'glyc-appareil' },
-        el('h3', { texte: `${nomAppareil(fiche)} · ${controles.length} contrôle${controles.length > 1 ? 's' : ''}` }),
-        el('div', { classe: 'glyc-defilement' }, tableauGlycemie(controles))))
-        : el('p', { classe: 'mat-vide', texte: 'Aucun appareil à glycémie dans la base du matériel.' }));
-    fenetre('Historique des contrôles glycémie', contenu, { large: true });
+        el('h3', { texte: `${nomAppareil(fiche)} · ${controles.length} ligne${controles.length > 1 ? 's' : ''}` }),
+        el('div', { classe: 'glyc-defilement' }, tableauHisto(colonnes, controles.map(versLigne), '', vide))))
+        : el('p', { classe: 'mat-vide', texte: aucunAppareil }));
+    fenetre(titre, contenu, { large: true });
   }
-  /** Export PDF : une page A4 paysage par appareil, via l'impression du navigateur (« Enregistrer au format PDF »). */
-  function imprimerHistoriqueGlycemie(donnees) {
+  /** Export PDF : pages A4 paysage (14 lignes par page, plusieurs pages par appareil si besoin), via l'impression du navigateur. */
+  function imprimerHistorique(titreDoc, donnees, colonnes, versLigne, vide) {
     const jour = dateFr(aujourdhui());
     const parPage = LIGNES_PAR_PAGE_GLYCEMIE;
     const pages = donnees.flatMap(({ fiche, controles }) => {
@@ -1415,16 +1418,53 @@ const Materiel = (() => {
       return Array.from({ length: n }, (_, k) => ({ fiche, lignes: controles.slice(k * parPage, (k + 1) * parPage), k, n }));
     });
     const page = el('div', { id: 'glyc-impression' }, pages.map(({ fiche, lignes, k, n }) => el('section', { classe: 'glyc-imp-page' },
-      el('h1', { texte: 'Contrôle des appareils à glycémie' }),
+      el('h1', { texte: titreDoc }),
       el('h2', { texte: nomAppareil(fiche) }),
-      el('p', { classe: 'glyc-imp-infos', texte: [fiche.numBiomed && `N° biomed : ${fiche.numBiomed}`, fiche.numSerie && `N° de série : ${fiche.numSerie}`, `Contrôles des ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années, édité le ${jour}`, n > 1 && `page ${k + 1}/${n}`].filter(Boolean).join(' · ') }),
-      tableauGlycemie(lignes, 'glyc-imp'))));
+      el('p', { classe: 'glyc-imp-infos', texte: [fiche.numBiomed && `N° biomed : ${fiche.numBiomed}`, fiche.numSerie && `N° de série : ${fiche.numSerie}`, `${ANNEES_HISTORIQUE_GLYCEMIE} dernières années, édité le ${jour}`, n > 1 && `page ${k + 1}/${n}`].filter(Boolean).join(' · ') }),
+      tableauHisto(colonnes, lignes.map(versLigne), 'glyc-imp', vide))));
     document.body.append(page);
     document.body.classList.add('impression-glycemie');
     const fin = () => { document.body.classList.remove('impression-glycemie'); page.remove(); window.removeEventListener('afterprint', fin); };
     window.addEventListener('afterprint', fin);
     window.print();
     setTimeout(() => { if (document.body.contains(page) && !matchMedia('print').matches) fin(); }, 60000);
+  }
+  function ouvrirHistoriqueGlycemie() {
+    const donnees = historiqueGlycemie();
+    const vide = `Aucun contrôle enregistré sur les ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années.`;
+    fenetreHistorique('Historique des contrôles glycémie', `Contrôles des ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années, un tableau par appareil, un contrôle par ligne.`, donnees, COLONNES_GLYCEMIE, ligneGlycemie, vide,
+      () => imprimerHistorique('Contrôle des appareils à glycémie', donnees, COLONNES_GLYCEMIE, ligneGlycemie, vide), 'Aucun appareil à glycémie dans la base du matériel.');
+  }
+
+  // ---------- Historique des maintenances hebdomadaires Monnal ----------
+  const COLONNES_MONNAL = ['Date', 'Résultat', 'Autotest', 'Alarme pression haute', 'Alarme débranchement', 'Filtre HEPA changé', 'FiO² 100 %', 'FiO² 21 %', 'Valve expiratoire changée', 'Capteur de débit changé', 'Filtre d\'admission d\'air changé', 'Commentaires'];
+  /** Décompose la description d'une maintenance Monnal enregistrée en colonnes (« — » = non demandé ce jour-là). */
+  function lireMaintenanceMonnal(i) {
+    const t = String(i.description || '');
+    const texte = (titre) => { const m = t.match(new RegExp(`^${titre} : (.*)$`, 'm')); return m ? m[1].trim() : '—'; };
+    const ouiNon = (titre) => { const v = texte(titre); return v === 'oui' ? 'Oui' : v === 'non' ? 'Non' : '—'; };
+    return {
+      date: i.date, resultat: (t.match(/Résultat : (\S+)/) || [])[1] || '—',
+      cellules: [dateFr(i.date), (t.match(/Résultat : (\S+)/) || [])[1] || '—', ouiNon('Autotest réussi'), ouiNon('Alarme pression haute'), ouiNon('Alarme débranchement patient'), ouiNon('Changement de filtre HEPA'),
+        texte('FiO² 100 %'), texte('FiO² 21 %'), ouiNon('Changement valve expiratoire'), ouiNon('Changement capteur de débit'), ouiNon('Changement filtre d\'admission d\'air'),
+        ((t.match(/Commentaires : ([\s\S]*)$/) || [])[1] || '').trim()],
+    };
+  }
+  const ligneMonnal = (m) => ({ anomalie: m.resultat === 'anomalie', cellules: m.cellules });
+  /** Maintenances de chaque Monnal depuis 5 ans, de la plus récente à la plus ancienne. */
+  function historiqueMonnal() {
+    const { fiches: toutes, interventions } = etat();
+    const limite = ajouterMois(aujourdhui(), -12 * ANNEES_HISTORIQUE_GLYCEMIE);
+    return toutes.filter((f) => !f.provisoire && estMonnal(f))
+      .sort((a, b) => String(a.numInterne).localeCompare(String(b.numInterne), 'fr', { numeric: true }))
+      .map((f) => ({ fiche: f, controles: interventions.filter((i) => i.materiel === f.id && String(i.description || '').startsWith(LIBELLE_MONNAL) && String(i.date) >= limite)
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.saisiLe || '').localeCompare(String(a.saisiLe || ''))).map(lireMaintenanceMonnal) }));
+  }
+  function ouvrirHistoriqueMonnal() {
+    const donnees = historiqueMonnal();
+    const vide = `Aucune maintenance enregistrée sur les ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années.`;
+    fenetreHistorique('Historique des maintenances Monnal', `Maintenances hebdomadaires des ${ANNEES_HISTORIQUE_GLYCEMIE} dernières années, un tableau par respirateur, une maintenance par ligne. « — » : non demandé ce jour-là (valve et capteur : 1er lundi du mois ; filtre d'admission d'air : 1er lundi d'avril).`, donnees, COLONNES_MONNAL, ligneMonnal, vide,
+      () => imprimerHistorique('Maintenance hebdomadaire des respirateurs Monnal', donnees, COLONNES_MONNAL, ligneMonnal, vide), 'Aucun respirateur Monnal dans la base du matériel.');
   }
 
   function rendreGlycemie() {
