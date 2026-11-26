@@ -3645,3 +3645,8 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 
 /* Valider un inventaire incomplet : le champ à renseigner est entouré en rouge. */
 .champ-manquant { outline: 3px solid #c62828; outline-offset: 3px; border-radius: 8px; }
+
+/* Icône de gommette (poumon = respirateur, cœur-éclair = défibrillateur) : remplace le texte, couleur = état. */
+.inv-repere .inv-point-icone, .inv-point .inv-point-icone { width: 62%; height: 62%; flex-shrink: 0; color: #fff; pointer-events: none; }
+.inv-point.avec-icone { font-size: 0; }
+.inv-texte-gommette select { max-width: 11rem; font-size: 0.85rem; }

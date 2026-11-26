@@ -356,11 +356,40 @@ const Inventaires = (() => {
   /** Pose (ou repose) la gommette de `cible` sur la vue `vc`, en gardant son texte et sa taille. */
   function poserGommette(c, vc, cible, pos) {
     const t = texteChoisi(c, cible);
+    const icone = iconeChoisie(c, cible);
     const avant = vc.points.find((p) => p.cible === cible);
     // Nouvelle gommette : taille des autres gommettes de la photo si elles ont toutes la même.
     const tailles = [...new Set(vc.points.map(tailleGommette))];
     const taille = avant ? tailleGommette(avant) : tailles.length === 1 ? tailles[0] : 1;
-    majVue(c, vc.cle, { points: vc.points.filter((p) => p.cible !== cible).concat({ cible, x: pos.x, y: pos.y, ...(t === undefined ? {} : { texte: t }), ...(taille === 1 ? {} : { taille }) }) });
+    majVue(c, vc.cle, { points: vc.points.filter((p) => p.cible !== cible).concat({ cible, x: pos.x, y: pos.y, ...(t === undefined ? {} : { texte: t }), ...(icone ? { icone } : {}), ...(taille === 1 ? {} : { taille }) }) });
+  }
+  /**
+   * Icône facultative d'une gommette (à la place de son texte), la même sur toutes les vues :
+   * poumon pour le respirateur, cœur avec éclair pour le défibrillateur. `undefined` = pas d'icône.
+   */
+  const ICONES_GOMMETTE = {
+    poumon: { nom: 'Poumon (respirateur)', dessin: () => [
+      el('svg:path', { d: 'M10 8.5C7.5 8.5 4.5 13 4 18c-.2 1.9.9 3 2.4 2.8 1.9-.3 3.6-1.2 3.6-3.3z', fill: 'currentColor' }),
+      el('svg:path', { d: 'M14 8.5c2.5 0 5.5 4.5 6 9.5.2 1.9-.9 3-2.4 2.8-1.9-.3-3.6-1.2-3.6-3.3z', fill: 'currentColor' }),
+      el('svg:path', { d: 'M12 3v8m0 0-2.2-1.8M12 11l2.2-1.8', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })] },
+    defib: { nom: 'Cœur avec éclair (défibrillateur)', dessin: () => [
+      el('svg:path', { d: 'M12 20.5s-7.5-4.8-7.5-10.4a4.3 4.3 0 0 1 7.5-2.9 4.3 4.3 0 0 1 7.5 2.9c0 5.6-7.5 10.4-7.5 10.4z', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.9', 'stroke-linejoin': 'round' }),
+      el('svg:path', { d: 'M13.2 6.8 9.3 12.6h2.6l-1 4.6 4-6.2h-2.7z', fill: 'currentColor' })] },
+  };
+  const iconeValide = (i) => (typeof i === 'string' && ICONES_GOMMETTE[i] ? i : undefined);
+  function iconeChoisie(c, cible) {
+    const p = vuesDe(c).flatMap((v) => v.points).find((x) => x.cible === cible && iconeValide(x.icone));
+    return p ? p.icone : undefined;
+  }
+  function fixerIconeGommette(c, cible, icone) {
+    vuesDe(c).forEach((v) => v.points.forEach((p) => {
+      if (p.cible !== cible) return;
+      if (icone === undefined) delete p.icone; else p.icone = icone;
+    }));
+  }
+  function logoGommette(icone) {
+    const def = ICONES_GOMMETTE[icone];
+    return el('svg:svg', { viewBox: '0 0 24 24', classe: 'inv-point-icone', 'aria-hidden': 'true' }, ...def.dessin());
   }
   /** Classes d'affichage d'une gommette selon son texte (vide, texte long). */
   const classesTexte = (t) => (t === '' ? ' vierge' : Array.from(t).length > 1 ? ` long${Array.from(t).length > 2 ? ' tres-long' : ''}${Array.from(t).length > 3 ? ' quatre' : ''}` : '');
@@ -1442,11 +1471,12 @@ const Inventaires = (() => {
     return bloc;
   }
   /** `numero` : rang du sous-inventaire (gommette) ; `texte` : texte de sa gommette s'il remplace le numéro. */
-  function carte(c, numero, texte) {
+  function carte(c, numero, texte, icone) {
     if (!gestion && !numero && c.categorie === 'primaire' && vehiculeDesarme(c)) return carteDesarme(c);
     const b = bilan(c.id);
     const t = numero ? (texte === undefined ? String(numero) : texte) : '';
-    const repere = el('span', { classe: `inv-repere ${b.classe}${numero ? classesTexte(t) : ''}`, 'aria-hidden': 'true', texte: t });
+    const repere = el('span', { classe: `inv-repere ${b.classe}${numero ? (icone ? ' avec-icone' : classesTexte(t)) : ''}`, 'aria-hidden': 'true', texte: icone ? '' : t });
+    if (numero && icone) repere.append(logoGommette(icone));
     // Vignette : image choisie pour la liste (ex. photo du véhicule), sinon la photo d'inventaire.
     const imageCarte = numero ? '' : (c.vignette || c.photo);
     if (imageCarte) {
@@ -2145,7 +2175,9 @@ const Inventaires = (() => {
         const dejaPose = vc.points.find((p) => p.cible === placement);
         const taillesVue = [...new Set(vc.points.map(tailleGommette))];
         const tailleApercu = dejaPose ? tailleGommette(dejaPose) : taillesVue.length === 1 ? taillesVue[0] : 1;
-        const apercu = el('span', { classe: `inv-point inv-apercu${classesTexte(texteApercu)}`, style: `--t:${tailleApercu}`, 'aria-hidden': 'true', texte: texteApercu, hidden: true });
+        const iconeApercu = rang === -1 ? undefined : iconeChoisie(c, placement);
+        const apercu = el('span', { classe: `inv-point inv-apercu${iconeApercu ? ' avec-icone' : classesTexte(texteApercu)}`, style: `--t:${tailleApercu}`, 'aria-hidden': 'true', texte: iconeApercu ? '' : texteApercu, hidden: true });
+        if (iconeApercu) apercu.append(logoGommette(iconeApercu));
         scene.append(apercu);
         cadre.addEventListener('pointermove', (e) => {
           if (e.pointerType !== 'mouse') return;
@@ -2183,9 +2215,11 @@ const Inventaires = (() => {
         // Validé par le scellé (« Oui, il est scellé ») : cadenas à la place du ✓, couleur du dernier inventaire.
         const scelle = !edition && b.complet && sousScelle(fils[rang]);
         const t = texteGommette(c, p.cible, rang);
-        const affiche = edition ? t : scelle ? '' : (b.complet ? '✓' : t);
+        // Icône choisie (poumon, cœur-éclair) : elle remplace le texte, la couleur de la gommette dit l'état ; le cadenas garde la priorité.
+        const icone = scelle ? undefined : iconeChoisie(c, p.cible);
+        const affiche = icone ? '' : edition ? t : scelle ? '' : (b.complet ? '✓' : t);
         const commun = {
-          classe: `inv-point ${b.classe}${scelle ? ' scelle' : ''}${placement === p.cible ? ' deplace' : ''}${scelle ? '' : classesTexte(affiche)}`, style: `left:${p.x * 100}%;top:${p.y * 100}%;--t:${tailleGommette(p)}`,
+          classe: `inv-point ${b.classe}${scelle ? ' scelle' : ''}${icone ? ' avec-icone' : ''}${placement === p.cible ? ' deplace' : ''}${scelle || icone ? '' : classesTexte(affiche)}`, style: `left:${p.x * 100}%;top:${p.y * 100}%;--t:${tailleGommette(p)}`,
           'aria-label': `${fils[rang].nom} : ${b.texte}`, title: fils[rang].nom,
         };
         const pastille = edition
@@ -2196,6 +2230,7 @@ const Inventaires = (() => {
             ? el('button', { type: 'button', ...commun, 'aria-haspopup': 'dialog', texte: affiche, surclick: () => voirOxygene(fils[rang]) })
             : el('a', { href: lien(p.cible), ...commun, texte: affiche });
         if (scelle) pastille.append(logoCadenas());
+        if (icone) pastille.append(logoGommette(icone));
         if (!edition) { const pe = badgePeremption(b); if (pe) pastille.append(pe); }
         if (edition) glisserPastille(pastille, img, c, vc, p.cible);
         scene.append(pastille);
@@ -2319,7 +2354,9 @@ const Inventaires = (() => {
    */
   function champTexteGommette(c, f, i) {
     const actuel = texteChoisi(c, f.id);
+    const iconeActuelle = iconeChoisie(c, f.id);
     const id = idChamp();
+    const idIcone = idChamp();
     const appliquer = (t) => { fixerTexteGommette(c, f.id, t); marquer(c.id); rendre({ garderPosition: true }); };
     return el('span', { classe: 'inv-texte-gommette' },
       el('label', { for: id, texte: 'Gommette' }),
@@ -2328,6 +2365,12 @@ const Inventaires = (() => {
         title: 'Texte de la gommette : laisser vide pour le numéro automatique',
         surchange: (e) => { const v = Array.from(e.target.value.trim()).slice(0, 4).join(''); appliquer(v ? v : undefined); },
       }),
+      el('label', { for: idIcone, texte: 'Icône' }),
+      el('select', {
+        id: idIcone, title: 'Icône affichée sur la gommette à la place du texte',
+        surchange: (e) => { const v = iconeValide(e.target.value); fixerIconeGommette(c, f.id, v); marquer(c.id); rendre({ garderPosition: true }); },
+      }, el('option', { value: '', texte: 'Aucune', selected: !iconeActuelle }),
+      ...Object.entries(ICONES_GOMMETTE).map(([k, d]) => el('option', { value: k, texte: d.nom, selected: k === iconeActuelle }))),
       el('button', {
         type: 'button', classe: `cfg-mini${actuel === '' ? ' inv-actif' : ''}`, 'aria-pressed': String(actuel === ''),
         title: actuel === '' ? 'Revenir au numéro automatique' : 'Gommette sans texte', texte: 'Vide',
@@ -2390,7 +2433,7 @@ const Inventaires = (() => {
     const liste = el('ul', { classe: 'inv-liste inv-tuiles' });
     fils.forEach((f, i) => {
       if (!montres.includes(f)) return;
-      const li = el('li', { 'data-cle': f.id }, carte(f, i + 1, texteGommette(c, f.id, i)));
+      const li = el('li', { 'data-cle': f.id }, carte(f, i + 1, texteGommette(c, f.id, i), iconeChoisie(c, f.id)));
       if (edition) {
         const vc = vueCourante(c);
         const point = vc.points.some((p) => p.cible === f.id);
@@ -2441,7 +2484,7 @@ const Inventaires = (() => {
       const indispo = vuesDe(c).some((v) => v.photo && photosIndisponibles.has(v.photo));
       const listeSecours = secours ? el('section', { classe: 'inv-section inv-liste-secours', hidden: !indispo },
         el('h2', { texte: 'Sous-inventaires' }),
-        el('ul', { classe: 'inv-liste inv-tuiles' }, ...surPhoto.map((f) => el('li', { 'data-cle': f.id }, carte(f, fils.indexOf(f) + 1, texteGommette(c, f.id, fils.indexOf(f))))))) : null;
+        el('ul', { classe: 'inv-liste inv-tuiles' }, ...surPhoto.map((f) => el('li', { 'data-cle': f.id }, carte(f, fils.indexOf(f) + 1, texteGommette(c, f.id, fils.indexOf(f)), iconeChoisie(c, f.id)))))) : null;
       return [montres.length ? el('section', { classe: 'inv-section' }, el('h2', { texte: secours ? 'Hors photo' : 'Sous-inventaires' }), liste) : null, listeSecours];
     }
     liste.classList.add('inv-liste-triable');
@@ -4961,7 +5004,7 @@ const Inventaires = (() => {
     : a.controle ? { controle: a.controle, nom: a.nom, min: a.min, max: a.max, unite: a.unite, echelle: a.echelle, seuil: a.seuil, attendu: a.attendu, mode: a.mode, choix: a.choix, qr: a.qr, nfc: a.nfc, typeMateriel: a.typeMateriel, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined }
       : { ref: a.ref || '', nom: a.ref ? '' : a.nom, quantite: String(a.quantite || ''), quantiteMin: a.quantiteMin === true || undefined, facultatif: a.facultatif === true || undefined, commentaire: a.commentaire || undefined });
   /** Gommette réduite à ce qui se répercute : position, texte et taille éventuels. */
-  const sigPoint = (p) => ({ cible: p.cible, x: p.x, y: p.y, ...(typeof p.texte === 'string' ? { texte: p.texte } : {}), ...(Number(p.taille) > 0 && Number(p.taille) !== 1 ? { taille: Number(p.taille) } : {}) });
+  const sigPoint = (p) => ({ cible: p.cible, x: p.x, y: p.y, ...(typeof p.texte === 'string' ? { texte: p.texte } : {}), ...(iconeValide(p.icone) ? { icone: p.icone } : {}), ...(Number(p.taille) > 0 && Number(p.taille) !== 1 ? { taille: Number(p.taille) } : {}) });
   /** Instantané d'un contenant du modèle : ce que ses exemplaires doivent reproduire. */
   function instantane(m) {
     return {
