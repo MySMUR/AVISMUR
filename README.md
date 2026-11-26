@@ -169,6 +169,8 @@ Menu > Inventaires > Tableau de bord. Un contenant primaire à la fois (onglets 
 
 Un contenant **primaire** (pièce, cellule sanitaire…) peut avoir plusieurs photos, sous plusieurs angles. En gestion des inventaires, « **＋ Vue** » ajoute une vue ; chaque vue a un nom (ex. « Côté gauche »), sa photo et ses propres gommettes. Un sous-inventaire peut être placé sur plusieurs vues (« aussi sur : … »). En check-list, les vues s'affichent en onglets au-dessus de la photo, avec le nombre de gommettes de chacune.
 
+**Vue immersive** : « ＋ 🌐 Vue immersive » (ou la case « Vue immersive » d'une vue existante) transforme une vue en panorama que l'on fait pivoter du doigt. Le panorama se prend avec l'appareil photo du téléphone (mode « Panorama » ou « Photo Sphere »), debout au centre de la pièce, puis se choisit avec « Choisir le panorama » ; il est réduit à 4096 px de large au plus, sans recadrage. Si le panorama ne fait pas le tour complet, régler « Angle couvert par le panorama ». Les gommettes et les flèches se placent comme sur une photo (toucher l'endroit) ; pour déplacer une gommette : appui long, puis toucher le nouvel endroit. Les vues classiques restent disponibles à côté (tiroirs, compartiments). L'afficheur (Pannellum, licence MIT, `lib/pannellum.*`) est gardé en cache pour fonctionner hors ligne.
+
 ### Contenant mobile dans un autre (ex. ampoulier dans un sac)
 
 En check-list, ouvrir un contenant **mobile** depuis son contenant (gommette ou liste) affiche d'abord « **Quel … se trouve ici ?** » : l'agent identifie celui qui est réellement là (QR code, puce NFC ou liste ; ceux du même type sont proposés d'emblée). Puis l'inventaire continue sur ce contenant, avec ses propres articles et péremptions.

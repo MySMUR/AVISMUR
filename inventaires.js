@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 30;
+  const VERSION_SERVEUR = 31;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -192,8 +192,10 @@ const Inventaires = (() => {
       points: Array.isArray(c.points) ? c.points : [], articles: Array.isArray(c.articles) ? c.articles : [],
       // Vues supplémentaires (tout contenant : pièce, cellule sanitaire, sac vu sous plusieurs angles…).
       // La photo principale (`photo`, `points`, nom `nomVue`) est la vue 1.
-      vues: Array.isArray(c.vues) ? c.vues.map((v) => ({ id: v.id, nom: v.nom || '', photo: v.photo || '', points: Array.isArray(v.points) ? v.points : [], fleches: flechesPropres(v.fleches) })) : [],
+      vues: Array.isArray(c.vues) ? c.vues.map((v) => ({ id: v.id, nom: v.nom || '', photo: v.photo || '', points: Array.isArray(v.points) ? v.points : [], fleches: flechesPropres(v.fleches), ...(champImmersif(v.immersif) ? { immersif: champImmersif(v.immersif) } : {}) })) : [],
       nomVue: c.nomVue || '',
+      // Vue principale immersive (panorama pris au téléphone) : angle horizontal couvert, en degrés.
+      ...(champImmersif(c.immersif) ? { immersif: champImmersif(c.immersif) } : {}),
       // Vignette de la page des inventaires (contenant primaire : photo du véhicule…) ; à défaut, la photo principale.
       vignette: c.vignette || '',
       // Contenant primaire relié à un véhicule de la check-list ambulancier : son identifiant, '-' pour aucun ;
@@ -263,11 +265,17 @@ const Inventaires = (() => {
       return { vers: f.vers, x, y, ...(a ? { angle: a } : {}) };
     }).filter(Boolean);
   }
+  /**
+   * Vue immersive : panorama (pris au téléphone, ou photo sphérique) que l'on fait pivoter du doigt.
+   * `immersif` = angle horizontal couvert par l'image, en degrés (360 = tour complet) ; absent = photo classique.
+   * Les gommettes gardent leurs coordonnées x/y (0 à 1) dans l'image : x donne la direction horizontale, y la verticale.
+   */
+  function champImmersif(n) { const v = Math.round(Number(n)); return v >= 30 && v <= 360 ? v : 0; }
   const sigFleche = (f) => ({ vers: f.vers, x: f.x, y: f.y, ...(f.angle ? { angle: f.angle } : {}) });
   /** Toutes les vues : la principale (clé '') puis les supplémentaires. */
   function vuesDe(c) {
-    return [{ cle: '', nom: c.nomVue || 'Vue 1', photo: c.photo, points: c.points, fleches: c.fleches || [] },
-      ...c.vues.map((v, i) => ({ cle: v.id, nom: v.nom || `Vue ${i + 2}`, photo: v.photo, points: v.points, fleches: v.fleches || [] }))];
+    return [{ cle: '', nom: c.nomVue || 'Vue 1', photo: c.photo, points: c.points, fleches: c.fleches || [], immersif: c.immersif || 0 },
+      ...c.vues.map((v, i) => ({ cle: v.id, nom: v.nom || `Vue ${i + 2}`, photo: v.photo, points: v.points, fleches: v.fleches || [], immersif: v.immersif || 0 }))];
   }
   /** Écrit dans une vue (principale : champs du contenant). */
   function majVue(c, cle, champs) {
@@ -276,9 +284,10 @@ const Inventaires = (() => {
       if ('points' in champs) c.points = champs.points;
       if ('nom' in champs) c.nomVue = champs.nom;
       if ('fleches' in champs) c.fleches = champs.fleches;
+      if ('immersif' in champs) { if (champImmersif(champs.immersif)) c.immersif = champImmersif(champs.immersif); else delete c.immersif; }
     } else {
       const v = c.vues.find((x) => x.id === cle);
-      if (v) Object.assign(v, champs);
+      if (v) { Object.assign(v, champs); if ('immersif' in champs && !champImmersif(champs.immersif)) delete v.immersif; }
     }
   }
   /**
@@ -291,8 +300,9 @@ const Inventaires = (() => {
     if (i === -1) return;
     c.vues.forEach((x, j) => { if (!x.nom) x.nom = `Vue ${j + 2}`; }); // chaque vue garde le nom affiché
     const v = c.vues[i];
-    const ancienne = { id: v.id, nom: c.nomVue || 'Vue 1', photo: c.photo, points: c.points, fleches: c.fleches || [] };
+    const ancienne = { id: v.id, nom: c.nomVue || 'Vue 1', photo: c.photo, points: c.points, fleches: c.fleches || [], ...(c.immersif ? { immersif: c.immersif } : {}) };
     c.photo = v.photo; c.points = v.points; c.fleches = v.fleches || []; c.nomVue = v.nom || `Vue ${i + 2}`;
+    if (v.immersif) c.immersif = v.immersif; else delete c.immersif;
     c.vues.splice(i, 1);
     c.vues.unshift(ancienne);
     // Les flèches suivent : la vue promue prend la clé '', l'ancienne principale prend la sienne.
@@ -2126,6 +2136,250 @@ const Inventaires = (() => {
       ajouter);
   }
 
+  /** Pose la gommette (ou la flèche) en cours de placement à la position `pos` (x, y de 0 à 1 dans l'image). */
+  function poserA(c, vc, vues, pos) {
+    if (!placement) return;
+    if (placement.startsWith('fleche:')) {
+      // Nouvelle flèche (vers la première autre vue) ou flèche déplacée.
+      const n = placement.slice(7);
+      const liste = vc.fleches.slice();
+      if (n === 'nouvelle') {
+        const autre = vues.find((v) => v.cle !== vc.cle);
+        liste.push({ vers: autre ? autre.cle : '', x: pos.x, y: pos.y });
+        flecheChoisie = `${vc.cle}#${liste.length - 1}`;
+      } else if (liste[Number(n)]) liste[Number(n)] = { ...liste[Number(n)], ...pos };
+      majVue(c, vc.cle, { fleches: liste });
+    } else poserGommette(c, vc, placement, pos);
+    placement = '';
+    marquer(c.id);
+    rendre({ garderPosition: true });
+  }
+  /** Gommette d'un sous-inventaire sur une vue (photo classique ou immersive) ; `position` : style CSS de placement. */
+  function creerPastille(c, vc, p, fils, position) {
+    const rang = fils.findIndex((f) => f.id === p.cible);
+    if (rang === -1) return null;
+    const b = bilan(fils[rang].id);
+    // Validé par le scellé (« Oui, il est scellé ») : cadenas à la place du ✓, couleur du dernier inventaire.
+    const scelle = !edition && b.complet && sousScelle(fils[rang]);
+    const t = texteGommette(c, p.cible, rang);
+    // Icône choisie (poumon, cœur-éclair) : elle remplace le texte, la couleur de la gommette dit l'état ; le cadenas garde la priorité.
+    const icone = scelle ? undefined : iconeChoisie(c, p.cible);
+    const affiche = icone ? '' : edition ? t : scelle ? '' : (b.complet ? '✓' : t);
+    const commun = {
+      classe: `inv-point ${b.classe}${scelle ? ' scelle' : ''}${icone ? ' avec-icone' : ''}${placement === p.cible ? ' deplace' : ''}${scelle || icone ? '' : classesTexte(affiche)}`, style: `${position}--t:${tailleGommette(p)}`,
+      'aria-label': `${fils[rang].nom} : ${b.texte}`, title: fils[rang].nom,
+    };
+    const pastille = edition
+      // Gestion : un appui ouvre le sous-inventaire (en gestion) ; appui long pour déplacer la gommette.
+      ? el('button', { type: 'button', ...commun, 'aria-label': `${fils[rang].nom} : ouvrir. Appui long pour déplacer`, title: `${fils[rang].nom} — appui long pour déplacer`, texte: affiche, surclick: () => aller(p.cible) })
+      : fils[rang].clAmbulancier && vehiculeAmbulancier(fils[rang])
+        // Bouteilles d'oxygène (check-list ambulancier) : niveaux en fenêtre, sans quitter la photo.
+        ? el('button', { type: 'button', ...commun, 'aria-haspopup': 'dialog', texte: affiche, surclick: () => voirOxygene(fils[rang]) })
+        : el('a', { href: lien(p.cible), ...commun, texte: affiche });
+    if (scelle) pastille.append(logoCadenas());
+    if (icone) pastille.append(logoGommette(icone));
+    if (!edition) { const pe = badgePeremption(b); if (pe) pastille.append(pe); }
+    return pastille;
+  }
+  /** Flèche vers une autre vue : un rond transparent à toucher pour changer d'angle. */
+  function creerFleche(c, vc, vues, f, n, position) {
+    const dest = vues.find((v) => v.cle === f.vers);
+    if (!dest && !edition) return null;
+    const choisie = edition && flecheChoisie === `${vc.cle}#${n}`;
+    return el('button', {
+      type: 'button', classe: `inv-fleche${choisie ? ' choisie' : ''}${placement === `fleche:${n}` ? ' deplace' : ''}${dest ? '' : ' orpheline'}`,
+      style: `${position}--a:${f.angle || 0}deg`,
+      'aria-label': dest ? `Aller à la vue « ${dest.nom} »` : 'Flèche sans vue de destination', title: dest ? dest.nom : 'Vue supprimée',
+      surclick: () => {
+        if (edition) { flecheChoisie = choisie ? '' : `${vc.cle}#${n}`; rendre({ garderPosition: true }); return; }
+        vueActive.set(c.id, f.vers);
+        rendre({ garderPosition: true });
+      },
+    }, el('span', { classe: 'inv-fleche-trait', 'aria-hidden': 'true', texte: '➜' }));
+  }
+  /** Consigne affichée pendant le placement d'une gommette ou d'une flèche. */
+  function consignesPlacement(c, vc, plusieurs) {
+    const sortie = [];
+    if (placement && placement.startsWith('fleche:')) {
+      sortie.push(el('p', { classe: 'inv-consigne-placement', role: 'status' }, 'Touchez la photo à l\'endroit de la flèche. ',
+        el('button', { type: 'button', classe: 'lien', texte: 'Annuler', surclick: () => { placement = ''; rendre({ garderPosition: true }); } })));
+    }
+    if (placement && contenant(placement)) {
+      sortie.push(el('p', { classe: 'inv-consigne-placement', role: 'status' },
+        `Touchez la photo${plusieurs ? ` « ${vc.nom} »` : ''} à l'endroit de « ${contenant(placement).nom} ». `,
+        el('button', { type: 'button', classe: 'lien', texte: 'Plus tard', surclick: () => { placement = ''; rendre({ garderPosition: true }); } })));
+    }
+    return sortie;
+  }
+  /** Aide et réglage de la taille de toutes les gommettes d'une vue (gestion). */
+  function reglageTailles(c, vc, aide) {
+    const tailles = vc.points.map(tailleGommette);
+    const tMin = Math.min(...tailles); const tMax = Math.max(...tailles);
+    const regler = (sens) => { changerTaille(c, vc, sens); marquer(c.id); rendre({ garderPosition: true }); };
+    return [el('p', { classe: 'aide-question inv-aide-gommettes', texte: aide }),
+      el('div', { classe: 'cfg-ligne inv-taille-gommettes' },
+        el('span', { texte: 'Taille des gommettes de la photo' }),
+        el('button', { type: 'button', classe: 'cfg-mini', texte: 'A−', title: 'Réduire toutes les gommettes de cette photo', 'aria-label': 'Réduire toutes les gommettes', disabled: tMax <= TAILLES_GOMMETTE[0] || undefined, surclick: () => regler(-1) }),
+        el('span', { classe: 'inv-taille-valeur', texte: tMin === tMax ? `${Math.round(tMin * 100)} %` : 'variable' }),
+        el('button', { type: 'button', classe: 'cfg-mini', texte: 'A+', title: 'Agrandir toutes les gommettes de cette photo', 'aria-label': 'Agrandir toutes les gommettes', disabled: tMin >= TAILLES_GOMMETTE[TAILLES_GOMMETTE.length - 1] || undefined, surclick: () => regler(1) }))];
+  }
+
+  // ---------- Vue immersive (panorama) ----------
+  // Afficheur Pannellum (lib/, licence MIT), chargé à la première vue immersive et gardé en cache hors ligne.
+  let chargementPannellum = null;
+  function chargerPannellum() {
+    if (window.pannellum) return Promise.resolve();
+    if (!chargementPannellum) {
+      chargementPannellum = new Promise((ok, ko) => {
+        if (!document.querySelector('link[data-pannellum]')) document.head.append(el('link', { rel: 'stylesheet', href: 'lib/pannellum.css?v=1', 'data-pannellum': '1' }));
+        const s = document.createElement('script');
+        s.src = 'lib/pannellum.js?v=1';
+        s.onload = () => ok();
+        s.onerror = () => { chargementPannellum = null; s.remove(); ko(new Error('Afficheur indisponible')); };
+        document.head.append(s);
+      });
+    }
+    return chargementPannellum;
+  }
+  let visionneuse = null; // { viewer, cle } : afficheur affiché (un seul à la fois)
+  const orientations = new Map(); // « contenant#vue » → orientation gardée d'un affichage à l'autre
+  /** Ferme l'afficheur immersif (avant chaque nouvel affichage), en gardant son orientation. */
+  function fermerVisionneuse() {
+    if (!visionneuse) return;
+    const { viewer, cle } = visionneuse;
+    visionneuse = null;
+    try { orientations.set(cle, { yaw: viewer.getYaw(), pitch: viewer.getPitch(), hfov: viewer.getHfov() }); } catch (e) { /* afficheur pas encore prêt */ }
+    try { viewer.destroy(); } catch (e) { /* déjà détruit */ }
+  }
+  /**
+   * Géométrie d'un panorama : angle horizontal couvert (réglage de la vue) et angle vertical déduit des proportions
+   * de l'image (une photo sphérique 2:1 sur 360° couvre 180° en hauteur).
+   */
+  const geometriePanorama = (champ, largeur, hauteur) => ({ haov: champ, vaov: Math.min(180, champ * hauteur / Math.max(1, largeur)) });
+  const versAngles = (p, g) => ({ yaw: (p.x - 0.5) * g.haov, pitch: (0.5 - p.y) * g.vaov });
+  const versPosition = (pitch, yaw, g) => {
+    const borne = (v) => Math.min(1, Math.max(0, v));
+    return { x: borne(yaw / g.haov + 0.5), y: borne(0.5 - pitch / g.vaov) };
+  };
+  /** Déclenche `action` sur un appui long (gestion : déplacer une gommette dans la vue immersive). */
+  function appuiLong(element, action) {
+    let minuterie = null;
+    let depart = null;
+    let declenche = false;
+    const annuler = () => { clearTimeout(minuterie); minuterie = null; };
+    element.addEventListener('pointerdown', (e) => {
+      declenche = false;
+      depart = { x: e.clientX, y: e.clientY };
+      annuler();
+      minuterie = setTimeout(() => { declenche = true; action(); }, 550);
+    });
+    element.addEventListener('pointermove', (e) => { if (depart && Math.hypot(e.clientX - depart.x, e.clientY - depart.y) > 10) annuler(); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => element.addEventListener(t, annuler));
+    element.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Le clic qui suit un appui long n'ouvre pas le sous-inventaire.
+    element.addEventListener('click', (e) => { if (declenche) { e.preventDefault(); e.stopImmediatePropagation(); declenche = false; } }, true);
+  }
+  /** Cadre de la vue immersive : panorama à faire pivoter, gommettes et flèches accrochées à leur direction. */
+  function cadreImmersif(c, vc, fils, vues) {
+    const cadre = el('div', { classe: `inv-immersif${placement ? ' placement' : ''}`, role: 'img', 'aria-label': `Vue immersive : ${c.nom} — ${vc.nom}` },
+      el('p', { classe: 'inv-photo-attente', texte: 'Chargement de la vue immersive…' }));
+    const cle = `${c.id}#${vc.cle}`;
+    const echec = (texte) => {
+      const att = cadre.querySelector('.inv-photo-attente');
+      if (att) att.textContent = texte;
+      cadre.classList.add('sans-image');
+      photosIndisponibles.add(vc.photo);
+      if (zone) zone.querySelectorAll('.inv-liste-secours').forEach((x) => { x.hidden = false; });
+    };
+    const demarrer = async () => {
+      const donnees = Photos.enMemoire(vc.photo) || await obtenirPhoto(vc.photo);
+      if (!donnees) { echec('Photo pas encore disponible hors ligne : passez par la liste ci-dessous.'); return; }
+      const image = new Image();
+      await new Promise((ok, ko) => { image.onload = ok; image.onerror = ko; image.src = donnees; });
+      try { await chargerPannellum(); } catch (e) { echec('Afficheur de la vue immersive indisponible : réessayez avec le réseau.'); return; }
+      if (!cadre.isConnected) return; // l'écran a changé entre-temps
+      cadre.querySelector('.inv-photo-attente').remove();
+      const g = geometriePanorama(vc.immersif, image.naturalWidth, image.naturalHeight);
+      const hotSpots = [];
+      vc.points.forEach((p) => {
+        const pastille = creerPastille(c, vc, p, fils, 'left:0;top:0;');
+        if (!pastille) return;
+        if (edition) appuiLong(pastille, () => { placement = p.cible; rendre({ garderPosition: true }); });
+        hotSpots.push({ ...versAngles(p, g), cssClass: 'inv-hs', createTooltipFunc: (div) => div.append(pastille) });
+      });
+      vc.fleches.forEach((f, n) => {
+        const fl = creerFleche(c, vc, vues, f, n, 'left:0;top:0;');
+        if (fl) hotSpots.push({ ...versAngles(f, g), cssClass: 'inv-hs', createTooltipFunc: (div) => div.append(fl) });
+      });
+      const o = orientations.get(cle) || {};
+      const viewer = window.pannellum.viewer(cadre, {
+        type: 'equirectangular', panorama: donnees, autoLoad: true,
+        haov: g.haov, vaov: g.vaov, vOffset: 0,
+        yaw: o.yaw ?? 0, pitch: o.pitch ?? 0, hfov: o.hfov ?? Math.min(100, g.haov),
+        minHfov: 30, maxHfov: Math.min(120, g.haov),
+        showZoomCtrl: false, showFullscreenCtrl: true, compass: false, keyboardZoom: true, mouseZoom: true,
+        hotSpots,
+        strings: { loadingLabel: 'Chargement…', loadButtonLabel: 'Afficher la vue immersive', bylineLabel: '',
+          noPanoramaError: 'Aucune image.', fileAccessError: 'Image illisible.', malformedURLError: 'Adresse de l\'image incorrecte.',
+          iOS8WebGLError: 'Vue immersive impossible sur cet appareil.', genericWebGLError: 'Vue immersive impossible sur cet appareil (WebGL).',
+          textureSizeError: 'Image trop grande pour cet appareil.', unknownError: 'Erreur d\'affichage.' },
+      });
+      visionneuse = { viewer, cle };
+      // Gestion : un toucher bref (sans faire pivoter) pose la gommette ou la flèche en cours de placement.
+      if (edition) {
+        let depart = null;
+        cadre.addEventListener('pointerdown', (e) => { depart = { x: e.clientX, y: e.clientY }; });
+        cadre.addEventListener('pointerup', (e) => {
+          if (!placement || !depart || Math.hypot(e.clientX - depart.x, e.clientY - depart.y) > 8) return;
+          if (e.target.closest('.inv-hs, .pnlm-controls-container')) return;
+          const [pitch, yaw] = viewer.mouseEventToCoords(e);
+          poserA(c, vc, vues, versPosition(pitch, yaw, g));
+        });
+      }
+    };
+    demarrer().catch(() => echec('Photo illisible.'));
+    return cadre;
+  }
+  /**
+   * Panorama pris au téléphone : réduit (sans recadrage) pour rester léger hors ligne et lisible par tous les
+   * appareils (4096 px de large au plus, limite des textures sur beaucoup de téléphones), sous la taille acceptée par le serveur.
+   */
+  async function reduirePanorama(fichier) {
+    const url = URL.createObjectURL(fichier);
+    try {
+      const image = new Image();
+      await new Promise((ok, ko) => { image.onload = ok; image.onerror = ko; image.src = url; });
+      for (const largeurMax of [4096, 3072, 2048]) {
+        const k = Math.min(1, largeurMax / image.naturalWidth, 2048 / image.naturalHeight);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(image.naturalWidth * k);
+        canvas.height = Math.round(image.naturalHeight * k);
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        for (const q of [0.8, 0.7, 0.6]) {
+          const donnees = canvas.toDataURL('image/jpeg', q);
+          if (donnees.length <= PHOTO_MAX) return { donnees, largeur: canvas.width, hauteur: canvas.height };
+        }
+      }
+      throw new Error('Panorama trop lourd');
+    } finally { URL.revokeObjectURL(url); }
+  }
+
+  /** Gestion : vue classique ou immersive, et angle couvert par le panorama. */
+  function reglagesImmersif(c, vc) {
+    const idCase = idChamp();
+    const idChampAngle = idChamp();
+    const changer = (champs) => { majVue(c, vc.cle, champs); marquer(c.id); rendre({ garderPosition: true }); };
+    return el('div', { classe: 'inv-reglages-immersif' },
+      el('div', { classe: 'cfg-ligne' },
+        el('input', { type: 'checkbox', id: idCase, checked: Boolean(vc.immersif), surchange: (e) => changer({ immersif: e.target.checked ? 360 : 0 }) }),
+        el('label', { for: idCase, texte: '🌐 Vue immersive (panorama pris au téléphone, que l\'on fait pivoter du doigt)' })),
+      vc.immersif ? el('div', { classe: 'cfg-ligne' },
+        el('label', { for: idChampAngle, texte: 'Angle couvert par le panorama' }),
+        el('select', { id: idChampAngle, surchange: (e) => changer({ immersif: Number(e.target.value) }) },
+          ...[...new Set([360, 270, 240, 180, 150, 120, 90, vc.immersif])].sort((a, b) => b - a)
+            .map((a) => el('option', { value: String(a), texte: a === 360 ? '360° (tour complet)' : `${a}°`, selected: a === vc.immersif })))) : null,
+      vc.immersif ? el('p', { classe: 'aide-question', texte: 'Prenez la photo avec le mode « Panorama » ou « Photo Sphere » du téléphone, debout au centre, en tournant autour du téléphone. Si le panorama ne fait pas le tour complet, réglez l\'angle pour que les proportions soient justes.' }) : null);
+  }
   function blocPhoto(c, fils) {
     const vues = vuesDe(c);
     const vc = vueCourante(c);
@@ -2144,7 +2398,7 @@ const Inventaires = (() => {
           return el('button', { type: 'button', role: 'tab', classe: 'inv-onglet-vue', 'aria-selected': String(v.cle === vc.cle),
             ...(defaut ? { title: 'Vue affichée en premier' } : {}),
             surclick: () => { vueActive.set(c.id, v.cle); rendre({ garderPosition: true }); } },
-          defaut ? '★ ' : null, v.nom, nb ? el('small', { texte: ` · ${nb}` }) : null);
+          defaut ? '★ ' : null, v.immersif ? '🌐 ' : null, v.nom, nb ? el('small', { texte: ` · ${nb}` }) : null);
         }),
         peutAjouter ? el('button', { type: 'button', classe: 'inv-onglet-vue inv-onglet-ajout', 'aria-label': 'Ajouter une vue', title: 'Ajouter une vue (autre angle)', texte: '＋ Vue', surclick: () => {
           const v = { id: nouvelId(), nom: `Vue ${c.vues.length + 2}`, photo: '', points: [], fleches: [] };
@@ -2152,10 +2406,22 @@ const Inventaires = (() => {
           vueActive.set(c.id, v.id);
           marquer(c.id);
           rendre({ garderPosition: true });
+        } }) : null,
+        peutAjouter ? el('button', { type: 'button', classe: 'inv-onglet-vue inv-onglet-ajout', 'aria-label': 'Ajouter une vue immersive', title: 'Panorama pris au téléphone, que l\'on fait pivoter du doigt', texte: '＋ 🌐 Vue immersive', surclick: () => {
+          const v = { id: nouvelId(), nom: 'Vue immersive', photo: '', points: [], fleches: [], immersif: 360 };
+          c.vues.push(v);
+          vueActive.set(c.id, v.id);
+          marquer(c.id);
+          rendre({ garderPosition: true });
         } }) : null);
       bloc.append(onglets);
     }
-    if (vc.photo) {
+    if (vc.photo && vc.immersif) {
+      bloc.append(...consignesPlacement(c, vc, plusieurs));
+      bloc.append(cadreImmersif(c, vc, fils, vues));
+      if (edition && vues.length > 1) bloc.append(reglagesFleches(c, vc, vues));
+      if (edition && vc.points.length) bloc.append(...reglageTailles(c, vc, 'Faites pivoter l\'image du doigt. Touchez une gommette pour ouvrir son inventaire ; pour la déplacer : appui long, puis touchez le nouvel endroit.'));
+    } else if (vc.photo) {
       const img = el('img', { alt: `Photo : ${c.nom}${plusieurs ? ` — ${vc.nom}` : ''}` });
       const attente = el('p', { classe: 'inv-photo-attente', texte: 'Chargement de la photo…' });
       // La scène (photo, gommettes, flèches) se zoome seule, sans zoomer la page.
@@ -2196,88 +2462,24 @@ const Inventaires = (() => {
         if (!placement) return;
         const r = img.getBoundingClientRect();
         const borne = (v) => Math.min(1, Math.max(0, v));
-        const pos = { x: borne((e.clientX - r.left) / r.width), y: borne((e.clientY - r.top) / r.height) };
-        if (placement.startsWith('fleche:')) {
-          // Nouvelle flèche (vers la première autre vue) ou flèche déplacée.
-          const n = placement.slice(7);
-          const liste = vc.fleches.slice();
-          if (n === 'nouvelle') {
-            const autre = vues.find((v) => v.cle !== vc.cle);
-            liste.push({ vers: autre ? autre.cle : '', x: pos.x, y: pos.y });
-            flecheChoisie = `${vc.cle}#${liste.length - 1}`;
-          } else if (liste[Number(n)]) liste[Number(n)] = { ...liste[Number(n)], ...pos };
-          majVue(c, vc.cle, { fleches: liste });
-        } else poserGommette(c, vc, placement, pos);
-        placement = '';
-        marquer(c.id);
-        rendre({ garderPosition: true });
+        poserA(c, vc, vues, { x: borne((e.clientX - r.left) / r.width), y: borne((e.clientY - r.top) / r.height) });
       });
       vc.points.forEach((p) => {
-        const rang = fils.findIndex((f) => f.id === p.cible);
-        if (rang === -1) return;
-        const b = bilan(fils[rang].id);
-        // Validé par le scellé (« Oui, il est scellé ») : cadenas à la place du ✓, couleur du dernier inventaire.
-        const scelle = !edition && b.complet && sousScelle(fils[rang]);
-        const t = texteGommette(c, p.cible, rang);
-        // Icône choisie (poumon, cœur-éclair) : elle remplace le texte, la couleur de la gommette dit l'état ; le cadenas garde la priorité.
-        const icone = scelle ? undefined : iconeChoisie(c, p.cible);
-        const affiche = icone ? '' : edition ? t : scelle ? '' : (b.complet ? '✓' : t);
-        const commun = {
-          classe: `inv-point ${b.classe}${scelle ? ' scelle' : ''}${icone ? ' avec-icone' : ''}${placement === p.cible ? ' deplace' : ''}${scelle || icone ? '' : classesTexte(affiche)}`, style: `left:${p.x * 100}%;top:${p.y * 100}%;--t:${tailleGommette(p)}`,
-          'aria-label': `${fils[rang].nom} : ${b.texte}`, title: fils[rang].nom,
-        };
-        const pastille = edition
-          // Gestion : un appui ouvre le sous-inventaire (en gestion) ; appui long + glisser pour déplacer la gommette.
-          ? el('button', { type: 'button', ...commun, 'aria-label': `${fils[rang].nom} : ouvrir. Appui long puis glisser pour déplacer`, title: `${fils[rang].nom} — appui long et glisser pour déplacer`, texte: affiche, surclick: () => aller(p.cible) })
-          : fils[rang].clAmbulancier && vehiculeAmbulancier(fils[rang])
-            // Bouteilles d'oxygène (check-list ambulancier) : niveaux en fenêtre, sans quitter la photo.
-            ? el('button', { type: 'button', ...commun, 'aria-haspopup': 'dialog', texte: affiche, surclick: () => voirOxygene(fils[rang]) })
-            : el('a', { href: lien(p.cible), ...commun, texte: affiche });
-        if (scelle) pastille.append(logoCadenas());
-        if (icone) pastille.append(logoGommette(icone));
-        if (!edition) { const pe = badgePeremption(b); if (pe) pastille.append(pe); }
+        const pastille = creerPastille(c, vc, p, fils, `left:${p.x * 100}%;top:${p.y * 100}%;`);
+        if (!pastille) return;
         if (edition) glisserPastille(pastille, img, c, vc, p.cible);
         scene.append(pastille);
       });
       // Flèches vers les autres vues : un rond transparent à toucher pour changer d'angle.
       vc.fleches.forEach((f, n) => {
-        const dest = vues.find((v) => v.cle === f.vers);
-        if (!dest && !edition) return;
-        const choisie = edition && flecheChoisie === `${vc.cle}#${n}`;
-        scene.append(el('button', {
-          type: 'button', classe: `inv-fleche${choisie ? ' choisie' : ''}${placement === `fleche:${n}` ? ' deplace' : ''}${dest ? '' : ' orpheline'}`,
-          style: `left:${f.x * 100}%;top:${f.y * 100}%;--a:${f.angle || 0}deg`,
-          'aria-label': dest ? `Aller à la vue « ${dest.nom} »` : 'Flèche sans vue de destination', title: dest ? dest.nom : 'Vue supprimée',
-          surclick: () => {
-            if (edition) { flecheChoisie = choisie ? '' : `${vc.cle}#${n}`; rendre({ garderPosition: true }); return; }
-            vueActive.set(c.id, f.vers);
-            rendre({ garderPosition: true });
-          },
-        }, el('span', { classe: 'inv-fleche-trait', 'aria-hidden': 'true', texte: '➜' })));
+        const fl = creerFleche(c, vc, vues, f, n, `left:${f.x * 100}%;top:${f.y * 100}%;`);
+        if (fl) scene.append(fl);
       });
-      if (placement && placement.startsWith('fleche:')) {
-        bloc.append(el('p', { classe: 'inv-consigne-placement', role: 'status' }, 'Touchez la photo à l\'endroit de la flèche. ',
-          el('button', { type: 'button', classe: 'lien', texte: 'Annuler', surclick: () => { placement = ''; rendre({ garderPosition: true }); } })));
-      }
-      if (placement && contenant(placement)) {
-        bloc.append(el('p', { classe: 'inv-consigne-placement', role: 'status' },
-          `Touchez la photo${plusieurs ? ` « ${vc.nom} »` : ''} à l'endroit de « ${contenant(placement).nom} ». `,
-          el('button', { type: 'button', classe: 'lien', texte: 'Plus tard', surclick: () => { placement = ''; rendre({ garderPosition: true }); } })));
-      }
+      bloc.append(...consignesPlacement(c, vc, plusieurs));
       bloc.append(cadre);
       rendreZoomable(cadre, scene);
       if (edition && vues.length > 1) bloc.append(reglagesFleches(c, vc, vues));
-      if (edition && vc.points.length) {
-        const tailles = vc.points.map(tailleGommette);
-        const tMin = Math.min(...tailles); const tMax = Math.max(...tailles);
-        const regler = (sens) => { changerTaille(c, vc, sens); marquer(c.id); rendre({ garderPosition: true }); };
-        bloc.append(el('p', { classe: 'aide-question inv-aide-gommettes', texte: 'Touchez une gommette pour ouvrir son inventaire. Pour la déplacer : appui long, glissez, relâchez.' }));
-        bloc.append(el('div', { classe: 'cfg-ligne inv-taille-gommettes' },
-          el('span', { texte: 'Taille des gommettes de la photo' }),
-          el('button', { type: 'button', classe: 'cfg-mini', texte: 'A−', title: 'Réduire toutes les gommettes de cette photo', 'aria-label': 'Réduire toutes les gommettes', disabled: tMax <= TAILLES_GOMMETTE[0] || undefined, surclick: () => regler(-1) }),
-          el('span', { classe: 'inv-taille-valeur', texte: tMin === tMax ? `${Math.round(tMin * 100)} %` : 'variable' }),
-          el('button', { type: 'button', classe: 'cfg-mini', texte: 'A+', title: 'Agrandir toutes les gommettes de cette photo', 'aria-label': 'Agrandir toutes les gommettes', disabled: tMin >= TAILLES_GOMMETTE[TAILLES_GOMMETTE.length - 1] || undefined, surclick: () => regler(1) })));
-      }
+      if (edition && vc.points.length) bloc.append(...reglageTailles(c, vc, 'Touchez une gommette pour ouvrir son inventaire. Pour la déplacer : appui long, glissez, relâchez.'));
     }
     if (edition) {
       const prendre = idChamp();
@@ -2310,10 +2512,28 @@ const Inventaires = (() => {
           messageVue('Photo illisible ou trop lourde : réessayez.', 'erreur');
         }
       };
+      // Vue immersive : le panorama est seulement réduit (pas de recadrage) ; les gommettes gardent leur place dans l'image.
+      const recevoirPanorama = async (fichier) => {
+        try {
+          const res = await reduirePanorama(fichier);
+          const id = `local-${nouvelId()}`;
+          await Photos.ecrire(id, res.donnees);
+          if (vc.photo.startsWith('local-')) await Photos.supprimer(vc.photo);
+          const champs = { photo: id };
+          // Photo sphérique (proportions 2:1) : tour complet. Sinon on garde l'angle déjà réglé.
+          if (Math.abs(res.largeur / res.hauteur - 2) < 0.05) champs.immersif = 360;
+          majVue(c, vc.cle, champs);
+          marquer(c.id);
+          rendre({ garderPosition: true });
+        } catch (err) {
+          messageVue('Panorama illisible ou trop lourd : réessayez.', 'erreur');
+        }
+      };
       const recevoir = (e) => {
         const fichier = e.target.files[0];
         e.target.value = '';
-        if (fichier) appliquerRecadrage(fichier, false);
+        if (!fichier) return;
+        if (vc.immersif) recevoirPanorama(fichier); else appliquerRecadrage(fichier, false);
       };
       const recadrerActuelle = async () => {
         const donnees = await obtenirPhoto(vc.photo);
@@ -2325,11 +2545,12 @@ const Inventaires = (() => {
           el('input', { id: nomVue, maxlength: '40', valeur: vc.nom, placeholder: 'ex. côté gauche, plafond, porte arrière', surchange: (e) => { majVue(c, vc.cle, { nom: e.target.value.trim() }); marquer(c.id); rendre({ garderPosition: true }); } })));
       }
       bloc.append(el('div', { classe: 'champ-photo' },
-        el('label', { for: prendre, classe: 'bouton-photo', texte: vc.photo ? '📷 Reprendre la photo' : '📷 Prendre la photo' }),
-        el('input', { type: 'file', id: prendre, accept: 'image/*', capture: 'environment', classe: 'invisible', surchange: recevoir }),
-        el('label', { for: choisir, classe: 'bouton-photo', texte: 'Choisir une image' }),
+        // Vue immersive : le panorama se prend dans l'appareil photo du téléphone (mode Panorama), puis se choisit ici.
+        vc.immersif ? null : el('label', { for: prendre, classe: 'bouton-photo', texte: vc.photo ? '📷 Reprendre la photo' : '📷 Prendre la photo' }),
+        vc.immersif ? null : el('input', { type: 'file', id: prendre, accept: 'image/*', capture: 'environment', classe: 'invisible', surchange: recevoir }),
+        el('label', { for: choisir, classe: 'bouton-photo', texte: vc.immersif ? (vc.photo ? '🌐 Changer le panorama' : '🌐 Choisir le panorama') : 'Choisir une image' }),
         el('input', { type: 'file', id: choisir, accept: 'image/*', classe: 'invisible', surchange: recevoir }),
-        vc.photo ? el('button', { type: 'button', classe: 'bouton-photo', texte: '✂ Recadrer', surclick: recadrerActuelle }) : null,
+        vc.photo && !vc.immersif ? el('button', { type: 'button', classe: 'bouton-photo', texte: '✂ Recadrer', surclick: recadrerActuelle }) : null,
         vc.photo && !vc.cle ? el('button', { type: 'button', classe: 'lien danger', texte: 'Retirer la photo', surclick: () => { majVue(c, '', { photo: '', points: [], fleches: [] }); marquer(c.id); rendre({ garderPosition: true }); } }) : null,
         vc.cle ? el('button', { type: 'button', classe: 'bouton-photo', texte: '★ Afficher en premier', title: 'Cette vue s\'ouvrira par défaut', surclick: () => {
           definirVueParDefaut(c, vc.cle);
@@ -2347,6 +2568,7 @@ const Inventaires = (() => {
           marquer(c.id);
           rendre({ garderPosition: true });
         } }) : null));
+      bloc.append(reglagesImmersif(c, vc));
       if (!avecPhoto) bloc.append(el('p', { classe: 'aide-question', texte: `La photo sert de plan : chaque sous-inventaire y est repéré par un point numéroté. « ＋ Vue » ajoute d\'autres photos (autres angles, faces, compartiments).` }));
     }
     return bloc;
@@ -5015,8 +5237,8 @@ const Inventaires = (() => {
       nom: m.nom, ordre: m.ordre, photo: m.photo, vignette: m.vignette || '', scellable: m.scellable, categorie: m.categorie, etiquette: m.etiquette,
       clAmbulancier: m.clAmbulancier, clElements: m.clElements, emplacement: m.emplacement,
       points: [...m.points.map(sigPoint), ...(m.fleches || []).map(sigFleche)],
-      nomVue: m.nomVue,
-      vues: m.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: [...v.points.map(sigPoint), ...(v.fleches || []).map(sigFleche)] })),
+      nomVue: m.nomVue, immersif: m.immersif || undefined,
+      vues: m.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, ...(v.immersif ? { immersif: v.immersif } : {}), points: [...v.points.map(sigPoint), ...(v.fleches || []).map(sigFleche)] })),
       articles: m.articles.map((a) => ({ id: a.id, ...sigArticle(a), ...(a.ref ? { refNom: a.nom } : {}) })),
       enfants: enfants(m.id).map((x) => x.id),
     };
@@ -5028,14 +5250,14 @@ const Inventaires = (() => {
       nom: e.nom, ordre: e.ordre, photo: e.photo, vignette: e.vignette || '', scellable: e.scellable, categorie: e.categorie, etiquette: e.etiquette,
       clAmbulancier: e.clAmbulancier, clElements: e.clElements, emplacement: e.emplacement,
       points: [...e.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })), ...(e.fleches || []).map(sigFleche)],
-      nomVue: e.nomVue,
-      vues: e.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, points: [...v.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })), ...(v.fleches || []).map(sigFleche)] })),
+      nomVue: e.nomVue, immersif: e.immersif || undefined,
+      vues: e.vues.map((v) => ({ id: v.id, nom: v.nom, photo: v.photo, ...(v.immersif ? { immersif: v.immersif } : {}), points: [...v.points.map((p) => sigPoint({ ...p, cible: versModele(p.cible) })), ...(v.fleches || []).map(sigFleche)] })),
       articles: e.articles.map((a) => ({ id: a.id, ...sigArticle(a) })),
       enfants: enfants(e.id).filter((x) => !(contenant(x.source) || {}).modele).map((x) => x.source).filter(Boolean),
     };
   }
   const sansNoms = (articles) => (articles || []).map(({ refNom, ...a }) => a);
-  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', vignette: 'vignette', nomVue: 'nom de la vue', vues: 'vues', scellable: 'scellable', categorie: 'catégorie', etiquette: 'format d\'étiquette', clAmbulancier: 'check-list ambulancier', clElements: 'éléments vérifiés par l\'ambulancier', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
+  const CHAMPS_LIBELLES = { nom: 'nom', ordre: 'place', photo: 'photo', vignette: 'vignette', nomVue: 'nom de la vue', immersif: 'vue immersive', vues: 'vues', scellable: 'scellable', categorie: 'catégorie', etiquette: 'format d\'étiquette', clAmbulancier: 'check-list ambulancier', clElements: 'éléments vérifiés par l\'ambulancier', points: 'points sur la photo', articles: 'articles', enfants: 'sous-inventaires' };
   /**
    * Check-list ambulancier (véhicule relié, éléments vérifiés) : réglage propre à chaque véhicule (F21, F22…).
    * Tant que le type n'en définit pas (ni maintenant, ni à la dernière répercussion), ce que l'exemplaire a réglé
@@ -5192,14 +5414,14 @@ const Inventaires = (() => {
    * `forcer` : « Revenir au modèle » (ce contenant seulement : ses sous-inventaires gardent leurs personnalisations).
    * Renvoie { modifies, conserves }.
    */
-  const LIBELLES_CONFLIT = { nom: 'Nom', ordre: 'Place parmi les sous-inventaires', photo: 'Photo', vignette: 'Vignette', nomVue: 'Nom de la vue', scellable: 'Scellable', categorie: 'Catégorie', etiquette: 'Format d\'étiquette QR', clAmbulancier: 'Check-list ambulancier', clElements: 'Éléments vérifiés par l\'ambulancier', emplacement: 'Modèles acceptés / condition de l\'emplacement' };
+  const LIBELLES_CONFLIT = { nom: 'Nom', ordre: 'Place parmi les sous-inventaires', photo: 'Photo', vignette: 'Vignette', nomVue: 'Nom de la vue', immersif: 'Vue immersive (panorama)', scellable: 'Scellable', categorie: 'Catégorie', etiquette: 'Format d\'étiquette QR', clAmbulancier: 'Check-list ambulancier', clElements: 'Éléments vérifiés par l\'ambulancier', emplacement: 'Modèles acceptés / condition de l\'emplacement' };
   function repercuter(e, m, forcer = false, racine = false, decider = () => false) {
     const bilanR = { modifies: 0, conserves: 0 };
     const base = e.base || instantane(m); // exemplaire ancien sans base : tout est considéré comme non modifié
     const v = vueExemplaire(e);
     const nm = instantane(m);
     const avant = canonique(e);
-    ['nom', 'ordre', 'photo', 'vignette', 'nomVue', 'scellable', 'categorie', 'etiquette', 'clAmbulancier', 'clElements', 'emplacement'].forEach((k) => {
+    ['nom', 'ordre', 'photo', 'vignette', 'nomVue', 'immersif', 'scellable', 'categorie', 'etiquette', 'clAmbulancier', 'clElements', 'emplacement'].forEach((k) => {
       if (racine && (k === 'nom' || k === 'ordre')) return; // le sac garde son nom et sa place
       if (!forcer && clPropreAuVehicule(k, m, base)) return; // check-list ambulancier : réglage du véhicule, conservé tel quel
       // Étiquette : un exemplaire sans format propre suit toujours le modèle (formats effacés par un ancien serveur).
@@ -6736,6 +6958,7 @@ const Inventaires = (() => {
   }
 
   function rendre({ garderPosition = false, focus = '' } = {}) {
+    fermerVisionneuse(); // l'afficheur immersif est recréé à chaque affichage
     if (!zone || zone.hidden) return;
     let id = idCourant();
     let c = contenant(id);
