@@ -5500,17 +5500,50 @@ const Inventaires = (() => {
     return crees;
   }
 
-  /** Répercussion à blanc sur les exemplaires choisis : liste des personnalisations en conflit avec le type. */
+  /**
+   * Répercussion en chaîne : répercute le type `m` sur les exemplaires `choisis`, puis, si ces exemplaires sont eux-mêmes
+   * rangés dans un autre inventaire type (ex. « Pochette pansement » dans « Tiroir 4 type »), répercute ce type-là sur
+   * tous ses exemplaires (ex. les tiroirs 4 de F25 et F26), et ainsi de suite jusqu'aux contenants réels.
+   * `decider(x, cle, libelle, etape)` : voir `repercuter` ; `etape` = { racine, premiere }.
+   * Renvoie { modifies, conserves, etapes: [{ type, exemplaires }] }.
+   */
+  function repercuterEnChaine(choisis, m, decider) {
+    const bilanC = { modifies: 0, conserves: 0, etapes: [] };
+    const vus = new Set([m.id]);
+    const file = [{ modele: m.id, ids: choisis.map((x) => x.id), premiere: true }];
+    for (let n = 0; file.length && n < 20; n++) {
+      const { modele, ids, premiere } = file.shift();
+      const mm = contenant(modele);
+      if (!mm) continue;
+      const racines = ids.map((id) => contenant(id)).filter(Boolean);
+      racines.forEach((e) => {
+        const r = repercuter(e, mm, false, true, (x, cle, libelle) => decider(x, cle, libelle, { racine: e, premiere }));
+        bilanC.modifies += r.modifies; bilanC.conserves += r.conserves;
+      });
+      bilanC.etapes.push({ type: mm.nom, exemplaires: racines.map((x) => x.nom) });
+      // Étape suivante : types qui contiennent ces exemplaires (chacun répercuté sur tous ses propres exemplaires).
+      racines.forEach((e) => {
+        const parent = racineModele(e.id);
+        if (!parent || parent.id === e.id || vus.has(parent.id)) return;
+        vus.add(parent.id);
+        file.push({ modele: parent.id, ids: exemplairesDe(parent.id).map((x) => x.id), premiere: false });
+      });
+    }
+    return bilanC;
+  }
+
+  /** Répercussion à blanc (en chaîne) sur les exemplaires choisis : liste des personnalisations en conflit avec le type. */
   function recenserConflits(choisis, m) {
     const sauve = JSON.stringify(structure.contenants);
     const conflits = [];
     simulation = true;
     try {
-      choisis.forEach((r) => repercuter(r, m, false, true, (x, cle, libelle) => {
-        const debut = chemin(r.id).length - 1;
-        conflits.push({ cle: `${x.id}|${cle}`, exemplaire: r.nom, ou: chemin(x.id).slice(debut).map((y) => y.nom).join(' › '), libelle });
+      repercuterEnChaine(choisis, m, (x, cle, libelle, etape) => {
+        // Premier niveau : chemin depuis l'exemplaire ; niveaux suivants : chemin complet (véhicule › tiroir › …).
+        const debut = etape.premiere ? chemin(etape.racine.id).length - 1 : 0;
+        conflits.push({ cle: `${x.id}|${cle}`, exemplaire: etape.racine.nom, ou: chemin(x.id).slice(debut).map((y) => y.nom).join(' › '), libelle });
         return false;
-      }));
+      });
     } finally {
       simulation = false;
       structure.contenants = JSON.parse(sauve);
@@ -5699,11 +5732,13 @@ const Inventaires = (() => {
       // 1. Répercussion à blanc : recense les personnalisations qui entrent en conflit avec le type.
       const conflits = recenserConflits(choisis, m);
       const appliquer = (ecraser) => {
-        let modifies = 0; let conserves = 0;
         // Objets relus : la répercussion à blanc a restauré la structure.
         const mm = contenant(m.id);
-        choisis.map((x) => contenant(x.id)).filter(Boolean).forEach((e) => { const r = repercuter(e, mm, false, true, (x, cle) => ecraser.has(`${x.id}|${cle}`)); modifies += r.modifies; conserves += r.conserves; });
+        const r = repercuterEnChaine(choisis.map((x) => contenant(x.id)).filter(Boolean), mm, (x, cle) => ecraser.has(`${x.id}|${cle}`));
+        const { modifies, conserves } = r;
+        const suite = r.etapes.slice(1);
         avis = `${pluriel(choisis.length, 'exemplaire')} mis à jour (${pluriel(modifies, 'contenant')} modifié${modifies > 1 ? 's' : ''})`
+          + `${suite.length ? ` ; en chaîne : ${suite.map((e) => `${e.type} (${e.exemplaires.join(', ')})`).join(', puis ')}` : ''}`
           + `${ecraser.size ? ` ; ${pluriel(ecraser.size, 'personnalisation')} écrasée${ecraser.size > 1 ? 's' : ''}` : ''}`
           + `${conserves ? ` ; ${pluriel(conserves, 'personnalisation')} conservée${conserves > 1 ? 's' : ''}` : ''}.`;
         rendre({ garderPosition: true });
@@ -5725,7 +5760,7 @@ const Inventaires = (() => {
     return el('section', { classe: 'cfg-section inv-bloc-modele' },
       el('h2', { texte: 'Inventaire type' }),
       c.id !== m.id ? el('p', { classe: 'aide-question' }, 'Ce sous-inventaire fait partie de l\'inventaire type ', el('a', { href: lien(m.id), texte: m.nom }), '.') : null,
-      el('p', { classe: 'aide-question', texte: 'Les modifications du type ne partent pas toutes seules : appuyez sur « Répercuter ». Tout est répercuté (photos, gommettes, sous-inventaires, articles) ; si un sac a une personnalisation contraire, on vous demande s\'il faut l\'écraser.' }),
+      el('p', { classe: 'aide-question', texte: 'Les modifications du type ne partent pas toutes seules : appuyez sur « Répercuter ». Tout est répercuté (photos, gommettes, sous-inventaires, articles) ; si un sac a une personnalisation contraire, on vous demande s\'il faut l\'écraser. Si le type est rangé dans un autre inventaire type (ex. une pochette dans un tiroir), la répercussion se poursuit en chaîne jusqu\'aux véhicules.' }),
       // Type immobile (racine) : véhicules auxquels il est destiné.
       m.categorie === 'immobile' && c.id === m.id ? blocDestinataires(m, exemplaires) : null,
       exemplaires.length ? liste : el('p', { texte: 'Aucun exemplaire pour l\'instant.' }),
