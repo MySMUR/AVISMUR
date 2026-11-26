@@ -1899,7 +1899,7 @@ const Inventaires = (() => {
     if (alertes.length) {
       alertes.sort((x, y) => x.jours - y.jours);
       const perimes = alertes.filter((x) => x.p.niveau === 'perime').length;
-      noeuds.push(el('details', { classe: 'inv-alertes', open: perimes > 0 },
+      noeuds.push(el('details', { classe: 'inv-alertes' },
         el('summary', {}, 'Péremptions : ', [perimes ? pluriel(perimes, 'périmé') : '', alertes.length - perimes ? `${alertes.length - perimes} à moins de ${structure.reglages.alerteJours} jours` : ''].filter(Boolean).join(', ')),
         el('ul', {}, ...alertes.map((x) => el('li', { classe: x.p.niveau },
           el('a', { href: lien(x.c.id) }, el('strong', { texte: nomArticle(x.a) }), ` — ${cheminNoms(x.c.id)}`),
