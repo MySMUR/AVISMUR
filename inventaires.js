@@ -46,6 +46,8 @@ const Inventaires = (() => {
   let baseOuverte = ''; // fiche dépliée dans la base des articles ('nouvelle' : création)
   let fusion = null; // fusion de doublons en cours dans la base : { source, cible, texte }
   let baseFiltre = { texte: '', categorie: '', archives: false, sansPhoto: false };
+  // Base des articles : nombre d'articles affichés (par paliers, « Afficher la suite ») et clé de recherche qui le réinitialise.
+  let baseNbAffiches = 0, baseCleAffichage = '';
   let baseFiltresOuverts = false; // base des articles : panneau « Filtres » déplié
   const brouillonsBase = new Map(); // tableau de la base (ordinateur) : fiches modifiées, pas encore enregistrées
   let edition = false;
@@ -4987,6 +4989,7 @@ const Inventaires = (() => {
     const compte = el('p', { classe: 'aide-question', role: 'status' });
     const nouvelle = el('div');
     const tableau = el('div');
+    const suite = el('div', { classe: 'inv-suite' });
     const fermer = () => { baseOuverte = ''; remplir(); };
     const detail = (f) => {
       const ou = usages[f.id] || [];
@@ -5022,9 +5025,19 @@ const Inventaires = (() => {
       liste.innerHTML = '';
       const trouvees = chercherFiches(baseFiltre.texte, { archives: baseFiltre.archives, categorie: baseFiltre.categorie })
         .filter((f) => !baseFiltre.sansPhoto || !f.photo);
-      const max = enTableau ? 300 : 60;
+      const pas = enTableau ? 300 : 60;
+      const cle = [baseFiltre.texte, baseFiltre.categorie, baseFiltre.archives, baseFiltre.sansPhoto, enTableau].join('|');
+      if (cle !== baseCleAffichage || baseNbAffiches < pas) { baseCleAffichage = cle; baseNbAffiches = pas; }
+      const max = baseNbAffiches;
       const affichees = trouvees.slice(0, max);
-      compte.textContent = trouvees.length ? `${pluriel(trouvees.length, 'article')}${trouvees.length > max ? ` — ${max} premiers affichés, précisez la recherche` : ''}` : 'Aucun article ne correspond.';
+      compte.textContent = trouvees.length ? `${pluriel(trouvees.length, 'article')}${trouvees.length > max ? ` — ${max} affichés` : ''}` : 'Aucun article ne correspond.';
+      suite.innerHTML = '';
+      if (trouvees.length > max) {
+        const reste = trouvees.length - max;
+        suite.append(el('button', { type: 'button', classe: 'cfg-bouton inv-suite-bouton',
+          texte: `Afficher la suite (${reste > pas ? pas : reste} sur ${reste} restants)`,
+          surclick: () => { baseNbAffiches += pas; remplir(); } }));
+      }
       if (enTableau) {
         liste.hidden = true;
         tableau.innerHTML = '';
@@ -5085,7 +5098,7 @@ const Inventaires = (() => {
         el('button', { type: 'button', classe: `cfg-bouton${baseFiltresOuverts || nbFiltres ? ' inv-actif' : ''}`, 'aria-expanded': String(baseFiltresOuverts), 'aria-controls': 'inv-base-filtres',
           texte: nbFiltres ? `Filtres (${nbFiltres})` : 'Filtres', surclick: () => { baseFiltresOuverts = !baseFiltresOuverts; rendre({ garderPosition: true }); } })),
       panneauFiltres,
-      compte, liste, tableau,
+      compte, liste, tableau, suite,
     ];
   }
 

@@ -1428,6 +1428,8 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .inv-edition-outils .inv-qte { width: 3.6rem; min-height: 2.4rem; padding: 0.2rem; text-align: center; font-weight: 700; flex: none; }
 .inv-filtres { margin: 0 0 0.6rem; }
 .inv-base-liste { list-style: none; margin: 0.4rem 0 1rem; padding: 0; display: grid; gap: 0.35rem; }
+.inv-suite { margin: 0 0 1rem; }
+.inv-suite-bouton { width: 100%; }
 .inv-base-article.archive .inv-resultat { opacity: 0.65; border-style: dashed; }
 .inv-base-article.ouvert .inv-resultat { border-color: var(--bleu); border-radius: var(--rayon) var(--rayon) 0 0; }
 .inv-fiche-detail { padding: 0.6rem 0 0.4rem; }
