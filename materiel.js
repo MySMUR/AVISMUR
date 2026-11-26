@@ -2287,7 +2287,7 @@ const Materiel = (() => {
       boite.addEventListener('cancel', fermerBoite);
       boite.append(el('div', { classe: 'fenetre-entete' }, el('h2', { texte: 'Scanner un code' }),
         el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermerBoite })),
-        Scannette.champ((t) => { fermerBoite(); const v = brut ? t : valeurCode(t); if (v) surLu(v); }));
+        Scannette.champ((t) => { Scannette.vibrer(); fermerBoite(); const v = brut ? t : valeurCode(t); if (v) surLu(v); }));
       document.body.append(boite);
       boite.showModal();
       Scannette.focusChamp(boite);
@@ -2324,7 +2324,7 @@ const Materiel = (() => {
         if (fini) return;
         try {
           const r = await det.detect(video);
-          if (r.length && r[0].rawValue) { const v = brut ? String(r[0].rawValue).trim() : valeurCode(r[0].rawValue); fermer(); if (v) surLu(v); return; }
+          if (r.length && r[0].rawValue) { const v = brut ? String(r[0].rawValue).trim() : valeurCode(r[0].rawValue); Scannette.vibrer(); fermer(); if (v) surLu(v); return; }
         } catch (e) { /* image suivante */ }
         setTimeout(boucle, 250);
       };
@@ -2583,6 +2583,7 @@ const Materiel = (() => {
       const lecteur = new NDEFReader();
       lecteur.addEventListener('reading', ({ message, serialNumber }) => {
         if (CibleNfc.enReglage()) return; // puce passée pour repérer l'antenne
+        Scannette.vibrer();
         const textes = [serialNumber || ''];
         message.records.forEach((r) => { try { textes.push(new TextDecoder(r.encoding || 'utf-8').decode(r.data)); } catch (e) { /* ignoré */ } });
         const tout = textes.join('\n');

@@ -2632,6 +2632,7 @@ const Inventaires = (() => {
     const lu = (t, tout) => {
       const brut = String(t || '').trim();
       if (!brut || fini) return;
+      Scannette.vibrer();
       const appareil = typeof Materiel !== 'undefined' && !choix.brut ? Materiel.identifier(tout || brut) || Materiel.identifier(brut) : null;
       const v = ((appareil && codeAppareil(choix.article, appareil)) || brut).slice(0, 120);
       fermer();
@@ -5435,7 +5436,7 @@ const Inventaires = (() => {
   let sonVrac = null;
   /** Bip court (scan accepté) ou grave (déjà scanné, refusé), et vibration. */
   function signalVrac(bon) {
-    try { if (navigator.vibrate) navigator.vibrate(bon ? 40 : [40, 60, 40]); } catch (e) { /* rien */ }
+    try { if (navigator.vibrate) navigator.vibrate(bon ? 30 : [40, 60, 40]); } catch (e) { /* rien */ }
     try {
       if (!sonVrac) sonVrac = new (window.AudioContext || window.webkitAudioContext)();
       const o = sonVrac.createOscillator();
@@ -7197,6 +7198,7 @@ const Inventaires = (() => {
       document.body.classList.remove('camera-ouverte');
     };
     const trouve = (texte) => {
+      if (!fini) Scannette.vibrer();
       const m = /#inv=([a-z0-9]{6,16})$/.exec(String(texte || '').trim());
       if (!m) {
         // Autre code (étiquette biomed, puce d'appareil) : la vue appelante peut le reconnaître.

@@ -130,7 +130,7 @@ const CibleNfc = (() => {
           const t = Date.now();
           if (t - derniere < 800) return;
           derniere = t;
-          if (navigator.vibrate) navigator.vibrate(150);
+          Scannette.vibrer();
           etat.textContent = 'Puce détectée ✓ : touchez l\'écran à cet endroit.';
           d.classList.remove('detectee');
           void d.offsetWidth; // relance l'animation

@@ -44,5 +44,8 @@ const Scannette = (() => {
   }
   const focusChamp = (racine) => setTimeout(() => { const c = racine.querySelector('.scannette-champ'); if (c) c.focus(); }, 50);
 
-  return { ordinateur, champ, focusChamp };
+  /** Vibration douce à chaque lecture d'un QR code, d'un code-barres ou d'une puce NFC (sans effet si le téléphone ne vibre pas). */
+  const vibrer = () => { try { if (navigator.vibrate) navigator.vibrate(30); } catch (e) { /* rien */ } };
+
+  return { ordinateur, champ, focusChamp, vibrer };
 })();
