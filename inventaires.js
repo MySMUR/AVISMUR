@@ -2413,7 +2413,12 @@ const Inventaires = (() => {
   const mentionFacultatif = (a) => (estFacultatif(a) ? el('small', { classe: 'inv-facultatif', title: 'Facultatif : son absence ne rend pas l\'inventaire non conforme', texte: ' facultatif' }) : null);
   /** Commentaire d'un article (saisi en gestion), visible de tous sous l'article. */
   const noteCommentaire = (a) => (a && a.commentaire ? el('p', { classe: 'inv-commentaire', texte: a.commentaire }) : null);
-  function ligneControle(a, b, modifie) {
+  /**
+   * `precedent` : valeur relevée à la dernière check-list (n° de matériel). Pour un contrôle qui attend un numéro,
+   * elle s'affiche en grisé dans le champ vide, avec une coche au bout pour la reprendre ; laissé tel quel, le champ
+   * reste non renseigné.
+   */
+  function ligneControle(a, b, modifie, precedent = '') {
     const li = el('li', { classe: `inv-article inv-controle inv-controle-${a.controle}` });
     const champ = idChamp();
     const attente = texteAttente(a);
@@ -2426,6 +2431,18 @@ const Inventaires = (() => {
       li.classList.toggle('controle-anomalie', e.rempli && !e.ok);
     };
     const poser = (v) => { b.valeurs[a.id] = v; etat_(); modifie(); };
+    // Coche « reprendre le n° de la dernière check-list » : visible tant que le champ est vide.
+    const reprise = (entree, remplir) => {
+      if (!precedent) return null;
+      entree.placeholder = precedent;
+      entree.classList.add('inv-valeur-fantome');
+      const coche = el('button', { type: 'button', classe: 'cfg-mini inv-reprendre', 'aria-label': `Reprendre le numéro de la dernière check-list (${precedent}) : ${nomArticle(a)}`,
+        title: `Reprendre ${precedent}`, texte: '✓', surclick: () => { remplir(precedent); } });
+      const maj = () => { coche.hidden = entree.value.trim() !== ''; };
+      entree.addEventListener('input', maj);
+      maj();
+      return { coche, maj };
+    };
     let saisie;
     if (a.controle === 'oui') {
       saisie = el('span', { classe: 'inv-oui-non', role: 'group', 'aria-label': nomArticle(a) },
@@ -2445,9 +2462,11 @@ const Inventaires = (() => {
       const entree = el('input', { id: champ, classe: 'inv-valeur inv-valeur-texte', autocomplete: 'off', maxlength: '120', placeholder: 'N° ou scanner', valeur: val(), surinput: (e) => { poser(e.target.value.trim()); majNom(); } });
       const nomAppareil = el('small', { classe: 'inv-attente inv-appareil-reconnu' });
       const majNom = () => { const x = appareilDe(a, val()); nomAppareil.textContent = x ? ` ${x.type}${x.modele ? ` ${x.modele}` : ''}` : ''; };
-      const remplir = (t) => { entree.value = t; poser(t); majNom(); };
+      let rep = null;
+      const remplir = (t) => { entree.value = t; poser(t); majNom(); if (rep) rep.maj(); };
+      rep = reprise(entree, remplir);
       const bouton = (classe, label, title, contenu, action) => el('button', { type: 'button', classe: `cfg-mini inv-bouton-lecture ${classe}`, 'aria-label': `${label} : ${nomArticle(a)}`, title, surclick: action }, contenu);
-      saisie = el('span', { classe: 'inv-valeur-zone' }, entree,
+      saisie = el('span', { classe: 'inv-valeur-zone' }, entree, rep && rep.coche,
         bouton('', 'Scanner le QR code', 'QR code / code-barres', logoQr(), () => lireCode(remplir, { qr: true, nfc: false, article: a })),
         bouton('', 'Lire la puce NFC', 'Puce NFC', logoNfc(), () => lireCode(remplir, { qr: false, nfc: true, article: a })),
         bouton('inv-bouton-liste', 'Choisir dans la liste', 'Choisir dans la liste', '☰', () => choisirAppareil(a, remplir)));
@@ -2455,10 +2474,12 @@ const Inventaires = (() => {
       majNom();
     } else if (a.controle === 'scan') {
       const entree = el('input', { id: champ, classe: 'inv-valeur inv-valeur-texte', autocomplete: 'off', maxlength: '120', placeholder: 'Scanner ou saisir', valeur: val(), surinput: (e) => poser(e.target.value.trim()) });
-      const remplir = (t) => { entree.value = t; poser(t); };
+      let rep = null;
+      const remplir = (t) => { entree.value = t; poser(t); if (rep) rep.maj(); };
+      rep = reprise(entree, remplir);
       const boutonQr = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Scanner le QR code ou code-barres : ${nomArticle(a)}`, title: 'QR code / code-barres', surclick: () => lireCode(remplir, { qr: true, nfc: false, article: a }) }, logoQr());
       const boutonNfc = el('button', { type: 'button', classe: 'cfg-mini inv-bouton-lecture', 'aria-label': `Lire la puce NFC : ${nomArticle(a)}`, title: 'Puce NFC', surclick: () => lireCode(remplir, { qr: false, nfc: true, article: a }) }, logoNfc());
-      saisie = el('span', { classe: 'inv-valeur-zone' }, entree, boutonQr, boutonNfc);
+      saisie = el('span', { classe: 'inv-valeur-zone' }, entree, rep && rep.coche, boutonQr, boutonNfc);
     } else {
       const unite = a.controle === 'temperature' ? '°C' : (a.controle === 'batterie' ? '%' : (a.unite || ''));
       const entree = el('input', { id: champ, type: 'text', inputmode: 'decimal', classe: 'inv-valeur', autocomplete: 'off', maxlength: '8', valeur: val(), surfocus: (e) => e.target.select(),
@@ -2636,7 +2657,13 @@ const Inventaires = (() => {
         liste.append(el('li', { classe: 'inv-separation' }, el('span', { texte: a.nom }), g.membres.length ? g.bouton : null));
         return;
       }
-      if (estControle(a)) { liste.append(ligneControle(a, b, modifie)); return; }
+      if (estControle(a)) {
+        // N° de matériel relevé à la dernière check-list validée : proposé en grisé (jamais repris d'office).
+        const der = etat.verifs[c.id];
+        const precedent = estIdentifiant(a) && der && der.valeurs && der.valeurs[a.id] !== undefined ? String(der.valeurs[a.id]).trim() : '';
+        liste.append(ligneControle(a, b, modifie, precedent));
+        return;
+      }
       const champCase = idChamp();
       const coche = el('input', { type: 'checkbox', id: champCase, 'data-article': a.id, checked: Boolean(b.coches[a.id]), surchange: (e) => { b.coches[a.id] = e.target.checked; modifie(); } });
       const li = el('li', { classe: 'inv-article' });

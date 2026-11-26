@@ -1896,6 +1896,9 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .inv-valeur-zone { display: inline-flex; align-items: center; gap: 0.3rem; margin-left: auto; }
 .inv-valeur { width: 4.5rem; text-align: right; padding: 0.3rem 0.4rem; }
 .inv-valeur-texte { width: 9rem; text-align: left; }
+.inv-valeur-fantome::placeholder { color: var(--gris, #8a8f98); opacity: 0.85; }
+.inv-reprendre { color: #2e7d32; font-weight: bold; padding: 0.25rem 0.5rem; }
+.inv-reprendre[hidden] { display: none; }
 .inv-oui-non, .inv-batterie4 { display: inline-flex; gap: 0.25rem; margin-left: auto; }
 .inv-oui-non [aria-pressed="true"], .inv-batterie4 [aria-pressed="true"] { background: var(--bleu, #1565c0); color: #fff; }
 .inv-controle.controle-anomalie .inv-oui-non [aria-pressed="true"] { background: #c62828; }
