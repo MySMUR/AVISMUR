@@ -3635,6 +3635,12 @@ const Inventaires = (() => {
       && (appareilDe(a, a.attendu) || {}).id === appareil.id));
     if (lies.length === 1) return lies[0];
     if (lies.length > 1) return null;
+    // Matériel de prêt (sans n° interne) : contenant nommé d'après la référence du prêt (« PRÊT 03 »).
+    if (!cle(appareil.numInterne) && appareil.pret) {
+      const ref = cle(appareil.pret).replace(/ /g, '');
+      const parPret = candidats.filter((c) => cle(c.nom).replace(/ /g, '').includes(ref));
+      if (parPret.length === 1) return parPret[0];
+    }
     const num = cle(appareil.numInterne);
     if (!num) return null;
     const motsModele = cle(appareil.modele).split(' ').filter((m) => m.length >= 2);
@@ -3750,6 +3756,7 @@ const Inventaires = (() => {
     const viaAppareil = (code) => {
       const r = parAppareil(code);
       if (!r) return null;
+      if (!r.c && !mobiles.length) return () => messageVue(`${libelleAppareil(r.appareil)} reconnu, mais aucun contenant n'existe pour ce modèle : un administrateur doit d'abord créer l'exemplaire (Gestion des inventaires › inventaire type › Exemplaires, nom « ${r.appareil.pret || r.appareil.numInterne || 'n° de l\'appareil'} »).`, 'erreur');
       if (!r.c) return () => { appareilEnAttente = r.appareil; messageVue(`${libelleAppareil(r.appareil)} reconnu, mais aucun contenant ici ne lui est rattaché : choisissez le contenant dans la liste : il sera retenu pour cet appareil.`, 'erreur'); };
       return () => choisir(r.c.id);
     };
