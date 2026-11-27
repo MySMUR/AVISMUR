@@ -6608,7 +6608,6 @@ const Inventaires = (() => {
     const compte = el('span', { classe: 'inv-vrac-total' });
     const resume = el('div', { classe: 'inv-vrac-resume' });
     const liste = el('ul', { classe: 'inv-vrac-liste inv-vrac-session' });
-    const plan = planVrac(c);
     const champ = el('input', { type: 'text', inputmode: 'none', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'enter',
       classe: 'inv-vrac-champ', 'aria-label': 'N° biomed, n° de série ou code d\'étiquette (douchette ou saisie)', placeholder: 'N° biomed…' });
     const boutonCamera = detecteurDispo ? el('button', { type: 'button', classe: 'inv-vrac-outil', 'aria-pressed': 'false', title: 'Caméra' }) : null;
@@ -6635,7 +6634,6 @@ const Inventaires = (() => {
         annonce(`Retiré : ${x.appareil ? libelleAppareil(x.appareil) : x.code}.`);
         majListe();
       })));
-      if (plan) plan.maj(tous, nouveau);
       if (boutonReprise) boutonReprise.hidden = tous.length > 0;
       ecran.classList.toggle('vide', !tous.length);
       terminerVide = false;
@@ -6837,7 +6835,7 @@ const Inventaires = (() => {
         champ,
         el('button', { type: 'submit', classe: 'inv-vrac-outil', 'aria-label': 'Ajouter ce numéro', texte: '+' })),
       lecture,
-      el('div', { classe: 'inv-vrac-corps' }, plan ? plan.noeud : null, resume, liste,
+      el('div', { classe: 'inv-vrac-corps' }, resume, liste,
         el('p', { classe: 'inv-vrac-vide', texte: 'Ce que vous scannez (appareils, contenants) s\'affichera ici, le dernier en haut.' })),
       liens.length ? el('div', { classe: 'inv-vrac-liens' }, ...liens) : null,
       el('div', { classe: 'camera-actions' }, fermerBouton, terminer));
