@@ -1545,7 +1545,7 @@ const Inventaires = (() => {
         el('strong', {}, c.nom, c.categorie && c.categorie !== 'primaire' && !c.emplacement ? el('span', { classe: `inv-tag-scellable inv-tag-${c.categorie}`, texte: CATEGORIES_CONTENANT[c.categorie].nom }) : null,
           c.scellable ? el('span', { classe: 'inv-tag-scellable', texte: 'Scellable' }) : null,
           c.traceur ? el('span', { classe: 'inv-tag-scellable', title: `Traceur GeoTraceSMUR : ${c.traceur}`, texte: '📡' }) : null,
-          c.modele ? el('span', { classe: 'inv-tag-scellable inv-tag-modele', texte: `Type · ${pluriel(exemplairesDe(c.id).length, 'exemplaire')}` }) : null,
+          c.modele ? el('span', { classe: 'inv-tag-scellable inv-tag-modele', texte: `Type · ${pluriel(exemplairesReels(c.id).length, 'exemplaire')}` }) : null,
           c.emplacement ? el('span', { classe: 'inv-tag-scellable inv-tag-emplacement', texte: 'Emplacement' }) : null,
           // Gestion : rappel qu'il est masqué en check-list hors condition (ex. « si Schiller T7 »).
           gestion && c.emplacement && c.emplacement.si && c.emplacement.si.modeles.length ? el('span', { classe: 'inv-tag-scellable inv-tag-emplacement', title: 'Masqué en check-list si la condition n\'est pas remplie', texte: `si ${c.emplacement.si.modeles.map((m) => (contenant(m) || {}).nom || '?').join(' / ')}` }) : null),
@@ -5344,6 +5344,22 @@ const Inventaires = (() => {
   const racineModele = (id) => chemin(id).find((x) => x.modele) || null;
   /** Racines des exemplaires d'un modèle (contenants dont la source est la racine du modèle). */
   const exemplairesDe = (idModele) => Object.values(structure.contenants).filter((x) => !x.supprime && x.source === idModele);
+  /**
+   * Exemplaires réels (hors inventaires types) d'un type, y compris ceux atteints via un autre type qui le contient :
+   * « Pochette pansement » rangée dans « Tiroir 4 type » et dans « Sac rouge type » compte aussi les tiroirs 4 de F25 et F26
+   * et les 7 sacs rouges. Un exemplaire direct qui n'est dans aucun type compte pour lui-même.
+   */
+  function exemplairesReels(idModele) {
+    const vus = new Set();
+    const reels = (e, profondeur) => {
+      if (!dansUnModele(e.id)) return [e];
+      if (profondeur > 10) return [];
+      const hote = racineModele(e.id);
+      return exemplairesDe(hote.id).flatMap((r) => descendants(r.id).filter((d) => d.source === e.id && !d.supprime))
+        .flatMap((d) => reels(d, profondeur + 1));
+    };
+    return exemplairesDe(idModele).flatMap((e) => reels(e, 0)).filter((x) => !vus.has(x.id) && vus.add(x.id));
+  }
   /** Racine de l'exemplaire auquel appartient ce contenant (null s'il n'en fait pas partie). */
   function racineExemplaire(id) {
     const ch = chemin(id);
@@ -5809,10 +5825,11 @@ const Inventaires = (() => {
     const m = racineModele(c.id);
     if (!m) return null;
     const exemplaires = exemplairesDe(m.id);
+    const indirects = exemplairesReels(m.id).filter((x) => !exemplaires.includes(x));
     const destines = m.categorie === 'immobile' ? nomsDestinataires(m) : [];
     if (!edition) {
       return el('p', { classe: 'note-parc inv-note-modele' }, el('strong', { texte: 'Inventaire type. ' }),
-        `Il ne se vérifie pas : il sert de structure à ${pluriel(exemplaires.length, 'exemplaire')}. Modifiez-le puis répercutez les changements.`,
+        `Il ne se vérifie pas : il sert de structure à ${pluriel(exemplairesReels(m.id).length, 'exemplaire')}. Modifiez-le puis répercutez les changements.`,
         destines.length ? ` Destiné à : ${destines.join(', ')}.` : '');
     }
     const resultat = el('p', { classe: 'message', role: 'status' });
@@ -5894,6 +5911,12 @@ const Inventaires = (() => {
       // Type immobile (racine) : véhicules auxquels il est destiné.
       m.categorie === 'immobile' && c.id === m.id ? blocDestinataires(m, exemplaires) : null,
       exemplaires.length ? liste : el('p', { texte: 'Aucun exemplaire pour l\'instant.' }),
+      // Exemplaires atteints par un autre type (ex. pochette rangée dans un tiroir type, lui-même dans F25 et F26).
+      indirects.length ? el('div', { classe: 'inv-exemplaires-indirects' },
+        el('h3', { texte: `Dans les contenants réels, via un autre type (${indirects.length})` }),
+        el('ul', {}, ...indirects.map((x) => el('li', {}, el('a', { href: lien(x.id), texte: chemin(x.id).map((y) => y.nom).join(' › ') }),
+          toutPersonnalise(x) ? el('small', { classe: 'inv-attente', texte: ' — personnalisé' }) : null))),
+        el('p', { classe: 'aide-question', texte: 'Ils se mettent à jour par la répercussion en chaîne : « Répercuter » ci-dessus met d\'abord à jour les copies rangées dans les autres types, puis ces types sur leurs propres exemplaires.' })) : null,
       exemplaires.length ? el('div', { classe: 'cfg-actions' }, boutonRepercuter, boutonSupprimer,
         // Étiquettes QR de tous les exemplaires et de ce qu'ils contiennent (pré-cochées, modifiables dans la fenêtre).
         el('button', { type: 'button', classe: 'cfg-bouton', texte: `Imprimer les étiquettes QR des exemplaires (${etiquettesExemplaires(exemplaires).length})…`,
@@ -6901,7 +6924,7 @@ const Inventaires = (() => {
     const m = racineModele(c.id);
     const liste = [['contenu', 'Contenu'], ['reglages', 'Réglages']];
     if (!c.emplacement) liste.push(['etiquette', 'Étiquette']);
-    if (m) liste.push(['exemplaires', `Exemplaires ${exemplairesDe(m.id).length}`]);
+    if (m) liste.push(['exemplaires', `Exemplaires ${exemplairesReels(m.id).length}`]);
     return liste;
   }
   /** Pastilles d'état sous le nom : ce qu'est ce contenant, d'un coup d'œil, quel que soit l'onglet. */
