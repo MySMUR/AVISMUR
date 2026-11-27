@@ -52,10 +52,10 @@ const Annuaire = (() => {
     try { localStorage.setItem(CLE, JSON.stringify({ identifiant: App.identifiant(), donnees })); } catch (e) { /* stockage plein */ }
   }
 
-  async function charger() {
-    chargementEnCours = true;
+  async function charger(silencieux = false) {
+    chargementEnCours = !silencieux;
     erreur = '';
-    rendre();
+    if (!silencieux) rendre();
     try {
       const rep = await App.appeler('lireAnnuaire');
       if (rep.ok) { donnees = rep; ecrireCache(); } else {
@@ -124,7 +124,7 @@ const Annuaire = (() => {
     if (erreur) zone.append(el('p', { classe: `message ${donnees ? '' : 'erreur'}`.trim(), role: 'status', texte: erreur }));
     if (!donnees) {
       zone.append(chargementEnCours ? el('p', { classe: 'consigne', texte: 'Chargement de l\'annuaire…' })
-        : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Réessayer', surclick: charger }));
+        : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Réessayer', surclick: () => charger() }));
       return;
     }
 
@@ -169,6 +169,8 @@ const Annuaire = (() => {
       App = options;
       zone = document.getElementById('zone-annuaire');
     },
+    /** Synchronisation entre appareils (synchro.js) : relu sans message de chargement, seulement s'il est affiché. */
+    actualiser() { return zone && !zone.hidden ? charger(true) : null; },
     ouvrir() {
       zone.hidden = false;
       donnees = donnees || lireCache();

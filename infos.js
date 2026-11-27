@@ -1290,7 +1290,7 @@ const Infos = (() => {
     /** Nombre d'informations non lues (clochette) ; relit le mur en ligne. */
     nonLues,
     ouvrirNotifications,
-    actualiserCompteur() { signalerCompteur(); charger(); },
+    actualiserCompteur() { signalerCompteur(); return charger(); },
     initialiser(fonctions) {
       App = fonctions;
       zone = document.getElementById('zone-infos');

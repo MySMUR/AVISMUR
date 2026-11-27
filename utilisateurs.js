@@ -493,8 +493,8 @@ const Utilisateurs = (() => {
     if (!liste.length) ul.after(el('p', { classe: 'consigne usr-vide', texte: 'Aucun agent ne correspond.' }));
   }
 
-  async function charger(texteSucces) {
-    message('Chargement des agents…');
+  async function charger(texteSucces, silencieux = false) {
+    if (!silencieux) message('Chargement des agents…');
     try {
       const rep = await appelerServeur('lireUtilisateurs');
       if (!rep.ok) { message(rep.erreur || 'Refusé par le serveur.', 'erreur'); rendre(); return; }
@@ -523,6 +523,12 @@ const Utilisateurs = (() => {
     zone.hidden = true;
   }
 
+  /** Synchronisation entre appareils (synchro.js) : liste relue en silence, jamais pendant une fiche ouverte ou une confirmation. */
+  function actualiser() {
+    if (!zone || zone.hidden || edition || aConfirmer) return null;
+    return charger(messageCourant.classe === 'succes' ? messageCourant.texte : '', true);
+  }
+
   function initialiser(options) {
     zone = document.getElementById('zone-utilisateurs');
     appelerServeur = options.appeler;
@@ -530,5 +536,5 @@ const Utilisateurs = (() => {
     estPrincipalApp = options.estPrincipal || (() => false);
   }
 
-  return { initialiser, ouvrir, masquer };
+  return { initialiser, ouvrir, masquer, actualiser };
 })();

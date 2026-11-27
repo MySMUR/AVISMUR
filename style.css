@@ -124,6 +124,27 @@ body {
 .bouton-menu[aria-expanded="true"] { background: #fff; color: var(--bleu); }
 .hors-ligne:not([hidden]) + .bouton-menu { margin-left: 0; }
 
+/* Synchronisation avec le serveur en cours (synchro.js) : petite pastille tournante sur le bouton du menu. */
+.bouton-menu { position: relative; }
+.synchro-icone {
+  position: absolute;
+  top: -0.3rem;
+  left: -0.3rem;
+  display: grid;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  color: var(--bleu);
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  pointer-events: none;
+}
+.synchro-icone[hidden] { display: none; }
+.synchro-icone svg { width: 0.85rem; height: 0.85rem; animation: synchro-tourne 1s linear infinite; }
+@keyframes synchro-tourne { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .synchro-icone svg { animation: none; } }
+
 /* Météo d'Avignon (meteo.js), poussée à droite ; le voyant hors ligne et le menu se rangent à sa suite. */
 .meteo {
   display: inline-flex;

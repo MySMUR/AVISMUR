@@ -51,14 +51,11 @@ function majLumiere() {
   lumiere.style.animationDelay = `-${Math.min(Date.now() - dernierRafraichissement, RAFRAICHIR_MS)}ms`;
 }
 
+// Les données elles-mêmes sont relues par la synchronisation entre appareils (synchro.js), dès qu'elles
+// changent sur le serveur : la lumière ne fait plus que rythmer l'affichage.
 setInterval(() => {
   dernierRafraichissement = Date.now();
   majLumiere();
-  if (document.visibilityState !== 'visible' || !navigator.onLine || $('ecran-checklist').hidden) return;
-  const actif = document.activeElement;
-  if (actif && /^(INPUT|TEXTAREA|SELECT)$/.test(actif.tagName)) return;
-  if (!$('vue-parc').hidden) chargerReleves(true);
-  else if (!$('zone-inventaires').hidden && location.hash === '#inv-tableau') Inventaires.synchroniser();
 }, RAFRAICHIR_MS);
 window.addEventListener('online', majLumiere);
 window.addEventListener('offline', majLumiere);
@@ -244,7 +241,12 @@ function afficherApplication(infos) {
   if (/^#info=/.test(location.hash)) ouvrirInfoDuLien(location.hash);
   else if (/^#mat=/.test(location.hash)) ouvrirAppareilDuLien(location.hash);
   else if (/^#pret=/.test(location.hash)) ouvrirPretDuLien(location.hash);
-  else ouvrirVue(/^#inv\b/.test(location.hash) ? vueDuLien() : 'accueil');
+  else {
+    // Rechargement automatique après une mise à jour de l'appli (synchro.js) : même rubrique, même position.
+    const reprise = Synchro.reprise();
+    ouvrirVue(/^#inv\b/.test(location.hash) ? vueDuLien() : (reprise && reprise.vue) || 'accueil');
+    if (reprise && reprise.scroll) [300, 1500].forEach((d) => setTimeout(() => { if (window.scrollY < 5) window.scrollTo(0, reprise.scroll); }, d));
+  }
   Infos.demarrer();
   if (accesInventaires()) Materiel.actualiser(); // appareils reconnus au scan dans les inventaires, même hors ligne ensuite
   envoyerFileAttente();
@@ -285,8 +287,8 @@ function afficherPhotoMenu(photo) {
 }
 
 /** Configuration des véhicules et des questions, si un administrateur l'a modifiée. */
-async function chargerConfig() {
-  const fin = chargement.debut('Chargement de la configuration…');
+async function chargerConfig(silencieux = false) {
+  const fin = silencieux ? () => {} : chargement.debut('Chargement de la configuration…');
   try {
     const rep = await appeler('lireConfig');
     if (!rep.ok) return;
@@ -381,7 +383,9 @@ async function envoyerFileAttente() {
   if (envoiEnCours) return { refusees: new Map(), occupe: true };
   envoiEnCours = true;
   const nb = fileAttente.lire().length;
-  const fin = nb ? chargement.debut(nb > 1 ? `Envoi de ${nb} enregistrements…` : 'Envoi en cours…') : () => {};
+  const finAnim = nb ? chargement.debut(nb > 1 ? `Envoi de ${nb} enregistrements…` : 'Envoi en cours…') : () => {};
+  const finIcone = nb ? Synchro.debut() : () => {};
+  const fin = () => { finAnim(); finIcone(); };
   let envoyees = 0;
   let infosEnvoyees = false;
   let materielEnvoye = false;
@@ -1202,3 +1206,25 @@ document.addEventListener('visibilitychange', () => {
   } catch (e) { /* stockage indisponible */ }
   if (v) document.getElementById('version-appli').textContent = 'Version ' + v;
 })();
+
+// ----- Synchronisation entre appareils (synchro.js) : modules relus dès qu'ils changent sur le serveur. -----
+// zones : rubriques où le module s'affiche (relecture différée pendant une saisie) ; seulementAffiche : sinon,
+// relu à son ouverture ; gereSaisie : le module protège lui-même la saisie en cours.
+Synchro.demarrer({
+  appeler,
+  actif: () => document.body.classList.contains('connecte') && !$('ecran-checklist').hidden,
+  simulation: () => Simulation.actif(),
+  vue: () => vueCourante,
+  envoiEnCours: () => envoiEnCours,
+  modules: {
+    parc: { zones: ['vue-parc', 'zone-ambulancier'], rafraichir: () => chargerReleves(true) },
+    config: { zones: ['zone-ambulancier', 'zone-config'], rafraichir: () => chargerConfig(true) },
+    inventaires: { zones: ['zone-inventaires'], gereSaisie: true, rafraichir: () => Inventaires.synchroniser() },
+    infos: { zones: ['zone-infos'], gereSaisie: true, rafraichir: () => Infos.actualiserCompteur() },
+    materiel: { zones: ['zone-materiel'], rafraichir: () => (accesInventaires() || aDroit('MATERIEL') ? Materiel.actualiser() : null) },
+    regulation: { zones: ['zone-regulation'], rafraichir: () => (accesVehicules() ? Regulation.actualiser() : null) },
+    fluides: { zones: ['zone-fluides'], seulementAffiche: true, rafraichir: () => Fluides.actualiser() },
+    utilisateurs: { zones: ['zone-utilisateurs'], seulementAffiche: true, rafraichir: () => Utilisateurs.actualiser() },
+    annuaire: { zones: ['zone-annuaire'], seulementAffiche: true, rafraichir: () => Annuaire.actualiser() },
+  },
+});

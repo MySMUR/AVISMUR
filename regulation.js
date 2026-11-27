@@ -429,6 +429,19 @@ const Regulation = (() => {
     masquer() {
       if (zone) zone.hidden = true;
     },
+    /**
+     * Synchronisation entre appareils (synchro.js) : fiche modifiée sur un autre appareil. Affichée : relue
+     * (le brouillon du jour est gardé) ; sinon la copie de l'appareil est remise à jour pour le hors ligne.
+     */
+    actualiser() {
+      if (zone && !zone.hidden) {
+        // Fiche en cours de remplissage sur cet appareil : on n'y touche pas (elle sera relue à la prochaine ouverture).
+        const brouillon = lireStockage(CLE_BROUILLON);
+        if (brouillon && brouillon.jour === aujourdhui()) return null;
+        return charger();
+      }
+      return this.precharger(true);
+    },
     /** Après l'envoi de la file d'attente : relit la fiche (dernier envoi). */
     surEnvoi() {
       if (zone && !zone.hidden) charger();
@@ -455,9 +468,9 @@ const Regulation = (() => {
      * Télécharge la fiche à l'avance (appli ouverte avec du réseau) pour pouvoir la remplir plus tard hors ligne.
      * Sans effet si la copie gardée est déjà celle du jour ; échec silencieux.
      */
-    async precharger() {
+    async precharger(forcer = false) {
       const gardee = lireStockage(CLE);
-      if (gardee && String(gardee.date || '').trim() === aujourdhui()) return;
+      if (!forcer && gardee && String(gardee.date || '').trim() === aujourdhui()) return;
       try {
         const rep = await App.appeler('lireFicheRegulation');
         if (!rep || !rep.ok) return;

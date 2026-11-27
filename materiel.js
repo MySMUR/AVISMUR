@@ -3115,7 +3115,7 @@ const Materiel = (() => {
       return [...t].sort((a, b) => a.localeCompare(b, 'fr'));
     },
     /** Met à jour la liste gardée sur l'appareil, sans rien afficher (pour reconnaître les appareils scannés). */
-    actualiser() { charger(); },
+    actualiser() { return charger(); },
     /** Recharge la liste et renvoie une promesse toujours résolue (hors ligne : on garde le cache existant). */
     recharger() { return charger().catch(() => {}); },
     /** Lien « #pret=<code> » (QR code ou puce d'une référence de prêt). */

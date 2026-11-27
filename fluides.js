@@ -223,5 +223,7 @@ const Fluides = (() => {
       charger();
     },
     masquer() { if (zone) zone.hidden = true; },
+    /** Synchronisation entre appareils (synchro.js) : relit l'inventaire affiché ; la saisie en cours est gardée. */
+    actualiser() { return zone && !zone.hidden ? charger() : null; },
   };
 })();
