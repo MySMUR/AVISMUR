@@ -3621,6 +3621,9 @@ const Inventaires = (() => {
    */
   function contenantDeAppareil(appareil, candidats) {
     if (!appareil) return null;
+    // Lien choisi à la main (ex. matériel de prêt sans n° interne) : le contenant désigné, s'il est proposé ici.
+    const manuel = candidats.find((c) => c.id === lireJson('avismur_liens_appareils', {})[appareil.id]);
+    if (manuel) return manuel;
     const lies = candidats.filter((c) => c.articles.some((a) => a.controle === 'materiel' && a.attendu
       && (appareilDe(a, a.attendu) || {}).id === appareil.id));
     if (lies.length === 1) return lies[0];
@@ -3692,7 +3695,17 @@ const Inventaires = (() => {
     const lieu = contenant(y ? y.parent : dans);
     // Pour un emplacement, l'écran s'affiche depuis le contenant de l'emplacement (le sac).
     const parent = lieu && lieu.emplacement ? contenant(lieu.parent) : lieu;
-    const choisir = (id) => confirmerIdentification(y, id, dans);
+    // Appareil reconnu mais sans contenant lié : le contenant choisi ensuite lui est rattaché (mémorisé sur l'appareil).
+    let appareilEnAttente = null;
+    const choisir = (id) => {
+      if (appareilEnAttente) {
+        const liens = lireJson('avismur_liens_appareils', {});
+        liens[appareilEnAttente.id] = id;
+        ecrireJson('avismur_liens_appareils', liens);
+        appareilEnAttente = null;
+      }
+      confirmerIdentification(y, id, dans);
+    };
     const champ = idChamp();
     const resultats = el('ul', { classe: 'inv-liste inv-resultats-recherche' });
     // Emplacement : seuls les exemplaires de l'inventaire type attendu sont proposés.
@@ -3728,7 +3741,7 @@ const Inventaires = (() => {
     const viaAppareil = (code) => {
       const r = parAppareil(code);
       if (!r) return null;
-      if (!r.c) return () => messageVue(`${libelleAppareil(r.appareil)} reconnu, mais aucun contenant ici ne lui est rattaché : choisissez le contenant dans la liste.`, 'erreur');
+      if (!r.c) return () => { appareilEnAttente = r.appareil; messageVue(`${libelleAppareil(r.appareil)} reconnu, mais aucun contenant ici ne lui est rattaché : choisissez le contenant dans la liste : il sera retenu pour cet appareil.`, 'erreur'); };
       return () => choisir(r.c.id);
     };
     // Même type d'abord : exemplaires du même contenant d'inventaire type, puis noms proches.
