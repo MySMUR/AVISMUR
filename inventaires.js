@@ -320,7 +320,10 @@ const Inventaires = (() => {
   const vueActive = new Map(); // contenant → clé de la vue affichée
   function vueCourante(c) {
     const toutes = vuesDe(c);
-    return toutes.find((v) => v.cle === (vueActive.get(c.id) || '')) || toutes[0];
+    // Vue choisie (onglet, flèche) ; sinon la première qui a une image : la vue principale peut être vide
+    // quand seule une vue supplémentaire (ex. vue immersive) porte la photo.
+    if (vueActive.has(c.id)) return toutes.find((v) => v.cle === vueActive.get(c.id)) || toutes[0];
+    return toutes.find((v) => v.photo) || toutes[0];
   }
   /** Retire les points d'un sous-inventaire sur toutes les vues. */
   function retirerCible(c, id) {
