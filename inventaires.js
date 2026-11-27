@@ -558,8 +558,12 @@ const Inventaires = (() => {
       || liste.find((x) => x.numBiomed && cle(x.numBiomed) === t)
       || liste.find((x) => x.pret && cle(x.pret).replace(/ /g, '') === t.replace(/ /g, '')) || null;
   }
-  /** Valeur inscrite pour un appareil : son n° interne s'il est le seul de ce type à le porter, sinon son n° de série ou biomed. */
+  /**
+   * Valeur inscrite pour un appareil : « PRÊT 03 » pour un matériel de prêt ; sinon son n° interne s'il est le seul
+   * de ce type à le porter (deux modèles peuvent avoir le même n° : son n° de série ou biomed lève alors le doute).
+   */
   function codeAppareil(a, x) {
+    if (x.pret) return String(x.pret);
     const liste = a ? appareilsPour(a) : appareilsConnus().filter((y) => cle(y.type) === cle(x.type));
     const n = x.numInterne;
     if (n && liste.filter((y) => y.numInterne && cle(y.numInterne) === cle(n)).length <= 1) return String(n);
