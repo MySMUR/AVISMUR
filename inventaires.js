@@ -6268,7 +6268,11 @@ const Inventaires = (() => {
   let choixZoneVrac = '';
   /** Administration (inventaire libre avec photo) : tracer le polygone et poser les gommettes du matériel habituel. */
   function blocZoneVrac(c) {
-    if (!estVrac(c) || !c.photo) return null;
+    if (!estVrac(c)) return null;
+    if (!c.photo) {
+      return el('section', { classe: 'inv-section inv-zone-vrac' }, el('h2', { texte: 'Zone à scanner' }),
+        el('p', { classe: 'consigne', texte: 'Ajoutez d\'abord une photo de la zone (bloc « Photo » ci-dessus, vue 1) : vous pourrez ensuite y tracer le polygone à scanner et poser les gommettes.' }));
+    }
     const z = c.zoneVrac || { poly: [], marques: [] };
     const modifier = (f) => { c.zoneVrac = c.zoneVrac || { poly: [], marques: [] }; f(c.zoneVrac); marquer(c.id); rendre({ garderPosition: true }); };
     const img = el('img', { alt: 'Photo de la zone', draggable: false });
