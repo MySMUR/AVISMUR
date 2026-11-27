@@ -7866,28 +7866,89 @@ const Inventaires = (() => {
     if (!b64) throw new Error('modèle indisponible : ouvrez l\'export une fois avec du réseau (serveur à jour ?)');
     return Uint8Array.from(atob(b64), (x) => x.charCodeAt(0));
   }
-  /** Libellé d'une ligne du listing (même rédaction que la liste papier). */
+  /** « Sac rouge n°3 » → « Sac rouge » : le listing décrit un type de contenant, pas un exemplaire numéroté. */
+  const sansNumero = (nom) => String(nom || '').replace(/\s*\(?\bn\s*°\s*\d+\w*\)?\s*$/i, '').trim() || String(nom || '');
+  /** Attente affichée dans le listing : jamais de n° de matériel (appareil attendu, n° à relever). */
+  function attenteListing(a) {
+    if (a.controle === 'materiel') return a.typeMateriel || '';
+    if (a.controle === 'scan' && modeScan(a) !== 'duree') return '';
+    return texteAttente(a);
+  }
+  /** Libellé d'une ligne du listing (même rédaction que la liste papier, sans n° de matériel). */
   function libelleListing(a) {
     if (a.separateur) return { texte: a.nom };
-    if (estControle(a)) return { texte: `${nomArticle(a)}${texteAttente(a) ? ` (${texteAttente(a)})` : ''} : ${a.controle === 'oui' ? 'Oui / Non' : '……………'}` };
+    if (estControle(a)) {
+      const nom = (a.controle === 'materiel' || a.controle === 'scan') ? sansNumero(nomArticle(a)) : nomArticle(a);
+      const attente = attenteListing(a);
+      return { texte: `${nom}${attente ? ` (${attente})` : ''} : ${a.controle === 'oui' ? 'Oui / Non' : '……………'}` };
+    }
     return { texte: `${nomArticle(a)}${a.quantite ? ` × ${estMinimum(a) ? '≥ ' : ''}${a.quantite}` : ''}${estFacultatif(a) ? ' (facultatif)' : ''}${a.commentaire ? ` — ${a.commentaire}` : ''}` };
+  }
+  /** Articles imprimés : ni repères « Photo » ni ligne nommée « Photo ». */
+  const articlesListing = (x) => x.articles.filter((a) => !estReperePhoto(a) && !(a.separateur && /^\s*photos?\s*$/i.test(a.nom || '')) && !/^\s*photos?\s*$/i.test(nomArticle(a) || ''));
+
+  /** Fenêtre de choix des contenants à inclure. Renvoie { exclus, saut } ou null si annulée. */
+  function choisirPourWord(c) {
+    return new Promise((fini) => {
+      const noeuds = new Map(); // id -> { c, profondeur, case, parent }
+      const liste = el('div', { classe: 'inv-choix-word' });
+      const ajouter = (x, profondeur, parentId) => {
+        const id = idChamp();
+        const caseX = el('input', { type: 'checkbox', id, checked: true });
+        noeuds.set(x.id, { c: x, caseX, parentId, enfants: [] });
+        if (parentId && noeuds.get(parentId)) noeuds.get(parentId).enfants.push(x.id);
+        liste.append(el('label', { classe: 'cfg-case', for: id, style: `margin-left:${profondeur * 1.3}rem` }, caseX, el('span', { texte: x.nom })));
+        enfants(x.id).forEach((f) => ajouter(f, profondeur + 1, x.id));
+      };
+      enfants(c.id).forEach((f) => ajouter(f, 0, ''));
+      const decocherSous = (id) => noeuds.get(id).enfants.forEach((f) => { noeuds.get(f).caseX.checked = false; decocherSous(f); });
+      const cocherParents = (id) => { const p = noeuds.get(id).parentId; if (p) { noeuds.get(p).caseX.checked = true; cocherParents(p); } };
+      noeuds.forEach((n, id) => n.caseX.addEventListener('change', () => { if (n.caseX.checked) cocherParents(id); else decocherSous(id); majCompte(); }));
+      const compte = el('p', { classe: 'aide-question', role: 'status' });
+      const majCompte = () => { const nb = [...noeuds.values()].filter((n) => n.caseX.checked).length; compte.textContent = `${nb} sur ${noeuds.size} sous-inventaire${noeuds.size > 1 ? 's' : ''} inclus.`; };
+      const tout = (v) => { noeuds.forEach((n) => { n.caseX.checked = v; }); majCompte(); };
+      const idSaut = idChamp();
+      const saut = el('input', { type: 'checkbox', id: idSaut, checked: true });
+      const idTitre = idChamp();
+      const d = el('dialog', { classe: 'mat-dialogue', 'aria-labelledby': idTitre });
+      const clore = (v) => { if (d.open) d.close(); d.remove(); fini(v); };
+      d.addEventListener('cancel', (e) => { e.preventDefault(); clore(null); });
+      d.append(el('div', { classe: 'mat-dialogue-entete' }, el('h2', { id: idTitre, texte: `Exporter « ${c.nom} » en Word` }),
+        el('button', { type: 'button', classe: 'tiroir-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: () => clore(null) })),
+      el('div', { classe: 'mat-dialogue-corps' },
+        el('p', { texte: 'Cochez les contenants à inclure. Décocher un contenant retire aussi ce qu\'il contient.' }),
+        el('div', { classe: 'mat-boutons' },
+          el('button', { type: 'button', classe: 'cfg-mini', texte: 'Tout cocher', surclick: () => tout(true) }),
+          el('button', { type: 'button', classe: 'cfg-mini', texte: 'Tout décocher', surclick: () => tout(false) })),
+        noeuds.size ? liste : el('p', { classe: 'aide-question', texte: 'Ce contenant n\'a pas de sous-inventaire : seul son contenu sera exporté.' }),
+        compte,
+        el('label', { classe: 'cfg-case', for: idSaut }, saut, el('span', { texte: 'Une page par sous-inventaire de premier niveau' })),
+        el('div', { classe: 'mat-boutons' },
+          el('button', { type: 'button', classe: 'cfg-bouton inv-actif', texte: 'Générer le Word', surclick: () => clore({ exclus: [...noeuds.entries()].filter(([, n]) => !n.caseX.checked).map(([id]) => id), saut: saut.checked }) }),
+          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Annuler', surclick: () => clore(null) }))));
+      majCompte();
+      document.body.append(d);
+      d.showModal();
+    });
   }
   /**
    * Listing Word d'un contenant et de tout ce qu'il contient : en-tête et styles du modèle institutionnel,
    * une page par sous-inventaire de niveau 1, pochettes en lignes de tableau (lib/listing-word.js).
    */
   async function exporterWord(c, bouton) {
+    const choix = await choisirPourWord(c);
+    if (!choix) return;
     const libelle = bouton ? bouton.textContent : '';
     if (bouton) { bouton.disabled = true; bouton.textContent = 'Génération du Word…'; }
     try {
-      await Promise.all([chargerScript('lib/jszip.min.js?v=1'), chargerScript('lib/listing-word.js?v=1')]);
+      await Promise.all([chargerScript('lib/jszip.min.js?v=1'), chargerScript('lib/listing-word.js?v=2')]);
       const octets = await ListingWord.generer({
         JSZip: window.JSZip, modele: await modeleWord(),
         contenants: structure.contenants, racineId: c.id,
-        enfantsDe: enfants,
-        articlesDe: (x) => x.articles.filter((a) => !estReperePhoto(a)),
+        enfantsDe: enfants, exclus: choix.exclus, sautNiveau1: choix.saut,
+        articlesDe: articlesListing, nomContenant: sansNumero,
         libelleArticle: libelleListing,
-        titre: `Inventaire ${c.nom}`, reference: `INV-${c.nom}`.replace(/\s+/g, '-'),
+        titre: `Inventaire ${sansNumero(c.nom)}`, reference: `INV-${sansNumero(c.nom)}`.replace(/\s+/g, '-'),
       });
       const url = URL.createObjectURL(new Blob([octets], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
       const lien = el('a', { href: url, download: `Inventaire ${c.nom}`.replace(/[\\/:*?"<>|]+/g, '-') + '.docx' });
