@@ -3802,3 +3802,11 @@ button.inv-marque-perso:hover { background: #FFF1E0; }
 /* Éditeur de zone : les poignées placées au bord de la photo ne sont plus coupées */
 .inv-photo.inv-zone-editeur { overflow: visible; }
 .inv-zone-editeur img { border-radius: var(--rayon); }
+
+/* Utilitaire « Associer des codes » (suivi du matériel) */
+.mat-codes h3 { margin: 0.8rem 0 0.3rem; font-size: 1rem; }
+.mat-codes-liste { display: flex; flex-direction: column; gap: 0.35rem; max-height: 50vh; overflow-y: auto; margin-top: 0.5rem; }
+.mat-codes-choix { text-align: left; }
+.mat-codes-ul { list-style: none; margin: 0; padding: 0; }
+.mat-codes-ul li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.35rem 0; border-bottom: 1px solid rgba(0, 0, 0, 0.1); }
+.mat-codes-ul code { overflow-wrap: anywhere; }

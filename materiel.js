@@ -675,7 +675,7 @@ const Materiel = (() => {
       if (filtre.alerte === 'bientot' && !etatRevision(f).bientot) return false;
       if (filtre.alerte === 'traceur' && !f.traceur) return false;
       if (t) {
-        const botte = normaliser([f.type, f.modele, f.numInterne, f.numBiomed, f.numSerie, f.nomTraceur, f.remarques, f.versionLogiciel, f.emplacement, f.pret, f.proprietaire, f.pret && 'pret'].join(' '));
+        const botte = normaliser([f.type, f.modele, f.numInterne, f.numBiomed, f.numSerie, f.nomTraceur, f.remarques, f.versionLogiciel, f.emplacement, f.pret, f.proprietaire, f.pret && 'pret', ...(f.autresCodes || [])].join(' '));
         if (!t.split(/\s+/).every((mot) => botte.includes(mot))) return false;
       }
       return true;
@@ -716,6 +716,7 @@ const Materiel = (() => {
       estAdmin() ? el('button', { type: 'button', classe: 'principal mat-nouveau', texte: '+ Nouveau', title: 'Nouveau matériel', surclick: () => ouvrirFiche(null, true) }) : null,
       el('div', { classe: 'mat-boutons mat-boutons-secondaires' },
         estAdmin() ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Statuts', surclick: ouvrirStatuts }) : null,
+        estAdmin() ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Associer des codes', title: 'Rattacher un code-barres ou un QR code supplémentaire à un appareil', surclick: ouvrirAssocierCodes }) : null,
         el('button', { type: 'button', classe: 'cfg-mini', texte: `Matériels types (${modeles().filter((m) => !m.archive).length})`, surclick: ouvrirModeles }),
         'NDEFReader' in window ? el('button', { type: 'button', classe: 'cfg-mini', texte: 'Lire une puce NFC', surclick: lireNfc }) : null));
 
@@ -1990,6 +1991,8 @@ const Materiel = (() => {
       if (x.numInterne) cles.push([`i|${normaliser(x.type)}|${normaliser(x.modele)}|${normaliser(x.numInterne)}`, `${nomAppareil(x)} existe déjà.`]);
       if (x.numSerie) cles.push([`s|${normaliser(x.numSerie)}`, `Le n° de série ${x.numSerie} est déjà attribué.`]);
       if (x.numBiomed) cles.push([`b|${normaliser(x.numBiomed)}`, `Le n° biomed ${x.numBiomed} est déjà attribué.`]);
+      // Un code (biomed, série ou autre code-barres / QR) ne désigne qu'un seul appareil.
+      [x.numBiomed, x.numSerie, ...(x.autresCodes || [])].filter(Boolean).forEach((c) => cles.push([`c|${normaliser(c)}`, `Le code ${c} est déjà attribué à un autre appareil.`]));
       for (const [cle, texte] of cles) {
         const deja = vus.get(cle);
         if (deja && deja !== x.id && (concernes.has(x.id) || concernes.has(deja))) return texte;
@@ -2255,6 +2258,79 @@ const Materiel = (() => {
     }, champ('Date', date), champ('Remarque', remarque), message,
     el('div', { classe: 'mat-boutons' }, el('button', { type: 'submit', classe: 'principal', texte: 'Enregistrer' })));
     d = fenetre(`${v.libelle} · ${nomAppareil(f)}`, contenu);
+  }
+
+  // ---------- Utilitaire : associer d'autres codes-barres / QR codes à un appareil ----------
+  // Étape 1 : choisir (liste, recherche) ou scanner l'appareil. Étape 2 : scanner chaque code à rattacher.
+  function ouvrirAssocierCodes() {
+    if (!estAdmin()) return;
+    const corps = el('div', { classe: 'mat-form mat-codes' });
+    const d = fenetre('Associer des codes', corps, { large: true });
+
+    function etape1(info = '') {
+      const sortie = el('div', { classe: 'mat-codes-liste' });
+      const recherche = el('input', { type: 'search', placeholder: 'N° interne, biomed, série, modèle…', 'aria-label': 'Rechercher un appareil' });
+      const dessiner = () => {
+        const q = normaliser(recherche.value);
+        const trouves = fiches().filter(enService)
+          .filter((f) => !q || normaliser([f.type, f.modele, f.numInterne, f.numBiomed, f.numSerie, f.pret, ...(f.autresCodes || [])].join(' ')).includes(q))
+          .sort((a, b) => nomAppareil(a).localeCompare(nomAppareil(b), 'fr')).slice(0, 40);
+        sortie.replaceChildren(...(trouves.length ? trouves.map((f) => el('button', {
+          type: 'button', classe: 'cfg-bouton mat-codes-choix', surclick: () => etape2(f.id),
+          texte: `${nomAppareil(f)}${f.pret ? ` · ${f.pret}` : ''}${f.numBiomed ? ` · Biomed ${f.numBiomed}` : ''}${(f.autresCodes || []).length ? ` · ${f.autresCodes.length} code(s) en plus` : ''}`,
+        })) : [el('p', { classe: 'aide-question', texte: 'Aucun appareil.' })]));
+      };
+      recherche.addEventListener('input', dessiner);
+      corps.replaceChildren(
+        el('p', { classe: 'aide-question', texte: 'Étape 1 sur 2 : choisissez l\'appareil dans la liste, ou scannez un code déjà connu de cet appareil (n° biomed, puce NFC…).' }),
+        info ? el('p', { classe: 'message erreur', texte: info }) : null,
+        scanDisponible() ? el('button', { type: 'button', classe: 'principal', texte: 'Scanner l\'appareil', surclick: () => scannerCode((v) => {
+          const f = Materiel.identifier(v);
+          if (f) etape2(f.id); else etape1('Aucun appareil ne correspond à ce code. Choisissez-le dans la liste.');
+        }, true) }) : null,
+        recherche, sortie);
+      dessiner();
+    }
+
+    function etape2(id, info = '', erreurMsg = false) {
+      const f = fiches().find((x) => x.id === id);
+      if (!f) { etape1(); return; }
+      const codes = f.autresCodes || [];
+      const ajouter = (brut) => {
+        const v = String(brut || '').trim().slice(0, 100);
+        if (!v) return;
+        if (codes.some((c) => normaliser(c) === normaliser(v))) { etape2(id, `Le code ${v} est déjà associé à cet appareil.`, true); return; }
+        const fiche = { ...f, autresCodes: [...codes, v] };
+        if (codes.length >= 10) { etape2(id, 'Dix codes au maximum par appareil.', true); return; }
+        const conflit = verifierDoublons([fiche]);
+        if (conflit) { etape2(id, conflit, true); return; }
+        enfiler('enregistrerMateriel', { fiches: [fiche] });
+        etape2(id, `Code ${v} associé.`);
+      };
+      const retirer = (c) => {
+        enfiler('enregistrerMateriel', { fiches: [{ ...f, autresCodes: codes.filter((x) => x !== c) }] });
+        etape2(id, `Code ${c} retiré.`);
+      };
+      const saisie = el('input', { type: 'text', placeholder: 'Saisir ou scanner (douchette) un code', 'aria-label': 'Code à associer', autocomplete: 'off' });
+      const valider = () => { const v = saisie.value; saisie.value = ''; ajouter(v); };
+      saisie.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); valider(); } });
+      corps.replaceChildren(
+        el('p', { classe: 'aide-question', texte: 'Étape 2 sur 2 : scannez chaque code-barres ou QR code à rattacher à cet appareil.' }),
+        el('h3', { texte: nomAppareil(f) }),
+        el('p', { classe: 'mat-rapide-ids', texte: [f.numBiomed && `Biomed ${f.numBiomed}`, f.numSerie && `S/N ${f.numSerie}`].filter(Boolean).join(' · ') || 'Sans n° biomed ni n° de série' }),
+        info ? el('p', { classe: erreurMsg ? 'message erreur' : 'message', texte: info }) : null,
+        scanDisponible() ? el('button', { type: 'button', classe: 'principal', texte: 'Scanner un code à ajouter', surclick: () => scannerCode(ajouter, true) }) : null,
+        el('div', { classe: 'mat-boutons' }, saisie, el('button', { type: 'button', classe: 'cfg-mini', texte: 'Ajouter', surclick: valider })),
+        el('h3', { texte: `Codes associés (${codes.length})` }),
+        codes.length ? el('ul', { classe: 'mat-codes-ul' }, codes.map((c) => el('li', {}, el('code', { texte: c }),
+          el('button', { type: 'button', classe: 'lien', texte: 'Retirer', 'aria-label': `Retirer le code ${c}`, surclick: () => retirer(c) }))))
+          : el('p', { classe: 'aide-question', texte: 'Aucun code supplémentaire.' }),
+        el('div', { classe: 'mat-boutons' },
+          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Autre appareil', surclick: () => etape1() }),
+          el('button', { type: 'button', classe: 'cfg-mini', texte: 'Terminer', surclick: () => d.close() })));
+      saisie.focus();
+    }
+    etape1();
   }
 
   // ---------- Lecture d'un QR code / code-barres (caméra) ----------
@@ -3100,7 +3176,8 @@ const Materiel = (() => {
       const refPret = lienPret ? refDuCode(lienPret[1]) : references().find((r) => normaliser(r).replace(/\s+/g, '') === normaliser(t).replace(/\s+/g, '')) || null;
       if (lienPret || refPret) return (refPret && liste.find((f) => f.pret === refPret && !f.archive)) || null;
       const n = normaliser(t);
-      return liste.find((f) => (f.numBiomed && normaliser(f.numBiomed) === n) || (f.numSerie && normaliser(f.numSerie) === n))
+      return liste.find((f) => (f.numBiomed && normaliser(f.numBiomed) === n) || (f.numSerie && normaliser(f.numSerie) === n)
+          || (f.autresCodes || []).some((c) => normaliser(c) === n))
         || liste.find((f) => (f.numBiomed && n.includes(normaliser(`Biomed ${f.numBiomed}`))) || (f.numSerie && n.includes(normaliser(`S/N ${f.numSerie}`))))
         || null;
     },
