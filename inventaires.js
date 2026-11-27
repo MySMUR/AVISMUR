@@ -2316,6 +2316,36 @@ const Inventaires = (() => {
     // Le clic qui suit un appui long n'ouvre pas le sous-inventaire.
     element.addEventListener('click', (e) => { if (declenche) { e.preventDefault(); e.stopImmediatePropagation(); declenche = false; } }, true);
   }
+  /**
+   * Un panorama de téléphone ne couvre qu'une bande étroite (≈ 45° de haut) : en plein écran sur téléphone, le reste
+   * de l'écran restait noir. On prolonge donc le haut et le bas par un étirement flou des bords, fondu vers un gris sombre
+   * (plafond / sol). Les angles des gommettes ne changent pas : la marge est répartie à l'identique en haut et en bas.
+   */
+  function completerPanorama(image, g) {
+    const vaovTotal = Math.min(160, Math.max(g.vaov, 120));
+    if (vaovTotal - g.vaov < 8) return null;
+    const w = image.naturalWidth, h = image.naturalHeight;
+    const H = Math.round(vaovTotal * w / g.haov);
+    const marge = Math.round((H - h) / 2);
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = H;
+    const cx = cv.getContext('2d');
+    cx.drawImage(image, 0, marge);
+    const bande = Math.max(6, Math.round(h * 0.08));
+    [true, false].forEach((haut) => {
+      const y0 = haut ? 0 : marge + h;
+      cx.save();
+      cx.beginPath(); cx.rect(0, y0, w, marge); cx.clip();
+      try { cx.filter = 'blur(40px)'; } catch (e) { /* pas de flou sur cet appareil */ }
+      if (haut) cx.drawImage(image, 0, 0, w, bande, 0, -50, w, marge + 100);
+      else cx.drawImage(image, 0, h - bande, w, bande, 0, y0 - 50, w, marge + 100);
+      cx.restore();
+      const fondu = cx.createLinearGradient(0, haut ? marge : y0, 0, haut ? 0 : H);
+      fondu.addColorStop(0, 'rgba(34,40,52,0.3)'); fondu.addColorStop(1, 'rgba(34,40,52,0.9)');
+      cx.fillStyle = fondu; cx.fillRect(0, y0, w, marge);
+    });
+    return { donnees: cv.toDataURL('image/jpeg', 0.85), vaov: vaovTotal };
+  }
   /** Cadre de la vue immersive : panorama à faire pivoter, gommettes et flèches accrochées à leur direction. */
   function cadreImmersif(c, vc, fils, vues) {
     const cadre = el('div', { classe: `inv-immersif${placement ? ' placement' : ''}`, role: 'img', 'aria-label': `Vue immersive : ${c.nom} — ${vc.nom}` },
@@ -2337,6 +2367,14 @@ const Inventaires = (() => {
       if (!cadre.isConnected) return; // l'écran a changé entre-temps
       cadre.querySelector('.inv-photo-attente').remove();
       const g = geometriePanorama(vc.immersif, image.naturalWidth, image.naturalHeight);
+      // Bande étroite : marge floue en haut et en bas (plus de zones noires), angles des gommettes inchangés.
+      let plus = null;
+      try { plus = completerPanorama(image, g); } catch (e) { plus = null; }
+      const vaovAffiche = plus ? plus.vaov : g.vaov;
+      // Zoom maximal de départ : la vue ne doit pas dépasser le haut/bas de l'image, même en plein écran sur téléphone.
+      const ratioEcran = Math.max(1, window.innerHeight / Math.max(1, window.innerWidth), cadre.clientHeight / Math.max(1, cadre.clientWidth));
+      const hfovLimite = 2 * Math.atan(Math.tan(vaovAffiche / 2 * Math.PI / 180) / ratioEcran) * 180 / Math.PI;
+      const hfovMax = Math.max(31, Math.min(120, g.haov, hfovLimite));
       const hotSpots = [];
       const zonesLibres = [];
       // Sous-inventaires libres ayant une zone sur cette vue (la zone remplace leur gommette).
@@ -2365,10 +2403,10 @@ const Inventaires = (() => {
       });
       const o = orientations.get(cle) || {};
       const viewer = window.pannellum.viewer(cadre, {
-        type: 'equirectangular', panorama: donnees, autoLoad: true,
-        haov: g.haov, vaov: g.vaov, vOffset: 0,
-        yaw: o.yaw ?? 0, pitch: o.pitch ?? 0, hfov: o.hfov ?? Math.min(100, g.haov),
-        minHfov: 30, maxHfov: Math.min(120, g.haov),
+        type: 'equirectangular', panorama: plus ? plus.donnees : donnees, autoLoad: true,
+        haov: g.haov, vaov: vaovAffiche, vOffset: 0,
+        yaw: o.yaw ?? 0, pitch: o.pitch ?? 0, hfov: Math.min(o.hfov ?? 100, hfovMax),
+        minHfov: 30, maxHfov: hfovMax,
         showZoomCtrl: false, showFullscreenCtrl: true, compass: false, keyboardZoom: true, mouseZoom: true,
         hotSpots,
         strings: { loadingLabel: 'Chargement…', loadButtonLabel: 'Afficher la vue immersive', bylineLabel: '',
