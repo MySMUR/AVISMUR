@@ -3712,3 +3712,14 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .inv-tb-disposition > .inv-tb-grille > .inv-tb-tuile { flex-direction: column; aspect-ratio: auto; max-height: none; outline: 2px dashed color-mix(in srgb, var(--bleu) 35%, transparent); outline-offset: 2px; }
 .inv-tb-disposition > .inv-tb-grille > .inv-tb-tuile.inv-deplacee { opacity: 0.55; }
 .inv-tb-disposition .inv-tb-tete { cursor: default; }
+
+/* Gestion : sous-inventaire relié à un inventaire type (violet = type) ; « ⓘ » = personnalisé par rapport au type. */
+.inv-tuiles > li.inv-tuile-type > .inv-carte { background: #F4EEFB; border-top: 4px solid #6B3FA0; }
+.inv-marques-type { position: absolute; top: 0.25rem; right: 2.6rem; z-index: 2; display: flex; gap: 0.25rem; }
+.inv-marque-type {
+  display: inline-flex; align-items: center; justify-content: center; width: 2.2rem; min-height: 2.2rem; padding: 0;
+  font-size: 1.05rem; color: #6B3FA0; background: rgb(255 255 255 / 0.9); border: 0; border-radius: 8px; box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+}
+button.inv-marque-perso { cursor: pointer; font-size: 1.3rem; font-weight: 700; color: #B35A00; }
+button.inv-marque-perso:hover { background: #FFF1E0; }
+.inv-info-type { text-align: left; }

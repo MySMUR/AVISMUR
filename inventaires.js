@@ -2638,12 +2638,12 @@ const Inventaires = (() => {
     return haut;
   }
   /** Options d'un sous-inventaire (catégorie, scellable, gommette…) dans une fenêtre pop-up. */
-  function ouvrirFenetreOptions(f, contenu, haut) {
+  function ouvrirFenetreOptions(f, contenu, haut, titreFenetre) {
     const fermer = () => { optionsOuvertes.delete(f.id); retirerFenetreOptions(); };
     const fond = el('div', { classe: 'fenetre-fond inv-fenetre-options', surclick: (e) => { if (e.target === fond) fermer(); } });
     const titre = idChamp();
     fond.append(el('div', { classe: 'fenetre', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titre },
-      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: `Options · ${f.nom}` }),
+      el('div', { classe: 'fenetre-entete' }, el('h2', { id: titre, texte: titreFenetre || `Options · ${f.nom}` }),
         el('button', { type: 'button', classe: 'fenetre-fermer', 'aria-label': 'Fermer', texte: '✕', surclick: fermer })),
       contenu,
       el('button', { type: 'button', classe: 'principal', texte: 'Fermer', surclick: fermer })));
@@ -2652,6 +2652,29 @@ const Inventaires = (() => {
     document.body.classList.add('fenetre-ouverte');
     const fen = fond.querySelector('.fenetre');
     if (haut > 0) fen.scrollTop = haut; else fond.querySelector('.fenetre-fermer').focus();
+  }
+
+  /**
+   * Gestion : un sous-inventaire copié d'un inventaire type porte une pastille violette (la couleur « Type ») ;
+   * s'il s'écarte du type (lui ou l'un de ses sous-inventaires), une icône « i » cliquable détaille les différences.
+   */
+  function marquesType(f) {
+    const src = contenant(f.source);
+    if (!src || !(src.modele || dansUnModele(src.id))) return null;
+    const type = racineModele(src.id) || src;
+    const nomType = src.id === type.id ? type.nom : `${type.nom} › ${src.nom}`;
+    const pastille = el('span', { classe: 'inv-marque-type', role: 'img', 'aria-label': `Inventaire type : ${nomType}`,
+      title: `Inventaire type « ${nomType} » : le contenu vient du type`, texte: '🔗' });
+    if (!toutPersonnalise(f)) return el('div', { classe: 'inv-marques-type' }, pastille);
+    const info = el('button', { type: 'button', classe: 'inv-marque-type inv-marque-perso', 'aria-haspopup': 'dialog',
+      'aria-label': `Personnalisé par rapport au type : voir les différences de ${f.nom}`, title: 'Personnalisé par rapport à l\'inventaire type : voir les différences', texte: 'ⓘ',
+      surclick: () => {
+        retirerFenetreOptions();
+        ouvrirFenetreOptions(f, el('div', { classe: 'inv-info-type' },
+          el('p', {}, 'Exemplaire de l\'inventaire type ', el('a', { href: lien(src.id), texte: nomType }), '.'),
+          panneauDifferences(f)), 0, `Personnalisé · ${f.nom}`);
+      } });
+    return el('div', { classe: 'inv-marques-type' }, pastille, info);
   }
 
   function blocEnfants(c, fils) {
@@ -2680,6 +2703,8 @@ const Inventaires = (() => {
         const ailleurs = vuesDe(c).filter((v) => v.cle !== vc.cle && v.points.some((p) => p.cible === f.id)).map((v) => v.nom);
         li.classList.add('inv-ligne-triable');
         li.prepend(poignee(f.nom));
+        const marques = marquesType(f);
+        if (marques) { li.classList.add('inv-tuile-type'); li.prepend(marques); }
         // Réglages rapides sans ouvrir le sous-inventaire : Immobile / Mobile, scellable.
         const regler = (faire) => { faire(); marquer(f.id); rendre({ garderPosition: true }); };
         const reglages = el('div', { classe: 'inv-reglages-rapides' },
