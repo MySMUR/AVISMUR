@@ -146,6 +146,8 @@ Données : un contenant d'exemplaire porte `source` (le contenant du type qu'il 
 
 **Photos des articles** : chaque fiche de la base peut avoir une photo (fiche > Photo). Dans la liste à cocher, une vignette apparaît devant l'article ; la toucher affiche la photo en grand et les informations de la fiche.
 
+**Listing Word** : en gestion des inventaires, « Exporter en Word » (à côté de « Imprimer la liste papier ») produit un .docx éditable d'un contenant et de tout ce qu'il contient, sur le modèle institutionnel du CH d'Avignon (`modeles/modele-documents-divers-portrait.dotx` : en-tête, styles, pied de page). Chaque sous-inventaire de niveau 1 commence sur une nouvelle page ; les sous-inventaires suivants sont des lignes de tableau (nom à gauche, articles cochés à droite). Un emplacement vide reprend le contenu de son inventaire type. Code : `lib/listing-word.js` (+ `lib/jszip.min.js`), chargés à la demande et gardés en cache pour le hors ligne. Titre, référence, version et date se modifient ensuite dans Word.
+
 ### Catégories de contenants et accès
 
 En gestion des inventaires, chaque contenant a une **catégorie** : **Primaire** (véhicule, réserve), **Immobile** (tiroir, placard : ne change pas de place) ou **Mobile** (sac, sacoche, ampoulier : peut changer de véhicule). La page des inventaires ne montre que les **contenants primaires** ; les inventaires de premier niveau sans catégorie apparaissent aux administrateurs dans « À classer ».

@@ -5355,7 +5355,8 @@ const Inventaires = (() => {
     return el('section', { classe: 'inv-groupe-reglages' }, el('h2', { texte: 'Actions' }),
       el('div', { classe: 'cfg-actions' },
         c.emplacement ? null : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Dupliquer (avec son contenu)', surclick: () => dupliquer(c) }),
-        c.emplacement ? null : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer la liste papier', surclick: () => imprimerListe(c) })),
+        c.emplacement ? null : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Imprimer la liste papier', surclick: () => imprimerListe(c) }),
+        c.emplacement ? null : el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Exporter en Word', surclick: (e) => exporterWord(c, e.currentTarget) })),
       el('div', { classe: 'inv-zone-danger' }, supprimer));
   }
 
@@ -7835,6 +7836,53 @@ const Inventaires = (() => {
     document.body.classList.add('fenetre-ouverte');
     majApercu();
     fond.querySelector('.fenetre-fermer').focus();
+  }
+
+  // ---------- Export Word (listing éditable, modèle institutionnel du CH d'Avignon) ----------
+  function chargerScript(src) {
+    return new Promise((ok, ko) => {
+      const nom = src.split('?')[0];
+      if ([...document.scripts].some((x) => (x.getAttribute('src') || '').split('?')[0] === nom)) { ok(); return; }
+      const x = document.createElement('script');
+      x.src = src; x.onload = () => ok(); x.onerror = () => ko(new Error(`chargement impossible : ${nom}`));
+      document.head.append(x);
+    });
+  }
+  /** Libellé d'une ligne du listing (même rédaction que la liste papier). */
+  function libelleListing(a) {
+    if (a.separateur) return { texte: a.nom };
+    if (estControle(a)) return { texte: `${nomArticle(a)}${texteAttente(a) ? ` (${texteAttente(a)})` : ''} : ${a.controle === 'oui' ? 'Oui / Non' : '……………'}` };
+    return { texte: `${nomArticle(a)}${a.quantite ? ` × ${estMinimum(a) ? '≥ ' : ''}${a.quantite}` : ''}${estFacultatif(a) ? ' (facultatif)' : ''}${a.commentaire ? ` — ${a.commentaire}` : ''}` };
+  }
+  /**
+   * Listing Word d'un contenant et de tout ce qu'il contient : en-tête et styles du modèle institutionnel,
+   * une page par sous-inventaire de niveau 1, pochettes en lignes de tableau (lib/listing-word.js).
+   */
+  async function exporterWord(c, bouton) {
+    const libelle = bouton ? bouton.textContent : '';
+    if (bouton) { bouton.disabled = true; bouton.textContent = 'Génération du Word…'; }
+    try {
+      await Promise.all([chargerScript('lib/jszip.min.js?v=1'), chargerScript('lib/listing-word.js?v=1')]);
+      const reponse = await fetch('modeles/modele-documents-divers-portrait.dotx?v=1');
+      if (!reponse.ok) throw new Error('modèle introuvable');
+      const octets = await ListingWord.generer({
+        JSZip: window.JSZip, modele: await reponse.arrayBuffer(),
+        contenants: structure.contenants, racineId: c.id,
+        enfantsDe: enfants,
+        articlesDe: (x) => x.articles.filter((a) => !estReperePhoto(a)),
+        libelleArticle: libelleListing,
+        titre: `Inventaire ${c.nom}`, reference: `INV-${c.nom}`.replace(/\s+/g, '-'),
+      });
+      const url = URL.createObjectURL(new Blob([octets], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
+      const lien = el('a', { href: url, download: `Inventaire ${c.nom}`.replace(/[\\/:*?"<>|]+/g, '-') + '.docx' });
+      document.body.append(lien); lien.click(); lien.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) {
+      avis = `Export Word impossible (${e.message}). Hors ligne ? Ouvrez une fois cette page avec du réseau pour mettre le modèle en cache.`;
+      rendre({ garderPosition: true });
+    } finally {
+      if (bouton) { bouton.disabled = false; bouton.textContent = libelle; }
+    }
   }
 
   /** Liste papier d'un contenant et de tout ce qu'il contient. */
