@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 31;
+  const VERSION_SERVEUR = 32;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -52,6 +52,7 @@ const Inventaires = (() => {
   const brouillonsBase = new Map(); // tableau de la base (ordinateur) : fiches modifiées, pas encore enregistrées
   let edition = false;
   let gestion = false;
+  let dispositionTb = false; // tableau de bord : mode « Disposer » (place et largeur des sous-inventaires de niveau 1)
   // Identification d'un contenant mobile (check-list) : '<id>' (mobile prévu à cette place),
   // 'dans:<id>' (« un contenant mobile se trouve ici »), 'emp:<id>' (emplacement attendant un type de contenant).
   let identification = '';
@@ -198,6 +199,9 @@ const Inventaires = (() => {
       nomVue: c.nomVue || '',
       // Vue principale immersive (panorama pris au téléphone) : angle horizontal couvert, en degrés.
       ...(champImmersif(c.immersif) ? { immersif: champImmersif(c.immersif) } : {}),
+      // Tableau de bord sur grand écran : largeur de la carte d'un sous-inventaire de niveau 1, en colonnes
+      // (1 à 3, 4 = toute la ligne) ; absent = automatique d'après son contenu.
+      ...([1, 2, 3, 4].includes(Number(c.largeurTb)) ? { largeurTb: Number(c.largeurTb) } : {}),
       // Vignette de la page des inventaires (contenant primaire : photo du véhicule…) ; à défaut, la photo principale.
       vignette: c.vignette || '',
       // Contenant primaire relié à un véhicule de la check-list ambulancier : son identifiant, '-' pour aucun ;
@@ -3980,31 +3984,66 @@ const Inventaires = (() => {
     const f = enfants(id);
     return f.length ? 1 + Math.max(...f.map((x) => profondeur(x.emplacement ? ((gestion ? enfants(x.id)[0] : occupantDuJour(x)) || {}).id || '' : x.id, vus))) : 0;
   }
-  function tuileTableau(c, niveau = 0, vus = new Set(), place = '', max = 0) {
+  /** Largeur automatique (en colonnes) d'une carte de niveau 1 : d'après le nombre de tuiles qu'elle contient. */
+  function largeurAuto(nbFils) { return nbFils <= 2 ? 1 : (nbFils <= 6 ? 2 : 3); }
+  const LIBELLES_LARGEUR = { 0: 'Auto', 1: '1', 2: '2', 3: '3', 4: 'Ligne' };
+  /** Mode « Disposer » : poignée de déplacement et choix de largeur d'une carte de niveau 1 (`rang` = contenant rangé sous le primaire). */
+  function outilsDisposition(rang) {
+    const choisie = rang.largeurTb || 0;
+    return el('div', { classe: 'inv-tb-dispo' },
+      poignee(rang.nom),
+      el('div', { classe: 'inv-tb-largeurs', role: 'group', 'aria-label': `Largeur de ${rang.nom}` },
+        ...[0, 1, 2, 3, 4].map((n) => el('button', { type: 'button', classe: 'cfg-mini', 'aria-pressed': String(choisie === n),
+          title: n === 0 ? 'Largeur automatique (selon le contenu)' : (n === 4 ? 'Toute la ligne' : `${pluriel(n, 'colonne')}`), texte: LIBELLES_LARGEUR[n],
+          surclick: () => {
+            if (choisie === n) return;
+            if (n) rang.largeurTb = n; else delete rang.largeurTb;
+            marquer(rang.id);
+            rendre({ garderPosition: true });
+          } }))));
+  }
+  function tuileTableau(c, niveau = 0, vus = new Set(), place = '', max = 0, rang = null) {
     if (vus.has(c.id)) return null;
     vus.add(c.id);
+    // Sous-inventaire de niveau 1 : c'est lui (l'emplacement, pas son occupant) qui porte la place et la largeur.
+    if (niveau === 1 && !rang) rang = c;
     if (c.emplacement) {
       const occupant = gestion ? enfants(c.id)[0] : occupantDuJour(c);
-      if (occupant) return tuileTableau(occupant, niveau, vus, c.nom, max);
-      return el('div', { classe: 'inv-tb-tuile avide' },
+      if (occupant) return tuileTableau(occupant, niveau, vus, c.nom, max, rang);
+      const disposer = dispositionTb && niveau === 1;
+      return el('div', { classe: 'inv-tb-tuile avide', ...(niveau === 1 ? { 'data-cle': rang.id, 'data-largeur': String(rang.largeurTb || 1) } : {}) },
+        disposer ? outilsDisposition(rang) : null,
         el('button', { type: 'button', classe: 'inv-tb-tete', 'aria-haspopup': 'dialog', surclick: () => aller(c.id) },
           el('span', { classe: 'inv-tb-nom', texte: c.nom }),
           el('span', { classe: 'inv-tb-pictos' }, picto('identifier', 'À identifier', 'orange'))));
     }
+    const disposer = dispositionTb && niveau === 1;
     const r = resumeTableau(c);
     // Au-delà du nombre de niveaux choisi, le contenant reste un carré (son contenu n'est pas déplié).
     const replie = niveau > 0 && max > 0 && niveau >= max;
     const nbFils = enfants(c.id).length;
     const fils = replie ? [] : enfants(c.id).map((f) => tuileTableau(f, niveau + 1, vus, '', max)).filter(Boolean);
-    return el('div', { classe: `inv-tb-tuile ${r.classe}${fils.length ? ' parent' : ''}${niveau === 0 ? ' inv-tb-primaire' : ''}` },
-      el('button', { type: 'button', classe: 'inv-tb-tete', 'aria-haspopup': 'dialog', title: place && cle(place) !== cle(c.nom) ? `Emplacement : ${place}` : null, surclick: () => detailTableau(c, place) },
+    const attrsRang = niveau === 1 ? { 'data-cle': rang.id, 'data-largeur': String(rang.largeurTb || largeurAuto(fils.length)) } : {};
+    return el('div', { classe: `inv-tb-tuile ${r.classe}${fils.length ? ' parent' : ''}${niveau === 0 ? ' inv-tb-primaire' : ''}${niveau === 0 && dispositionTb ? ' inv-tb-disposition' : ''}`, ...attrsRang },
+      disposer ? outilsDisposition(rang) : null,
+      el('button', { type: 'button', classe: 'inv-tb-tete', 'aria-haspopup': 'dialog', title: place && cle(place) !== cle(c.nom) ? `Emplacement : ${place}` : null, surclick: () => { if (!dispositionTb) detailTableau(c, place); } },
         fils.length || niveau === 0 ? null : miniature(c),
         replie && nbFils ? el('span', { classe: 'inv-tb-replie', title: `${pluriel(nbFils, 'sous-inventaire')} non affichés`, texte: `+${nbFils}` }) : null,
         el('span', { classe: `inv-tb-nom${r.biomed ? ' inv-tb-biomed' : ''}`, texte: c.nom }),
         // Matériel biomédical relevé dans ce contenant : en gras, avec son n° interne SMUR (« Scope Corpuls3 n° 2 »).
         ...r.detail.appareils.filter((x) => !x.ou).map((x) => el('span', { classe: `inv-tb-appareil${x.ok ? '' : ' ko'}`, texte: x.nom })),
         el('span', { classe: 'inv-tb-pictos' }, ...r.pictos)),
-      fils.length ? el('div', { classe: 'inv-tb-grille' }, ...fils) : null);
+      fils.length ? (() => {
+        const grille = el('div', { classe: 'inv-tb-grille' }, ...fils);
+        // Mode « Disposer » : les cartes de niveau 1 se déplacent par leur poignée (ordre commun à tous les appareils).
+        if (niveau === 0 && dispositionTb) {
+          triable(grille, (cles) => {
+            cles.forEach((id, n) => { const x = contenant(id); if (x && x.ordre !== n) { x.ordre = n; marquer(x.id); } });
+            rendre({ garderPosition: true });
+          });
+        }
+        return grille;
+      })() : null);
   }
   function vueTableau() {
     const primaires = Object.values(structure.contenants).filter((c) => !c.supprime && c.categorie === 'primaire' && !dansUnModele(c.id))
@@ -4042,7 +4081,12 @@ const Inventaires = (() => {
           el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': 'Afficher un niveau de moins', disabled: affiche <= 1, texte: '−', surclick: () => regler(affiche - 1) }),
           el('strong', { 'aria-live': 'polite', texte: affiche >= prof ? `${prof} (tout)` : String(affiche) }),
           el('button', { type: 'button', classe: 'cfg-mini', 'aria-label': 'Afficher un niveau de plus', disabled: affiche >= prof, texte: '+', surclick: () => regler(affiche + 1 >= prof ? 0 : affiche + 1) }));
-        return [onglets, niveaux, el('div', { classe: 'inv-tb', role: 'tabpanel' }, tuileTableau(actuel, 0, new Set(), '', max))];
+        // Administrateurs : disposer les sous-inventaires de niveau 1 (place, largeur) ; visible sur grand écran.
+        const disposer = estAdmin() ? el('button', { type: 'button', classe: `cfg-mini inv-tb-bouton-disposer${dispositionTb ? ' actif' : ''}`, 'aria-pressed': String(dispositionTb),
+          texte: dispositionTb ? 'Terminer' : 'Disposer', title: 'Place et largeur des sous-inventaires de niveau 1 (grand écran)',
+          surclick: () => { dispositionTb = !dispositionTb; rendre({ garderPosition: true }); } }) : null;
+        const aideDispo = dispositionTb ? el('p', { classe: 'consigne inv-tb-aide-dispo', texte: 'Glissez une carte par sa poignée ⠿ pour la déplacer ; choisissez sa largeur en colonnes (Auto : selon son contenu). L\'ordre est aussi celui des sous-inventaires dans la check-list.' }) : null;
+        return [onglets, el('div', { classe: 'inv-tb-outils' }, niveaux, disposer), aideDispo, el('div', { classe: 'inv-tb', role: 'tabpanel' }, tuileTableau(actuel, 0, new Set(), '', max))];
       })(),
     ];
   }

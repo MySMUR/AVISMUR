@@ -3680,3 +3680,35 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .visionneuse-cadre.zoome .visionneuse-img { max-width: none; max-height: none; width: 250%; height: auto; cursor: zoom-out; }
 .visionneuse-fermer { position: absolute; top: max(0.6rem, env(safe-area-inset-top)); right: 0.6rem; width: 2.8rem; height: 2.8rem; border: 0; border-radius: 50%; background: #fff; color: var(--encre); font-size: 1.2rem; cursor: pointer; }
 .visionneuse-aide { position: absolute; bottom: max(0.8rem, env(safe-area-inset-bottom)); left: 0; right: 0; margin: 0; text-align: center; color: #fff; font-size: 0.85rem; pointer-events: none; opacity: 0.8; }
+
+/* ---------- Tableau de bord sur grand écran : cartes de niveau 1 à largeur réglable ---------- */
+/* Sous le contenant primaire, chaque sous-inventaire devient une carte d'environ 19rem ; un contenant qui en
+   contient d'autres occupe 1 à 3 colonnes (data-largeur : automatique selon son contenu, ou réglé dans « Disposer »),
+   4 = toute la ligne. En dessous de 2 colonnes (téléphone), la disposition habituelle est conservée. */
+.inv-tb { grid-template-columns: minmax(0, 1fr); }
+.inv-tb-primaire { container: tbprim / inline-size; }
+@container tbprim (min-width: 41rem) {
+  .inv-tb-primaire > .inv-tb-grille { grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); align-items: start; }
+  .inv-tb-primaire > .inv-tb-grille > .inv-tb-tuile.parent { grid-column: span 1; }
+  .inv-tb-primaire > .inv-tb-grille > .inv-tb-tuile[data-largeur="2"],
+  .inv-tb-primaire > .inv-tb-grille > .inv-tb-tuile[data-largeur="3"] { grid-column: span 2; }
+  .inv-tb-primaire > .inv-tb-grille > .inv-tb-tuile[data-largeur="4"] { grid-column: 1 / -1; }
+  /* Feuille seule dans sa colonne : bandeau bas plutôt que grand carré. */
+  .inv-tb-primaire > .inv-tb-grille > .inv-tb-tuile:not(.parent) { aspect-ratio: auto; min-height: 4.2rem; }
+}
+@container tbprim (min-width: 61rem) {
+  .inv-tb-primaire > .inv-tb-grille > .inv-tb-tuile[data-largeur="3"] { grid-column: span 3; }
+}
+.inv-tb-outils { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.2rem; margin: 0 0 0.8rem; }
+.inv-tb-outils .inv-tb-niveaux { margin: 0; }
+.inv-tb-bouton-disposer.actif { color: #fff; background: var(--bleu); border-color: var(--bleu); }
+.inv-tb-aide-dispo { margin: -0.3rem 0 0.8rem; }
+/* Mode « Disposer » : poignée et choix de largeur en tête de chaque carte de niveau 1. */
+.inv-tb-dispo { display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.35rem; padding-bottom: 0.35rem; border-bottom: 1px dashed var(--tb-bord); }
+.inv-tb-dispo .inv-poignee { cursor: grab; touch-action: none; }
+.inv-tb-largeurs { display: inline-flex; flex-wrap: wrap; gap: 0.2rem; margin-left: auto; }
+.inv-tb-largeurs .cfg-mini { min-width: 2rem; padding: 0.15rem 0.4rem; font-size: 0.8rem; }
+.inv-tb-largeurs .cfg-mini[aria-pressed="true"] { color: #fff; background: var(--bleu); border-color: var(--bleu); }
+.inv-tb-disposition > .inv-tb-grille > .inv-tb-tuile { flex-direction: column; aspect-ratio: auto; max-height: none; outline: 2px dashed color-mix(in srgb, var(--bleu) 35%, transparent); outline-offset: 2px; }
+.inv-tb-disposition > .inv-tb-grille > .inv-tb-tuile.inv-deplacee { opacity: 0.55; }
+.inv-tb-disposition .inv-tb-tete { cursor: default; }
