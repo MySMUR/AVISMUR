@@ -3664,3 +3664,9 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 .inv-immersif .inv-hs > .inv-point, .inv-immersif .inv-hs > .inv-fleche { position: absolute; left: 0; top: 0; }
 .inv-reglages-immersif { margin: 0.5rem 0; }
 .inv-reglages-immersif .cfg-ligne { align-items: center; gap: 0.5rem; }
+
+/* Liste des pleins : icône ticket (visible seulement si une photo a été prise) */
+.historique .entree-agent { display: inline-flex; align-items: center; gap: 0.5rem; }
+.icone-ticket { display: inline-flex; align-items: center; justify-content: center; min-width: 2.2rem; min-height: 2.2rem; padding: 0; border: 1px solid var(--trait); border-radius: 8px; background: #fff; color: var(--encre); cursor: pointer; }
+.icone-ticket.actif { background: #E6EEF9; border-color: var(--encre); }
+.icone-ticket:focus-visible { outline: 2px solid var(--encre); outline-offset: 2px; }

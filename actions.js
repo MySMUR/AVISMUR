@@ -175,8 +175,8 @@ const Actions = (() => {
   }
 
   const photosEnMemoire = {}; // photos déjà chargées : affichage immédiat la fois suivante
-  async function afficherPhotoServeur(conteneur, idPhoto) {
-    const poser = (src) => { conteneur.textContent = ''; conteneur.append(el('img', { classe: 'photo-apercu', alt: 'Photo du défaut', src })); };
+  async function afficherPhotoServeur(conteneur, idPhoto, alt = 'Photo du défaut') {
+    const poser = (src) => { conteneur.textContent = ''; conteneur.append(el('img', { classe: 'photo-apercu', alt, src })); };
     if (/^data:|^blob:|^https?:/.test(idPhoto)) { poser(idPhoto); return; }
     if (photosEnMemoire[idPhoto]) { poser(photosEnMemoire[idPhoto]); return; }
     conteneur.textContent = 'Chargement de la photo…';
@@ -201,6 +201,14 @@ const Actions = (() => {
     return groupe;
   }
 
+  /** Pictogramme de ticket de caisse (SVG, pas d'emoji). */
+  function iconeTicket() {
+    return el('svg:svg', { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8',
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' },
+      el('svg:path', { d: 'M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21z' }),
+      el('svg:path', { d: 'M9 8h6M9 12h6M9 16h3' }));
+  }
+
   // ---------- Plein ----------
   /** Carburant : liste des pleins du véhicule, avec « Ajouter un plein » en haut. */
   async function pleins(v, info, etatV) {
@@ -221,9 +229,22 @@ const Actions = (() => {
       return;
     }
     const liste = el('ul', { classe: 'historique' });
-    entrees.forEach((e) => liste.append(el('li', { classe: 'entree plein' },
-      el('span', { classe: 'entree-titre' }, el('strong', { texte: date(e.date) }), el('span', { texte: e.agent || '' })),
-      el('span', { classe: 'entree-resume', texte: resume(e) }))));
+    entrees.forEach((e) => {
+      const idPhoto = e.detail && e.detail.photo;
+      const photo = el('div', { classe: 'photo-defaut' });
+      let ouverte = false;
+      const bouton = idPhoto ? el('button', { type: 'button', classe: 'icone-ticket', title: 'Voir le ticket', 'aria-label': 'Voir le ticket', 'aria-expanded': 'false',
+        surclick: () => {
+          ouverte = !ouverte;
+          bouton.setAttribute('aria-expanded', String(ouverte));
+          bouton.classList.toggle('actif', ouverte);
+          if (ouverte) afficherPhotoServeur(photo, idPhoto, 'Ticket de carburant'); else photo.textContent = '';
+        } }, iconeTicket()) : null;
+      liste.append(el('li', { classe: 'entree plein' },
+        el('span', { classe: 'entree-titre' }, el('strong', { texte: date(e.date) }), el('span', { classe: 'entree-agent' }, e.agent || '', bouton)),
+        el('span', { classe: 'entree-resume', texte: resume(e) }),
+        photo));
+    });
     fenetre(titre, ajouter(), entrees.length ? liste : el('p', { texte: 'Aucun plein enregistré pour ce véhicule.' }));
   }
 
