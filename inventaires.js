@@ -548,7 +548,13 @@ const Inventaires = (() => {
   /** « Scope Corpuls3 n° 2 » : type, modèle puis n° interne SMUR. */
   const libelleAppareil = (x, num = x.numInterne) => [x.type || 'Appareil', x.modele, num && `n° ${num}`, x.pret && `(${x.pret})`].filter(Boolean).join(' ');
   /** Nom inscrit pour un matériel de prêt : « PRÊT » + son modèle (à défaut son type). */
-  const nomPret = (x) => `PRÊT ${x.modele || x.type || ''}`.trim();
+  const nomPretBase = (x) => `PRÊT ${x.modele || x.type || ''}`.trim();
+  /** Plusieurs prêts du même modèle : la référence est ajoutée pour les distinguer (« PRÊT Tempus Pro (03) »). */
+  const nomPret = (x) => {
+    const base = nomPretBase(x);
+    const memeModele = appareilsConnus().filter((y) => y.pret && y.id !== x.id && cle(nomPretBase(y)) === cle(base));
+    return memeModele.length ? `${base} (${String(x.pret).replace(/^PR[ÊE]T\s*/i, '')})` : base;
+  };
   /** Appareil de la base correspondant à la valeur relevée (n° interne SMUR, sinon n° de série). */
   function appareilDe(a, v) {
     const t = cle(String(v || ''));
@@ -560,7 +566,8 @@ const Inventaires = (() => {
       || liste.find((x) => x.numBiomed && cle(x.numBiomed) === t)
       || liste.find((x) => x.pret && cle(x.pret).replace(/ /g, '') === t.replace(/ /g, ''))
       // « PRÊT Tempus Pro » : matériel de prêt désigné par son modèle (plusieurs prêts du même modèle : le premier).
-      || liste.find((x) => x.pret && cle(nomPret(x)) === t) || null;
+      || liste.find((x) => x.pret && cle(nomPret(x)) === t)
+      || liste.find((x) => x.pret && cle(nomPretBase(x)) === t) || null;
   }
   /**
    * Valeur inscrite pour un appareil : « PRÊT Tempus Pro » (PRÊT + modèle) pour un matériel de prêt ; sinon son n° interne s'il est le seul
