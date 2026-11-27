@@ -541,7 +541,10 @@ const Inventaires = (() => {
   const reprendPrecedent = (a) => estIdentifiant(a) || (a.controle === 'scan' && ['libre', 'plage'].includes(modeScan(a)));
   const appareilsConnus = () => (typeof Materiel !== 'undefined' && Materiel.appareils ? Materiel.appareils() : []);
   /** Appareils proposés pour un matériel attendu : ceux du type demandé (tous si aucun type). */
-  const appareilsPour = (a) => appareilsConnus().filter((x) => !a.typeMateriel || cle(x.type) === cle(a.typeMateriel));
+  /** Type d'appareil accepté par un contrôle : un « Scope/défibrillateur » vaut aussi pour « Scope » et pour « Défibrillateur ». */
+  const typeAccepte = (typeAppareil, typeDemande) => !typeDemande || cle(typeAppareil) === cle(typeDemande)
+    || String(typeAppareil || '').split('/').some((t) => cle(t) === cle(typeDemande));
+  const appareilsPour = (a) => appareilsConnus().filter((x) => typeAccepte(x.type, a.typeMateriel));
   /** « Scope Corpuls3 n° 2 » : type, modèle puis n° interne SMUR. */
   const libelleAppareil = (x, num = x.numInterne) => [x.type || 'Appareil', x.modele, num && `n° ${num}`, x.pret && `(${x.pret})`].filter(Boolean).join(' ');
   /** Appareil de la base correspondant à la valeur relevée (n° interne SMUR, sinon n° de série). */
@@ -3653,7 +3656,7 @@ const Inventaires = (() => {
     let change = false;
     aCocher(c).filter((a) => a.controle === 'materiel').forEach((a) => {
       if (String(b.valeurs[a.id] || '').trim()) return;
-      if (a.typeMateriel && cle(appareil.type) !== cle(a.typeMateriel)) return;
+      if (!typeAccepte(appareil.type, a.typeMateriel)) return;
       if (a.attendu && cle(appareil.numInterne) !== cle(String(a.attendu))) return;
       b.valeurs[a.id] = codeAppareil(a, appareil);
       change = true;
