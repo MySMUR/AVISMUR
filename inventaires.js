@@ -6059,17 +6059,27 @@ const Inventaires = (() => {
   /** Valeur gardée pour un appareil reconnu : la plus lisible de celles qui l'identifient sans ambiguïté. */
   const valeurAppareil = (x) => String(x.numBiomed || x.numSerie || x.pret || x.id);
   
-  const avecAppareil = (code) => ({ code, appareil: appareilParCode(code) });
-  const cleItem = (x) => (x.appareil ? `a:${x.appareil.id}` : `c:${cleCode(x.code)}`);
+  /** Identifiant d'inventaire contenu dans un texte (QR code ou puce NFC d'un contenant : « …/#inv=<id> »). */
+  const idInvDepuis = (t) => { const m = /#inv=([a-z0-9]{6,16})/.exec(String(t || '')); return m ? m[1] : ''; };
+  /** Ce qui est scanné : un appareil du suivi du matériel, ou un contenant portant une étiquette d'inventaire. */
+  function avecAppareil(code) {
+    const id = idInvDepuis(code);
+    if (id) { const x = contenant(id); return { code, appareil: null, contenantId: id, contenant: x && !x.supprime ? x : null }; }
+    return { code, appareil: appareilParCode(code) };
+  }
+  const cleItem = (x) => (x.contenantId ? `i:${x.contenantId}` : (x.appareil ? `a:${x.appareil.id}` : `c:${cleCode(x.code)}`));
+  const TYPES_CONTENANT_VRAC = { primaire: 'Contenants primaires', immobile: 'Contenants immobiles', mobile: 'Contenants mobiles' };
+  /** Nom affiché d'un élément scanné. */
+  const nomVrac = (x) => (x.appareil ? libelleAppareil(x.appareil) : (x.contenant ? x.contenant.nom : NON_IDENTIFIE));
   /** Regroupe par type d'appareil (les non identifiés en dernier), triés par n° interne. */
   function compterVrac(items) {
     const groupes = new Map();
     items.forEach((x) => {
-      const type = x.appareil ? (x.appareil.type || 'Autre appareil') : NON_IDENTIFIE;
+      const type = x.appareil ? (x.appareil.type || 'Autre appareil') : (x.contenant ? (TYPES_CONTENANT_VRAC[x.contenant.categorie] || 'Contenants') : NON_IDENTIFIE);
       if (!groupes.has(type)) groupes.set(type, []);
       groupes.get(type).push(x);
     });
-    const num = (x) => String((x.appareil && x.appareil.numInterne) || x.code);
+    const num = (x) => String((x.appareil && x.appareil.numInterne) || (x.contenant && x.contenant.nom) || x.code);
     groupes.forEach((l) => l.sort((a, b) => num(a).localeCompare(num(b), 'fr', { numeric: true })));
     return [...groupes.entries()].sort(([a], [b]) => Number(a === NON_IDENTIFIE) - Number(b === NON_IDENTIFIE) || a.localeCompare(b, 'fr'));
   }
@@ -6077,11 +6087,12 @@ const Inventaires = (() => {
   const itemsDeVerif = (v) => Object.values((v && v.valeurs) || {}).filter((x) => String(x || '').trim()).map(avecAppareil);
   function ligneVrac(x, retirer = null) {
     const a = x.appareil;
-    return el('li', { classe: `inv-vrac-item${a ? '' : ' inconnu'}`, 'data-item': x.id || null },
+    return el('li', { classe: `inv-vrac-item${a || x.contenant ? '' : ' inconnu'}`, 'data-item': x.id || null },
       el('span', { classe: 'inv-vrac-nom' },
-        el('strong', { texte: a ? libelleAppareil(a) : NON_IDENTIFIE }),
-        el('small', { texte: a ? [a.numBiomed ? `biomed ${a.numBiomed}` : '', !a.numBiomed && a.numSerie ? `S/N ${a.numSerie}` : ''].filter(Boolean).join(' · ') : x.code })),
-      retirer ? el('button', { type: 'button', classe: 'inv-vrac-retirer', 'aria-label': `Retirer ${a ? libelleAppareil(a) : x.code}`, texte: '✕', surclick: retirer }) : null);
+        el('strong', { texte: nomVrac(x) }),
+        el('small', { texte: a ? [a.numBiomed ? `biomed ${a.numBiomed}` : '', !a.numBiomed && a.numSerie ? `S/N ${a.numSerie}` : ''].filter(Boolean).join(' · ')
+          : (x.contenant ? `Contenant ${(CATEGORIES_CONTENANT[x.contenant.categorie] || { nom: '' }).nom.toLowerCase()}${x.contenant.scellable ? ' · scellable' : ''}`.trim() : x.code) })),
+      retirer ? el('button', { type: 'button', classe: 'inv-vrac-retirer', 'aria-label': `Retirer ${a || x.contenant ? nomVrac(x) : x.code}`, texte: '✕', surclick: retirer }) : null);
   }
   /** Comptes par type : une ligne par type, dépliable pour voir les appareils. */
   function comptesVrac(items, ouvert = false) {
@@ -6096,12 +6107,12 @@ const Inventaires = (() => {
     const b = lectureSeule ? {} : brouillon(c);
     const enCours = Array.isArray(b.vrac) ? b.vrac.length : 0;
     const items = v ? itemsDeVerif(v) : [];
-    const inconnus = items.filter((x) => !x.appareil).length;
+    const inconnus = items.filter((x) => !x.appareil && !x.contenant).length;
     return [
       el('section', { classe: 'inv-section inv-vrac' },
-        el('div', { classe: 'inv-liste-entete' }, el('h2', {}, 'Matériel présent ', v ? el('span', { classe: 'inv-compte', texte: String(items.length) }) : null)),
+        el('div', { classe: 'inv-liste-entete' }, el('h2', {}, 'Présent ici ', v ? el('span', { classe: 'inv-compte', texte: String(items.length) }) : null)),
         v ? el('p', { classe: 'inv-vrac-quand', texte: `Relevé ${verifDuJour(c.id) ? 'aujourd\'hui' : `le ${new Date(v.date).toLocaleDateString('fr-FR')}`} à ${heure(v.date)}${v.agent ? ` par ${v.agent}` : ''}` })
-          : el('p', { classe: 'consigne', texte: 'Aucun relevé pour l\'instant. Scannez tout le matériel posé ici, sans vous soucier de ce que c\'est : les comptes par type se font tout seuls.' }),
+          : el('p', { classe: 'consigne', texte: 'Aucun relevé pour l\'instant. Scannez tout ce qui est posé ici (matériel, sacs, contenants munis d\'un QR code ou d\'une puce NFC), sans vous soucier de ce que c\'est : les comptes par type se font tout seuls.' }),
         items.length ? comptesVrac(items) : (v ? el('p', { classe: 'consigne', texte: 'Aucun matériel au dernier relevé.' }) : null),
         inconnus ? el('p', { classe: 'aide-question', texte: `${pluriel(inconnus, 'code')} non reconnu${inconnus > 1 ? 's' : ''} : appareil absent du suivi du matériel (ou base pas encore chargée sur ce téléphone). Il sera compté dès qu'il y sera ajouté.` }) : null),
       lectureSeule ? null : el('div', { classe: 'inv-barre-bas' },
@@ -6113,7 +6124,7 @@ const Inventaires = (() => {
     ];
   }
   function validerVrac(c, liste) {
-    const articles = liste.map((x) => ({ id: x.id, nom: x.appareil ? libelleAppareil(x.appareil) : NON_IDENTIFIE, controle: 'materiel', ok: true, valeur: String(x.code).slice(0, 120) }));
+    const articles = liste.map((x) => ({ id: x.id, nom: nomVrac(x), controle: 'materiel', ok: true, valeur: String(x.code).slice(0, 120) }));
     const ok = App.mettreEnFile({ action: 'verifierInventaire', contenant: c.id, detail: { chemin: cheminNoms(c.id, ' > '), articles, remarque: '', vrac: true } });
     if (!ok) return false;
     const valeurs = {};
@@ -6122,7 +6133,7 @@ const Inventaires = (() => {
     delete brouillons.liste[c.id];
     sauverEtat();
     sauverBrouillons();
-    avis = `« ${c.nom} » : ${pluriel(articles.length, 'appareil')} relevé${articles.length > 1 ? 's' : ''}.`;
+    avis = `« ${c.nom} » : ${pluriel(articles.length, 'élément')} relevé${articles.length > 1 ? 's' : ''}.`;
     return true;
   }
 
@@ -6161,6 +6172,7 @@ const Inventaires = (() => {
     let flux = null;
     let minuterie = null;
     let terminerVide = false;
+    let enQuestion = false; // question « scellés ? » affichée : les scans sont suspendus
     const arretNfc = new AbortController();
     const recent = new Map(); // code → instant de la dernière lecture (la caméra relit le même code en boucle)
 
@@ -6172,7 +6184,7 @@ const Inventaires = (() => {
     const resume = el('div', { classe: 'inv-vrac-resume' });
     const liste = el('ul', { classe: 'inv-vrac-liste inv-vrac-session' });
     const champ = el('input', { type: 'text', inputmode: 'none', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'enter',
-      classe: 'inv-vrac-champ', 'aria-label': 'N° biomed ou n° de série (douchette ou saisie)', placeholder: 'N° biomed…' });
+      classe: 'inv-vrac-champ', 'aria-label': 'N° biomed, n° de série ou code d\'étiquette (douchette ou saisie)', placeholder: 'N° biomed…' });
     const boutonCamera = detecteurDispo ? el('button', { type: 'button', classe: 'inv-vrac-outil', 'aria-pressed': 'false', title: 'Caméra' }) : null;
     const boutonClavier = el('button', { type: 'button', classe: 'inv-vrac-outil', 'aria-pressed': 'false', title: 'Clavier à l\'écran', 'aria-label': 'Afficher le clavier pour saisir un numéro', texte: '⌨' });
     const terminer = el('button', { type: 'button', classe: 'camera-bouton' });
@@ -6188,7 +6200,7 @@ const Inventaires = (() => {
     };
     const majListe = (nouveau = '') => {
       const tous = items();
-      compte.textContent = tous.length ? pluriel(tous.length, 'appareil') : 'Rien de scanné';
+      compte.textContent = tous.length ? pluriel(tous.length, 'élément') : 'Rien de scanné';
       resume.replaceChildren(...compterVrac(tous).map(([type, l]) => el('span', { classe: `inv-vrac-puce${type === NON_IDENTIFIE ? ' inconnu' : ''}` }, el('strong', { texte: String(l.length) }), ` ${type}`)));
       // Le dernier scanné en haut : c'est lui que l'on veut voir.
       liste.replaceChildren(...tous.slice().reverse().map((x) => ligneVrac(x, () => {
@@ -6216,15 +6228,28 @@ const Inventaires = (() => {
     };
     const ajouter = (brut, tout = '') => {
       const code = String(brut || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 200);
-      if (!code || fini) return;
-      if (/#inv=[a-z0-9]{6,16}/.test(code)) { annonce('QR code d\'un inventaire, pas d\'un appareil : ignoré.', 'erreur'); signalVrac(false); return; }
-      const appareil = (tout && appareilParCode(tout)) || appareilParCode(code);
-      const nouveau = { code: appareil ? valeurAppareil(appareil) : code };
-      const k = cleItem({ ...nouveau, appareil });
+      if (!code || fini || enQuestion) return;
+      // Étiquette d'inventaire (QR code ou puce NFC d'un contenant : sac, sacoche, frigo…) : comptée comme le matériel.
+      const idInv = idInvDepuis(code) || idInvDepuis(tout);
+      let appareil = null;
+      let boite = null;
+      let nouveau;
+      if (idInv) {
+        boite = contenant(idInv);
+        const refus = !boite || boite.supprime ? 'Inventaire inconnu : vérifiez l\'étiquette.'
+          : (boite.modele || boite.emplacement) ? `« ${boite.nom} » est un inventaire type, pas un contenant réel : ignoré.`
+            : boite.id === c.id ? 'C\'est l\'étiquette du contenant en cours de relevé : ignoré.' : '';
+        if (refus) { annonce(refus, 'erreur'); signalVrac(false); return; }
+        nouveau = { code: `#inv=${boite.id}` };
+      } else {
+        appareil = (tout && appareilParCode(tout)) || appareilParCode(code);
+        nouveau = { code: appareil ? valeurAppareil(appareil) : code };
+      }
+      const k = cleItem({ ...nouveau, appareil, contenantId: boite ? boite.id : '' });
       if (k.length < 3) return;
       const deja = items().find((x) => cleItem(x) === k);
       if (deja) {
-        annonce(`Déjà scanné : ${appareil ? libelleAppareil(appareil) : code}.`, 'deja');
+        annonce(`Déjà scanné : ${appareil ? libelleAppareil(appareil) : (boite ? boite.nom : code)}.`, 'deja');
         signalVrac(false);
         surligner(deja.id);
         return;
@@ -6234,7 +6259,7 @@ const Inventaires = (() => {
       b.vrac.push(nouveau);
       sauverBrouillons();
       signalVrac(true);
-      annonce(appareil ? `✓ ${libelleAppareil(appareil)}` : `✓ Code ${code} (non reconnu, compté à part)`, appareil ? 'ok' : 'inconnu');
+      annonce(appareil ? `✓ ${libelleAppareil(appareil)}` : (boite ? `✓ ${boite.nom}` : `✓ Code ${code} (non reconnu, compté à part)`), appareil || boite ? 'ok' : 'inconnu');
       majListe(nouveau.id);
     };
 
@@ -6386,7 +6411,7 @@ const Inventaires = (() => {
         el('button', { type: 'submit', classe: 'inv-vrac-outil', 'aria-label': 'Ajouter ce numéro', texte: '+' })),
       lecture,
       el('div', { classe: 'inv-vrac-corps' }, resume, liste,
-        el('p', { classe: 'inv-vrac-vide', texte: 'Les appareils scannés s\'afficheront ici, le dernier en haut.' })),
+        el('p', { classe: 'inv-vrac-vide', texte: 'Ce que vous scannez (appareils, contenants) s\'affichera ici, le dernier en haut.' })),
       liens.length ? el('div', { classe: 'inv-vrac-liens' }, ...liens) : null,
       el('div', { classe: 'camera-actions' }, fermerBouton, terminer));
     const cacherCible = nfcDispo ? CibleNfc.montrer() : () => {};
@@ -6402,14 +6427,87 @@ const Inventaires = (() => {
     };
     fermerBouton.addEventListener('click', () => {
       fermer();
-      if (b.vrac.length) avis = `Scan en cours gardé (${pluriel(b.vrac.length, 'appareil')}) : « Reprendre le scan » pour le terminer.`;
+      if (b.vrac.length) avis = `Scan en cours gardé (${pluriel(b.vrac.length, 'élément')}) : « Reprendre le scan » pour le terminer.`;
       rendre({ garderPosition: true });
     });
-    terminer.addEventListener('click', () => {
-      if (!b.vrac.length && !terminerVide) { terminerVide = true; majTerminer(); annonce('Rien n\'a été scanné : appuyez de nouveau pour noter qu\'il n\'y a aucun matériel ici.', 'deja'); return; }
-      if (!validerVrac(c, items())) { annonce('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur'); return; }
+    /** Contenants scellables scannés, pas encore vérifiés aujourd'hui, ni déclarés ouverts, et qu'un scellé peut valider. */
+    const scellablesScannes = () => items().filter((x) => x.contenant && x.contenant.scellable).map((x) => x.contenant)
+      .filter((x, i, t) => t.indexOf(x) === i)
+      .filter((x) => { const bx = bilan(x.id); return bx.total > 0 && !bx.complet && !reponsesScelle.has(x.id) && !obstaclesScelle(x).length; });
+    /** Fin du relevé : enregistre ce qui a été scanné, puis applique les réponses sur les scellables (scellé = validé, ouvert = à inventorier). */
+    const finir = (scelles = [], ouverts = []) => {
+      if (!validerVrac(c, items())) { annonce('Non enregistré : la mémoire de l\'appareil est pleine.', 'erreur'); return false; }
+      const faits = [];
+      let plein = false;
+      for (const x of scelles) {
+        if (appliquerScelle(x) < 0) { plein = true; break; }
+        faits.push(x);
+        scellesDecoches.delete(x.id);
+      }
+      ouverts.forEach((x) => { reponsesScelle.add(x.id); scellesDecoches.delete(x.id); });
+      const morceaux = [];
+      if (faits.length) morceaux.push(`Scellés : ${faits.map((x) => `« ${x.nom} »`).join(', ')}`);
+      if (ouverts.length) morceaux.push(`Ouverts : ${ouverts.map((x) => `« ${x.nom} »`).join(', ')}`);
+      if (plein) morceaux.push('Mémoire de l\'appareil pleine : les autres scellés ne sont pas enregistrés');
+      if (morceaux.length) avis = `${avis} ${morceaux.join(' — ')}.`;
       fermer();
       rendre();
+      return true;
+    };
+    /** « Ces contenants sont-ils scellés ? » : une ligne par scellable scanné, « Scellé » par défaut. */
+    const poserQuestionScelles = (liste) => {
+      enQuestion = true;
+      arreterCamera();
+      const ouverts = new Set();
+      const panneau = el('div', { classe: 'inv-vrac-choix', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Contenants scellés ?' });
+      const valider = el('button', { type: 'button', classe: 'camera-bouton' });
+      const majValider = () => {
+        const o = ouverts.size;
+        const k = liste.length - o;
+        valider.textContent = !o ? (liste.length > 1 ? 'Tout est scellé' : 'Oui, il est scellé') : (k ? `Valider : ${k} scellé${k > 1 ? 's' : ''}, ${o} ouvert${o > 1 ? 's' : ''}` : (o > 1 ? 'Valider : tous ouverts' : 'Valider : ouvert'));
+      };
+      const fermerQuestion = () => {
+        panneau.remove();
+        enQuestion = false;
+        majTerminer();
+        if (cameraVoulue) demarrerCamera();
+        garderFocus();
+      };
+      const lignes = liste.map((x) => {
+        const bascule = el('button', { type: 'button', classe: 'inv-scelles-bascule scelle', 'aria-pressed': 'true',
+          'aria-label': `${x.nom} : scellé. Appuyer pour changer`, texte: '🔒 Scellé' });
+        bascule.addEventListener('click', () => {
+          const devientOuvert = !ouverts.has(x.id);
+          if (devientOuvert) ouverts.add(x.id); else ouverts.delete(x.id);
+          bascule.className = `inv-scelles-bascule ${devientOuvert ? 'ouvert' : 'scelle'}`;
+          bascule.setAttribute('aria-pressed', String(!devientOuvert));
+          bascule.setAttribute('aria-label', `${x.nom} : ${devientOuvert ? 'ouvert' : 'scellé'}. Appuyer pour changer`);
+          bascule.textContent = devientOuvert ? '🔓 Ouvert' : '🔒 Scellé';
+          majValider();
+        });
+        return el('li', {}, logoCadenas(), el('span', { classe: 'inv-vrac-nom' }, el('strong', { texte: x.nom })), bascule);
+      });
+      valider.addEventListener('click', () => {
+        if (finir(liste.filter((x) => !ouverts.has(x.id)), liste.filter((x) => ouverts.has(x.id)))) return;
+        fermerQuestion();
+      });
+      panneau.append(
+        el('div', { classe: 'inv-vrac-haut' }, el('strong', { texte: liste.length > 1 ? 'Ces contenants sont-ils scellés ?' : 'Ce contenant est-il scellé ?' })),
+        el('div', { classe: 'inv-vrac-choix-corps' },
+          el('p', { classe: 'consigne', texte: 'Scellé (plomb intact) : complet et opérationnel, son inventaire est validé sur la base du dernier réalisé. Ouvert ou déplombé : il reste à inventorier.' }),
+          el('ul', { classe: 'inv-vrac-question' }, ...lignes)),
+        el('div', { classe: 'camera-actions' }, el('button', { type: 'button', classe: 'camera-bouton secondaire', texte: 'Retour au scan', surclick: fermerQuestion }), valider));
+      panneau.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); fermerQuestion(); } });
+      majValider();
+      ecran.append(panneau);
+      valider.focus();
+    };
+    terminer.addEventListener('click', () => {
+      if (!b.vrac.length && !terminerVide) { terminerVide = true; majTerminer(); annonce('Rien n\'a été scanné : appuyez de nouveau pour noter qu\'il n\'y a aucun matériel ici.', 'deja'); return; }
+      // Des contenants scellables ont été scannés : sont-ils scellés ? (la réponse vaut validation ou « à inventorier »)
+      const scellables = scellablesScannes();
+      if (scellables.length) { poserQuestionScelles(scellables); return; }
+      finir();
     });
     if (boutonReprise) {
       boutonReprise.addEventListener('click', () => {

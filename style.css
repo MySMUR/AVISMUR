@@ -2791,6 +2791,10 @@ body.inv-dans-modele .inv-barre-haut { background: #FFE7A8; border-bottom-color:
 .inv-vrac-option small { color: var(--gris); }
 .inv-vrac-reprise[hidden] { display: none; }
 .inv-vrac-choix .inv-vrac-haut strong { flex: 1; }
+.inv-vrac-question { list-style: none; margin: 0; padding: 0; }
+.inv-vrac-question li { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0; color: #fff; border-top: 1px solid rgba(255,255,255,0.14); }
+.inv-vrac-question .inv-vrac-nom { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.inv-vrac-question .inv-scelles-bascule { margin-left: auto; flex-shrink: 0; border-color: #fff; }
 
 /* ---------- Cible NFC : repère de l'antenne NFC à l'écran (cible-nfc.js) ---------- */
 .cible-nfc-calque {
