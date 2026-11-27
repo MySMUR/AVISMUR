@@ -82,7 +82,7 @@ const Regulation = (() => {
       const rep = await App.appeler('lireFicheRegulation');
       if (!rep.ok) { erreur = rep.erreur || 'Lecture impossible'; rendre(); return; }
       const premiere = !donnees;
-      donnees = rep;
+      donnees = copieDuJour(rep) || rep; // même en ligne : jamais le personnel d'un jour précédent
       ecrireStockage(CLE, rep);
       // L'armement des véhicules se conserve d'un jour à l'autre sur le serveur : l'appareil s'y aligne
       // (un changement pas encore envoyé reste tel quel, voir Desarmement.majServeur).
@@ -352,7 +352,7 @@ const Regulation = (() => {
       return;
     }
     const enAttente = App.fileAttente().some((e) => e.action === 'envoyerFicheRegulation');
-    if (copieAncienne() && !faite()) zone.append(el('p', { classe: 'message', role: 'status', texte: `Fiche du ${donnees.copieDu} gardée sur l'appareil (réseau indisponible) : le personnel est remis à zéro, vérifiez les véhicules avant d'envoyer.` }));
+    if (copieAncienne() && !faite()) zone.append(el('p', { classe: 'message', role: 'status', texte: `Fiche du ${donnees.copieDu} reçue : elle date d'un jour précédent, le personnel est remis à zéro, vérifiez les véhicules avant d'envoyer.` }));
     const dernier = donnees.dernierEnvoi;
     zone.append(el('p', {
       classe: 'reg-dernier',
