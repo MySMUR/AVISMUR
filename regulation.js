@@ -4,8 +4,11 @@
  * sur 24 h (bips). La fiche reste le Sheet « Etat du parc automobile ET affectation des bips » :
  * l'appli le remplit puis l'envoie en PDF par mail, comme la case « Cochez la case pour envoyer ».
  *
- * Pré-remplie avec la dernière fiche envoyée. Hors ligne : dernière fiche reçue gardée sur l'appareil,
- * et l'envoi part dans la file d'attente (une fiche arrivée un autre jour n'est pas envoyée).
+ * Pré-remplie avec la dernière fiche envoyée. Hors ligne : dernière fiche reçue gardée sur l'appareil
+ * (téléchargée à l'avance dès que l'appli est ouverte avec du réseau, voir precharger), et l'envoi part
+ * dans la file d'attente (une fiche arrivée un autre jour n'est pas envoyée).
+ * Copie datant d'un jour précédent : le personnel est remis à zéro localement, comme le fait le serveur
+ * chaque nuit (reinitialiserPersonnelFiche), pour ne jamais proposer les bips de la veille.
  */
 const Regulation = (() => {
   let zone;
@@ -16,6 +19,7 @@ const Regulation = (() => {
   let exigee = false; // ouverte à la place de la check-list, pas encore faite
   const faite = () => lireStockage(CLE_FAITE) === aujourdhui();
   let message = { texte: '', classe: '' };
+  let envoiSuivi = false; // une fiche de cette session attend (ou vient de partir) : on suit son sort pour le message
   const CLE = 'avismur_fiche_regulation';
   const CLE_FAITE = 'avismur_fiche_regulation_faite'; // jour (jj/mm/aaaa) de la dernière fiche envoyée ou mise en file
   const CLE_BROUILLON = 'avismur_fiche_regulation_brouillon';
@@ -41,6 +45,24 @@ const Regulation = (() => {
   function ecrireStockage(cle, valeur) {
     try { localStorage.setItem(cle, JSON.stringify(valeur)); } catch (e) { /* stockage plein */ }
   }
+
+  /**
+   * Copie gardée sur l'appareil, ramenée à « ce matin » si elle date d'un jour précédent : noms des bips effacés
+   * et horaires des étudiants vidés, comme la remise à zéro de 4 h côté serveur. Les véhicules ne changent pas.
+   * `copieDu` garde la date de la copie d'origine, pour prévenir l'agent.
+   */
+  function copieDuJour(d) {
+    if (!d || !Array.isArray(d.bips) || !Array.isArray(d.vehicules)) return null;
+    const jour = String(d.date || '').trim();
+    if (!jour || jour === aujourdhui() || d.copieDu) return d;
+    d.copieDu = jour;
+    d.bips.forEach((b) => {
+      b.nom = '';
+      if (b.categorie === 'eiade' || b.categorie === 'eade') b.horaires = '';
+    });
+    return d;
+  }
+  const copieAncienne = () => !!(donnees && donnees.copieDu && donnees.copieDu !== aujourdhui());
 
   /** Saisie de départ : brouillon du jour s'il existe, sinon la dernière fiche envoyée. */
   function initialiserSaisie() {
@@ -73,7 +95,7 @@ const Regulation = (() => {
       // Fiche du jour déjà envoyée (par un collègue, depuis un autre appareil) : on passe directement à la check-list.
       if (exigee && faite() && zone && !zone.hidden && App.ouvrirVue) { exigee = false; App.ouvrirVue('checklist-ambulancier'); return; }
     } catch (e) {
-      erreur = donnees ? 'Hors ligne : dernière fiche connue.' : 'Hors ligne et aucune fiche gardée sur cet appareil.';
+      erreur = donnees ? 'Hors ligne : dernière fiche connue.' : 'Hors ligne et aucune fiche gardée sur cet appareil : ouvrez l\'appli une fois avec du réseau (Wi-Fi ou 4G) pour la télécharger.';
     }
     rendre();
   }
@@ -300,11 +322,15 @@ const Regulation = (() => {
     ecrireStockage('avismur_armement', arm);
     // La copie locale reflète la fiche envoyée (commentaires, positions…), même hors ligne.
     donnees.vehicules.forEach((v) => Object.assign(v, saisie.vehicules[v.id] || {}));
+    donnees.date = aujourdhui(); // la copie locale est celle de la fiche du jour
+    delete donnees.copieDu;
     donnees.bips.forEach((b) => { const x = saisie.bips[b.id] || {}; b.nom = x.nom || ''; if (!/^(ade|iade)$/.test(b.categorie)) b.horaires = x.horaires || ''; });
     ecrireStockage(CLE, donnees);
     localStorage.removeItem(CLE_BROUILLON);
+    // L'envoi est asynchrone : tant que le serveur n'a pas répondu, on ne dit pas « envoyée » (voir surFile).
+    envoiSuivi = !Simulation.actif();
     message = {
-      texte: Simulation.actif() ? 'Simulation : fiche « envoyée » sans rien transmettre à la régulation.' : navigator.onLine ? 'Fiche envoyée à la régulation (PDF par mail).' : 'Hors ligne : la fiche partira au retour du réseau.',
+      texte: Simulation.actif() ? 'Simulation : fiche « envoyée » sans rien transmettre à la régulation.' : navigator.onLine ? 'Fiche enregistrée sur l\'appareil. Envoi à la régulation en cours…' : 'Hors ligne : la fiche est gardée sur l\'appareil et partira au retour du réseau.',
       classe: 'succes',
     };
     rendre();
@@ -326,6 +352,7 @@ const Regulation = (() => {
       return;
     }
     const enAttente = App.fileAttente().some((e) => e.action === 'envoyerFicheRegulation');
+    if (copieAncienne() && !faite()) zone.append(el('p', { classe: 'message', role: 'status', texte: `Fiche du ${donnees.copieDu} gardée sur l'appareil (réseau indisponible) : le personnel est remis à zéro, vérifiez les véhicules avant d'envoyer.` }));
     const dernier = donnees.dernierEnvoi;
     zone.append(el('p', {
       classe: 'reg-dernier',
@@ -377,7 +404,7 @@ const Regulation = (() => {
      * du jour (brouillon) et enregistre tout de suite dans le Sheet. Renvoie false si rien n'a pu être enregistré.
      */
     changerDisponibilite(id, disponible) {
-      if (!donnees) donnees = lireStockage(CLE);
+      if (!donnees) donnees = copieDuJour(lireStockage(CLE));
       if (!donnees || !donnees.vehicules) return enregistrerDisponibilite(id, disponible ? 'OUI' : 'NON');
       if (!saisie) initialiserSaisie();
       const v = donnees.vehicules.find((x) => x.id === id);
@@ -393,7 +420,7 @@ const Regulation = (() => {
       zone.hidden = false;
       message = { texte: '', classe: '' };
       if (!donnees) {
-        donnees = lireStockage(CLE);
+        donnees = copieDuJour(lireStockage(CLE));
         if (donnees) initialiserSaisie();
       }
       rendre();
@@ -405,6 +432,38 @@ const Regulation = (() => {
     /** Après l'envoi de la file d'attente : relit la fiche (dernier envoi). */
     surEnvoi() {
       if (zone && !zone.hidden) charger();
+    },
+    /**
+     * Fin de chaque passage de la file d'attente : dit la vérité sur la fiche du jour (partie, en attente du réseau,
+     * ou refusée par le serveur). `bilan` : { refusees: Map(id → motif), horsLigne }.
+     */
+    surFile(bilan = {}) {
+      if (!envoiSuivi) return;
+      const attente = App.fileAttente().filter((e) => e.action === 'envoyerFicheRegulation');
+      if (!attente.length) {
+        envoiSuivi = false;
+        message = { texte: 'Fiche envoyée à la régulation (PDF par mail).', classe: 'succes' };
+      } else if (bilan.refusees && attente.some((e) => bilan.refusees.has(e.id))) {
+        const motif = bilan.refusees.get(attente.find((e) => bilan.refusees.has(e.id)).id);
+        message = { texte: `Fiche refusée par le serveur : ${motif}. Elle reste sur l'appareil.`, classe: 'erreur' };
+      } else if (bilan.horsLigne || !navigator.onLine) {
+        message = { texte: 'Hors ligne : la fiche est gardée sur l\'appareil et partira au retour du réseau.', classe: 'succes' };
+      } else return;
+      if (zone && !zone.hidden) rendre();
+    },
+    /**
+     * Télécharge la fiche à l'avance (appli ouverte avec du réseau) pour pouvoir la remplir plus tard hors ligne.
+     * Sans effet si la copie gardée est déjà celle du jour ; échec silencieux.
+     */
+    async precharger() {
+      const gardee = lireStockage(CLE);
+      if (gardee && String(gardee.date || '').trim() === aujourdhui()) return;
+      try {
+        const rep = await App.appeler('lireFicheRegulation');
+        if (!rep || !rep.ok) return;
+        ecrireStockage(CLE, rep);
+        if (!donnees || !(zone && !zone.hidden)) donnees = null; // relue à l'ouverture, depuis la copie fraîche
+      } catch (e) { /* hors ligne : on essaiera au prochain retour du réseau */ }
     },
   };
 })();

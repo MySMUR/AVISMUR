@@ -250,6 +250,8 @@ function afficherApplication(infos) {
   envoyerFileAttente();
   chargerConfig();
   chargerReleves();
+  // Fiche régulation téléchargée à l'avance : l'ambulancier pourra la remplir hors ligne (zone blanche).
+  if (accesVehicules()) Regulation.precharger();
 }
 
 /**
@@ -450,6 +452,7 @@ async function envoyerFileAttente() {
   }
   if (envoyees) chargerReleves();
   bilanEnvoi({ envoyees, restantes: fileAttente.lire().length, erreurServeur, avertissement });
+  Regulation.surFile({ refusees, horsLigne });
   Inventaires.surEnvoi();
   if (infosEnvoyees) Infos.surEnvoi();
   if (materielEnvoye) Materiel.surEnvoi();
@@ -1031,7 +1034,11 @@ function marquerReseau(disponible) {
 }
 
 marquerReseau(navigator.onLine);
-window.addEventListener('online', () => { marquerReseau(true); envoyerFileAttente(); });
+window.addEventListener('online', () => {
+  marquerReseau(true);
+  envoyerFileAttente();
+  if (document.body.classList.contains('connecte') && accesVehicules()) Regulation.precharger();
+});
 window.addEventListener('offline', () => marquerReseau(false));
 
 if ('serviceWorker' in navigator) {
