@@ -2502,6 +2502,8 @@ const Inventaires = (() => {
         poserA(c, vc, vues, { x: borne((e.clientX - r.left) / r.width), y: borne((e.clientY - r.top) / r.height) });
       });
       vc.points.forEach((p) => {
+        const enfantLibre = fils.find((f) => f.id === p.cible);
+        if (enfantLibre && zoneVracAffichee(enfantLibre, vc)) { scene.append(creerZoneVrac(enfantLibre)); return; }
         const pastille = creerPastille(c, vc, p, fils, `left:${p.x * 100}%;top:${p.y * 100}%;`);
         if (!pastille) return;
         if (edition) glisserPastille(pastille, img, c, vc, p.cible);
@@ -6182,7 +6184,34 @@ const Inventaires = (() => {
     const vus = new Set();
     const marques = (Array.isArray(z && z.marques) ? z.marques : []).filter((m) => m && /^[ai]:[\w.-]{1,60}$/.test(String(m.code)) && !vus.has(m.code) && vus.add(m.code))
       .slice(0, 200).map((m) => ({ code: String(m.code), x: coord01(m.x), y: coord01(m.y) }));
-    return { poly, marques };
+    return { poly, marques, vue: ID.test(String(z && z.vue)) ? String(z.vue) : '' };
+  }
+  /**
+   * Photo qui porte la zone d'un inventaire libre : celle du contenant parent où le sous-inventaire avait sa gommette
+   * (la zone la remplace), à défaut la photo propre du contenant. `cle` : vue du parent ('' = principale).
+   */
+  function sourceZoneVrac(c) {
+    const parent = c.parent ? contenant(c.parent) : null;
+    if (parent) {
+      const vues = vuesDe(parent).filter((v) => v.photo);
+      const z = c.zoneVrac;
+      const v = (z && z.vue ? vues.find((x) => x.cle === z.vue) : null) || vues.find((x) => x.points.some((p) => p.cible === c.id));
+      if (v) return { photo: v.photo, cle: v.cle, parent };
+    }
+    return c.photo ? { photo: c.photo, cle: '', parent: null } : null;
+  }
+  /** Gommettes (éléments scannés qui ont une place sur la photo) : éléments DOM et nombre d'éléments sans place. */
+  function elementsMarques(z, tous, nouveau = '') {
+    let sans = 0;
+    const elements = [];
+    tous.forEach((x) => {
+      const m = z.marques.find((y) => y.code === cleItem(x));
+      if (!m) { sans += 1; return; }
+      const col = couleurVrac(x);
+      elements.push(el('span', { classe: `inv-marque ${col}${x.id === nouveau ? ' nouveau' : ''}`, style: `left:${m.x * 100}%;top:${m.y * 100}%`,
+        title: `${nomVrac(x)} : ${LIBELLES_COULEUR_VRAC[col]}`, role: 'img', 'aria-label': `${nomVrac(x)} : ${LIBELLES_COULEUR_VRAC[col]}`, texte: GLYPHES_VRAC[col] }));
+    });
+    return { elements, sans };
   }
   /** Calque SVG du polygone (coordonnées 0-100, étiré sur la photo). */
   function svgZone(poly) {
@@ -6237,24 +6266,19 @@ const Inventaires = (() => {
   /** Photo + polygone + gommettes des éléments scannés. `maj(items, nouveauId)` pose les gommettes des éléments présents. */
   function planVrac(c) {
     const z = c.zoneVrac;
-    if (!c.photo || !z || (z.poly.length < 3 && !z.marques.length)) return null;
+    const src = sourceZoneVrac(c);
+    if (!src || !z || (z.poly.length < 3 && !z.marques.length)) return null;
     const img = el('img', { alt: 'Plan de la zone à scanner' });
     img.draggable = false;
     const scene = el('div', { classe: 'inv-vrac-plan-scene' }, img, svgZone(z.poly));
     const note = el('p', { classe: 'inv-vrac-plan-note' });
     const noeud = el('div', { classe: 'inv-vrac-plan' }, scene, note);
     const montrer = (d) => { if (d) img.src = d; else noeud.hidden = true; };
-    if (Photos.enMemoire(c.photo)) montrer(Photos.enMemoire(c.photo)); else obtenirPhoto(c.photo).then(montrer);
+    if (Photos.enMemoire(src.photo)) montrer(Photos.enMemoire(src.photo)); else obtenirPhoto(src.photo).then(montrer);
     const maj = (tous, nouveau = '') => {
       scene.querySelectorAll('.inv-marque').forEach((x) => x.remove());
-      let sans = 0;
-      tous.forEach((x) => {
-        const m = z.marques.find((y) => y.code === cleItem(x));
-        if (!m) { sans += 1; return; }
-        const col = couleurVrac(x);
-        scene.append(el('span', { classe: `inv-marque ${col}${x.id === nouveau ? ' nouveau' : ''}`, style: `left:${m.x * 100}%;top:${m.y * 100}%`,
-          title: `${nomVrac(x)} : ${LIBELLES_COULEUR_VRAC[col]}`, role: 'img', 'aria-label': `${nomVrac(x)} : ${LIBELLES_COULEUR_VRAC[col]}`, texte: GLYPHES_VRAC[col] }));
-      });
+      const { elements, sans } = elementsMarques(z, tous, nouveau);
+      scene.append(...elements);
       note.textContent = [z.poly.length >= 3 ? 'Scannez tout ce qui se trouve dans la zone bleue.' : '',
         sans ? `${pluriel(sans, 'élément')} sans gommette sur le plan.` : ''].filter(Boolean).join(' ');
       note.hidden = !note.textContent;
@@ -6263,24 +6287,52 @@ const Inventaires = (() => {
     return { noeud, maj };
   }
 
+  /** La zone du sous-inventaire libre `x` remplace sa gommette sur cette vue de la photo du parent. */
+  const zoneVracAffichee = (x, vc) => estVrac(x) && Boolean(x.zoneVrac) && x.zoneVrac.poly.length >= 3 && (x.zoneVrac.vue || '') === vc.cle;
+  /**
+   * Zone cliquable posée sur la photo du contenant parent : en check-list, elle lance le scan de tout ce qu'elle couvre ;
+   * les gommettes des éléments scannés aujourd'hui y apparaissent. En gestion, elle ouvre le sous-inventaire.
+   */
+  function creerZoneVrac(x) {
+    const z = x.zoneVrac;
+    const fait = Boolean(verifDuJour(x.id));
+    const calque = el('div', { classe: `inv-zone-calque${fait ? ' fait' : ''}${placement ? ' passif' : ''}` });
+    const svg = svgZone(z.poly);
+    const forme = svg.querySelector('polygon');
+    const agir = () => { if (placement) return; if (edition) aller(x.id); else sessionVrac(x); };
+    forme.setAttribute('class', 'inv-zone-poly cliquable');
+    forme.setAttribute('role', 'button');
+    forme.setAttribute('tabindex', '0');
+    forme.setAttribute('aria-label', `${x.nom} : ${edition ? 'ouvrir' : 'scanner tout ce qui se trouve dans la zone'}`);
+    forme.addEventListener('click', agir);
+    forme.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); agir(); } });
+    const cx = z.poly.reduce((t, p) => t + p.x, 0) / z.poly.length;
+    const cy = z.poly.reduce((t, p) => t + p.y, 0) / z.poly.length;
+    calque.append(svg, el('span', { classe: 'inv-zone-etiquette', style: `left:${cx * 100}%;top:${cy * 100}%`, 'aria-hidden': 'true' },
+      el('strong', { texte: x.nom }), el('small', { texte: edition ? 'Toucher pour ouvrir' : (fait ? 'Relevé fait · toucher pour refaire' : 'Toucher pour scanner la zone') })));
+    if (fait && etat.verifs[x.id]) calque.append(...elementsMarques(z, itemsDeVerif(etat.verifs[x.id])).elements);
+    return calque;
+  }
+
   let modeZoneVrac = 'zone'; // « zone » : tracer le polygone ; « gommettes » : poser les gommettes
   let filtreZoneVrac = '';
   let choixZoneVrac = '';
   /** Administration (inventaire libre avec photo) : tracer le polygone et poser les gommettes du matériel habituel. */
   function blocZoneVrac(c) {
     if (!estVrac(c)) return null;
-    if (!c.photo) {
+    const src = sourceZoneVrac(c);
+    if (!src) {
       return el('section', { classe: 'inv-section inv-zone-vrac' }, el('h2', { texte: 'Zone à scanner' }),
-        el('p', { classe: 'consigne', texte: 'Ajoutez d\'abord une photo de la zone (bloc « Photo » ci-dessus, vue 1) : vous pourrez ensuite y tracer le polygone à scanner et poser les gommettes.' }));
+        el('p', { classe: 'consigne', texte: c.parent ? 'Placez d\'abord la gommette de ce sous-inventaire sur la photo du contenant parent : vous pourrez ensuite y tracer la zone à scanner, qui remplacera la gommette.' : 'Ajoutez d\'abord une photo de la zone (bloc « Photo » ci-dessus) : vous pourrez ensuite y tracer le polygone à scanner.' }));
     }
     const z = c.zoneVrac || { poly: [], marques: [] };
-    const modifier = (f) => { c.zoneVrac = c.zoneVrac || { poly: [], marques: [] }; f(c.zoneVrac); marquer(c.id); rendre({ garderPosition: true }); };
+    const modifier = (f) => { c.zoneVrac = c.zoneVrac || { poly: [], marques: [] }; f(c.zoneVrac); c.zoneVrac.vue = src.cle; marquer(c.id); rendre({ garderPosition: true }); };
     const img = el('img', { alt: 'Photo de la zone', draggable: false });
     const svg = svgZone(z.poly);
     const scene = el('div', { classe: 'inv-photo-scene' }, img, svg);
     const cadre = el('div', { classe: 'inv-photo inv-zone-editeur' }, scene);
     const montrer = (d) => { if (d) img.src = d; else cadre.append(el('p', { classe: 'inv-photo-attente', texte: 'Photo pas encore disponible hors ligne.' })); };
-    if (Photos.enMemoire(c.photo)) montrer(Photos.enMemoire(c.photo)); else obtenirPhoto(c.photo).then(montrer);
+    if (Photos.enMemoire(src.photo)) montrer(Photos.enMemoire(src.photo)); else obtenirPhoto(src.photo).then(montrer);
     const position = (e) => { const r = img.getBoundingClientRect(); return { x: coord01((e.clientX - r.left) / r.width), y: coord01((e.clientY - r.top) / r.height) }; };
     /** Poignée déplaçable ; touchée sans être déplacée, elle déclenche `surTouche`. */
     const poignee = (classe, p, titre, deplacer, surTouche, contenu = '') => {
@@ -6355,7 +6407,7 @@ const Inventaires = (() => {
     }
     return el('section', { classe: 'inv-section inv-zone-vrac' },
       el('h2', { texte: 'Zone à scanner' }),
-      el('p', { classe: 'consigne', texte: 'Le polygone indique à l\'agent ce qu\'il doit scanner ; chaque gommette apparaît, colorée selon l\'état de l\'élément, quand il est scanné.' }),
+      el('p', { classe: 'consigne', texte: `${src.parent ? `Photo du contenant « ${src.parent.nom} ». ` : ''}Une fois tracée, la zone remplace la gommette de ce sous-inventaire sur la photo : l'agent la touche pour scanner tout ce qu'elle couvre, et chaque gommette apparaît, colorée selon l'état de l'élément, quand il est scanné.` }),
       modes, ...aide, cadre);
   }
 

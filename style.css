@@ -3784,3 +3784,12 @@ button.inv-marque-perso:hover { background: #FFF1E0; }
 .inv-vrac section .inv-vrac-plan { position: static; background: none; }
 .inv-vrac section .inv-vrac-plan-scene img { max-height: 40vh; }
 .inv-vrac section .inv-vrac-plan-note { color: var(--gris); }
+
+/* Zone d'un sous-inventaire libre posée sur la photo du contenant parent (remplace sa gommette) */
+.inv-zone-calque { position: absolute; inset: 0; pointer-events: none; }
+.inv-zone-calque .inv-zone-poly.cliquable { pointer-events: all; cursor: pointer; }
+.inv-zone-calque.passif .inv-zone-poly.cliquable { pointer-events: none; }
+.inv-zone-calque.fait .inv-zone-poly { fill: rgba(46, 158, 91, 0.28); stroke: #2e9e5b; }
+.inv-zone-calque .inv-zone-poly.cliquable:hover, .inv-zone-calque .inv-zone-poly.cliquable:focus-visible { fill: rgba(30, 110, 255, 0.4); outline: none; }
+.inv-zone-etiquette { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; max-width: 80%; text-align: center; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9); line-height: 1.15; }
+.inv-zone-etiquette small { font-size: 0.75rem; opacity: 0.95; }
