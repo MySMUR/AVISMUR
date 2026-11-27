@@ -547,6 +547,8 @@ const Inventaires = (() => {
   const appareilsPour = (a) => appareilsConnus().filter((x) => typeAccepte(x.type, a.typeMateriel));
   /** « Scope Corpuls3 n° 2 » : type, modèle puis n° interne SMUR. */
   const libelleAppareil = (x, num = x.numInterne) => [x.type || 'Appareil', x.modele, num && `n° ${num}`, x.pret && `(${x.pret})`].filter(Boolean).join(' ');
+  /** Nom inscrit pour un matériel de prêt : « PRÊT » + son modèle (à défaut son type). */
+  const nomPret = (x) => `PRÊT ${x.modele || x.type || ''}`.trim();
   /** Appareil de la base correspondant à la valeur relevée (n° interne SMUR, sinon n° de série). */
   function appareilDe(a, v) {
     const t = cle(String(v || ''));
@@ -556,14 +558,16 @@ const Inventaires = (() => {
     const parNum = liste.filter((x) => x.numInterne && cle(x.numInterne) === t);
     return (parNum.length === 1 ? parNum[0] : null) || liste.find((x) => x.numSerie && cle(x.numSerie) === t)
       || liste.find((x) => x.numBiomed && cle(x.numBiomed) === t)
-      || liste.find((x) => x.pret && cle(x.pret).replace(/ /g, '') === t.replace(/ /g, '')) || null;
+      || liste.find((x) => x.pret && cle(x.pret).replace(/ /g, '') === t.replace(/ /g, ''))
+      // « PRÊT Tempus Pro » : matériel de prêt désigné par son modèle (plusieurs prêts du même modèle : le premier).
+      || liste.find((x) => x.pret && cle(nomPret(x)) === t) || null;
   }
   /**
-   * Valeur inscrite pour un appareil : « PRÊT 03 » pour un matériel de prêt ; sinon son n° interne s'il est le seul
+   * Valeur inscrite pour un appareil : « PRÊT Tempus Pro » (PRÊT + modèle) pour un matériel de prêt ; sinon son n° interne s'il est le seul
    * de ce type à le porter (deux modèles peuvent avoir le même n° : son n° de série ou biomed lève alors le doute).
    */
   function codeAppareil(a, x) {
-    if (x.pret) return String(x.pret);
+    if (x.pret) return nomPret(x);
     const liste = a ? appareilsPour(a) : appareilsConnus().filter((y) => cle(y.type) === cle(x.type));
     const n = x.numInterne;
     if (n && liste.filter((y) => y.numInterne && cle(y.numInterne) === cle(n)).length <= 1) return String(n);
