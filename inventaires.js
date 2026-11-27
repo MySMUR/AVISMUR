@@ -2374,7 +2374,7 @@ const Inventaires = (() => {
       // Zoom maximal de départ : la vue ne doit pas dépasser le haut/bas de l'image, même en plein écran sur téléphone.
       const ratioEcran = Math.max(1, window.innerHeight / Math.max(1, window.innerWidth), cadre.clientHeight / Math.max(1, cadre.clientWidth));
       const hfovLimite = 2 * Math.atan(Math.tan(vaovAffiche / 2 * Math.PI / 180) / ratioEcran) * 180 / Math.PI;
-      const hfovMax = Math.max(31, Math.min(120, g.haov, hfovLimite));
+      const hfovMax = Math.max(46, Math.min(120, g.haov, hfovLimite));
       const hotSpots = [];
       const zonesLibres = [];
       // Sous-inventaires libres ayant une zone sur cette vue (la zone remplace leur gommette).
@@ -2405,8 +2405,8 @@ const Inventaires = (() => {
       const viewer = window.pannellum.viewer(cadre, {
         type: 'equirectangular', panorama: plus ? plus.donnees : donnees, autoLoad: true,
         haov: g.haov, vaov: vaovAffiche, vOffset: 0,
-        yaw: o.yaw ?? 0, pitch: o.pitch ?? 0, hfov: Math.min(o.hfov ?? 100, hfovMax),
-        minHfov: 30, maxHfov: hfovMax,
+        yaw: o.yaw ?? 0, pitch: o.pitch ?? 0, hfov: Math.min(o.hfov ?? 45, hfovMax),
+        minHfov: 20, maxHfov: hfovMax,
         showZoomCtrl: false, showFullscreenCtrl: true, compass: false, keyboardZoom: true, mouseZoom: true,
         hotSpots,
         strings: { loadingLabel: 'Chargement…', loadButtonLabel: 'Afficher la vue immersive', bylineLabel: '',
