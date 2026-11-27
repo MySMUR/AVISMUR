@@ -3074,6 +3074,7 @@ const Materiel = (() => {
       charger(); // même masqué : les modifications envoyées doivent rejoindre le cache local
     },
     actions: ACTIONS,
+    etatRevision,
     rappelsMaintenance,
     /** Formulaire de maintenance d'un rappel de l'accueil : tous les agents sauf les étudiants. */
     ouvrirControle(groupe) {

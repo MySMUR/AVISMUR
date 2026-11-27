@@ -3757,3 +3757,30 @@ body.mode-simulation .feuille { box-shadow: inset 0 0 0 3px #F0A43C; }
 button.inv-marque-perso { cursor: pointer; font-size: 1.3rem; font-weight: 700; color: #B35A00; }
 button.inv-marque-perso:hover { background: #FFF1E0; }
 .inv-info-type { text-align: left; }
+
+/* ---------- Zone à scanner d'un inventaire libre : polygone semi-transparent et gommettes ---------- */
+.inv-zone-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.inv-zone-poly { fill: rgba(30, 110, 255, 0.28); stroke: #1e6eff; stroke-width: 2.5; stroke-dasharray: 7 4; vector-effect: non-scaling-stroke; }
+.inv-zone-trait { fill: none; stroke: #1e6eff; stroke-width: 2.5; stroke-dasharray: 7 4; vector-effect: non-scaling-stroke; }
+.inv-marque { position: absolute; transform: translate(-50%, -50%); width: 1.9rem; height: 1.9rem; padding: 0; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.55); font: inherit; font-size: 0.95rem; font-weight: 800; color: #fff; touch-action: none; }
+.inv-marque.vert { background: #2e9e5b; }
+.inv-marque.orange { background: #e08a00; }
+.inv-marque.rouge { background: #d23b3b; }
+.inv-marque.gris { background: #6b7280; }
+.inv-marque.nouveau { animation: inv-marque-pop 0.55s ease-out; }
+@keyframes inv-marque-pop { 0% { transform: translate(-50%, -50%) scale(2.4); opacity: 0; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+.inv-marque.gabarit { background: #fff; color: var(--bleu); border-color: var(--bleu); cursor: grab; }
+.inv-marque.gabarit.petit { position: static; transform: none; flex-shrink: 0; width: 1.6rem; height: 1.6rem; box-shadow: none; cursor: default; }
+.inv-sommet { position: absolute; transform: translate(-50%, -50%); width: 1.5rem; height: 1.5rem; padding: 0; border-radius: 50%; background: #fff; border: 3px solid #1e6eff; touch-action: none; cursor: grab; }
+.inv-zone-modes, .inv-zone-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0; }
+.inv-zone-liste { list-style: none; margin: 0.4rem 0 0.6rem; padding: 0; }
+.inv-zone-liste li { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+.inv-zone-liste li span:nth-child(2) { flex: 1; min-width: 0; }
+.inv-vrac-plan { position: sticky; top: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; padding: 0.2rem 0; background: #0E1B30; }
+.inv-vrac-plan-scene { position: relative; display: inline-block; line-height: 0; border-radius: 8px; overflow: hidden; }
+.inv-vrac-plan-scene img { display: block; max-width: 100%; max-height: 24vh; max-height: 24dvh; width: auto; height: auto; }
+.inv-vrac-plan-note { margin: 0; font-size: 0.85rem; text-align: center; color: #C8D4E6; }
+.inv-vrac section .inv-vrac-plan { position: static; background: none; }
+.inv-vrac section .inv-vrac-plan-scene img { max-height: 40vh; }
+.inv-vrac section .inv-vrac-plan-note { color: var(--gris); }

@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 33;
+  const VERSION_SERVEUR = 34;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -212,6 +212,8 @@ const Inventaires = (() => {
       scellable: c.scellable === true, // contenant fermé par un scellé (plomb) une fois vérifié
       // Inventaire libre : pas de liste attendue, le matériel présent est scanné « en vrac » puis compté par type.
       ...(c.vrac === true ? { vrac: true } : {}),
+      // Zone à scanner : polygone et gommettes des éléments attendus, posés sur la photo de l'inventaire libre.
+      ...(c.vrac === true && c.zoneVrac ? { zoneVrac: zoneVracPropre(c.zoneVrac) } : {}),
       categorie: CATEGORIES_CONTENANT[c.categorie] ? c.categorie : '', // primaire, immobile ou mobile
       // Étiquette QR : largeur × hauteur imprimées (mm) et logo central (puce NFC au dos, croix SMUR ou aucun).
       ...(c.etiquette ? { etiquette: normEtiquette(c.etiquette) } : {}),
@@ -6115,11 +6117,14 @@ const Inventaires = (() => {
     const enCours = Array.isArray(b.vrac) ? b.vrac.length : 0;
     const items = v ? itemsDeVerif(v) : [];
     const inconnus = items.filter((x) => !x.appareil && !x.contenant).length;
+    const plan = planVrac(c);
+    if (plan) plan.maj(items);
     return [
       el('section', { classe: 'inv-section inv-vrac' },
         el('div', { classe: 'inv-liste-entete' }, el('h2', {}, 'Présent ici ', v ? el('span', { classe: 'inv-compte', texte: String(items.length) }) : null)),
         v ? el('p', { classe: 'inv-vrac-quand', texte: `Relevé ${verifDuJour(c.id) ? 'aujourd\'hui' : `le ${new Date(v.date).toLocaleDateString('fr-FR')}`} à ${heure(v.date)}${v.agent ? ` par ${v.agent}` : ''}` })
           : el('p', { classe: 'consigne', texte: 'Aucun relevé pour l\'instant. Scannez tout ce qui est posé ici (matériel, sacs, contenants munis d\'un QR code ou d\'une puce NFC), sans vous soucier de ce que c\'est : les comptes par type se font tout seuls.' }),
+        plan ? plan.noeud : null,
         items.length ? comptesVrac(items) : (v ? el('p', { classe: 'consigne', texte: 'Aucun matériel au dernier relevé.' }) : null),
         inconnus ? el('p', { classe: 'aide-question', texte: `${pluriel(inconnus, 'code')} non reconnu${inconnus > 1 ? 's' : ''} : appareil absent du suivi du matériel (ou base pas encore chargée sur ce téléphone). Il sera compté dès qu'il y sera ajouté.` }) : null),
       lectureSeule ? null : el('div', { classe: 'inv-barre-bas' },
@@ -6161,6 +6166,195 @@ const Inventaires = (() => {
     } catch (e) { /* pas de son : la vibration et l'affichage suffisent */ }
   }
 
+  // ---------- Zone à scanner : polygone semi-transparent et gommettes sur la photo de l'inventaire libre ----------
+  /*
+   * L'administrateur trace sur la photo (ex. l'étagère de la réserve) le polygone de la zone à scanner, puis pose une
+   * gommette pour chaque matériel / contenant habituel. Au scan, le polygone dit à l'agent qu'il faut tout scanner
+   * dans la zone ; chaque élément scanné fait apparaître sa gommette, colorée selon son état.
+   * Données : c.zoneVrac = { poly: [{x, y}…], marques: [{ code: 'a:<appareil>' | 'i:<contenant>', x, y }…] } (x, y de 0 à 1).
+   */
+  const ZONE_SOMMETS_MAX = 24;
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const coord01 = (v) => Math.round(Math.min(1, Math.max(0, Number(v) || 0)) * 10000) / 10000;
+  function zoneVracPropre(z) {
+    const poly = (Array.isArray(z && z.poly) ? z.poly : []).filter((p) => p && isFinite(Number(p.x)) && isFinite(Number(p.y)))
+      .slice(0, ZONE_SOMMETS_MAX).map((p) => ({ x: coord01(p.x), y: coord01(p.y) }));
+    const vus = new Set();
+    const marques = (Array.isArray(z && z.marques) ? z.marques : []).filter((m) => m && /^[ai]:[\w.-]{1,60}$/.test(String(m.code)) && !vus.has(m.code) && vus.add(m.code))
+      .slice(0, 200).map((m) => ({ code: String(m.code), x: coord01(m.x), y: coord01(m.y) }));
+    return { poly, marques };
+  }
+  /** Calque SVG du polygone (coordonnées 0-100, étiré sur la photo). */
+  function svgZone(poly) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('class', 'inv-zone-svg');
+    svg.setAttribute('aria-hidden', 'true');
+    const dessiner = (liste) => {
+      svg.replaceChildren();
+      if (liste.length < 2) return;
+      const forme = document.createElementNS(SVG_NS, liste.length >= 3 ? 'polygon' : 'polyline');
+      forme.setAttribute('points', liste.map((p) => `${p.x * 100},${p.y * 100}`).join(' '));
+      forme.setAttribute('class', liste.length >= 3 ? 'inv-zone-poly' : 'inv-zone-trait');
+      svg.append(forme);
+    };
+    dessiner(poly);
+    svg.dessiner = dessiner;
+    return svg;
+  }
+  const codeItemVrac = (code) => (code.startsWith('i:') ? `#inv=${code.slice(2)}` : code.slice(2));
+  /** Nom d'un élément désigné par le code d'une gommette. */
+  function libelleCodeVrac(code) {
+    const id = code.slice(2);
+    if (code.startsWith('i:')) { const x = contenant(id); return x && !x.supprime ? x.nom : 'Contenant supprimé'; }
+    const a = appareilsConnus().find((f) => f.id === id);
+    return a ? libelleAppareil(a) : 'Appareil inconnu';
+  }
+  /** Couleur de la gommette d'un élément scanné : vert (OK), orange (à surveiller), rouge (anomalie), gris (sans état connu). */
+  function couleurVrac(x) {
+    try {
+      if (x.appareil) {
+        const f = x.appareil;
+        if (f.statut === 'En panne') return 'rouge';
+        if (f.statut === 'En maintenance') return 'orange';
+        const r = typeof Materiel !== 'undefined' && Materiel.etatRevision ? Materiel.etatRevision(f) : null;
+        if (r && r.retard) return 'rouge';
+        if (r && r.bientot) return 'orange';
+        return 'vert';
+      }
+      if (x.contenant) {
+        const r = resumeTableau(x.contenant);
+        if (r.detail.manquants.length || r.b.perimes) return 'rouge';
+        if (r.b.proches || r.b.sansDate || (r.b.total && !r.b.faits)) return 'orange';
+        return r.b.total ? 'vert' : 'gris';
+      }
+    } catch (e) { /* état illisible : gommette neutre */ }
+    return 'gris';
+  }
+  const GLYPHES_VRAC = { vert: '✓', orange: '!', rouge: '✕', gris: '•' };
+  const LIBELLES_COULEUR_VRAC = { vert: 'OK', orange: 'à surveiller', rouge: 'anomalie', gris: 'état inconnu' };
+  /** Photo + polygone + gommettes des éléments scannés. `maj(items, nouveauId)` pose les gommettes des éléments présents. */
+  function planVrac(c) {
+    const z = c.zoneVrac;
+    if (!c.photo || !z || (z.poly.length < 3 && !z.marques.length)) return null;
+    const img = el('img', { alt: 'Plan de la zone à scanner' });
+    img.draggable = false;
+    const scene = el('div', { classe: 'inv-vrac-plan-scene' }, img, svgZone(z.poly));
+    const note = el('p', { classe: 'inv-vrac-plan-note' });
+    const noeud = el('div', { classe: 'inv-vrac-plan' }, scene, note);
+    const montrer = (d) => { if (d) img.src = d; else noeud.hidden = true; };
+    if (Photos.enMemoire(c.photo)) montrer(Photos.enMemoire(c.photo)); else obtenirPhoto(c.photo).then(montrer);
+    const maj = (tous, nouveau = '') => {
+      scene.querySelectorAll('.inv-marque').forEach((x) => x.remove());
+      let sans = 0;
+      tous.forEach((x) => {
+        const m = z.marques.find((y) => y.code === cleItem(x));
+        if (!m) { sans += 1; return; }
+        const col = couleurVrac(x);
+        scene.append(el('span', { classe: `inv-marque ${col}${x.id === nouveau ? ' nouveau' : ''}`, style: `left:${m.x * 100}%;top:${m.y * 100}%`,
+          title: `${nomVrac(x)} : ${LIBELLES_COULEUR_VRAC[col]}`, role: 'img', 'aria-label': `${nomVrac(x)} : ${LIBELLES_COULEUR_VRAC[col]}`, texte: GLYPHES_VRAC[col] }));
+      });
+      note.textContent = [z.poly.length >= 3 ? 'Scannez tout ce qui se trouve dans la zone bleue.' : '',
+        sans ? `${pluriel(sans, 'élément')} sans gommette sur le plan.` : ''].filter(Boolean).join(' ');
+      note.hidden = !note.textContent;
+    };
+    maj([]);
+    return { noeud, maj };
+  }
+
+  let modeZoneVrac = 'zone'; // « zone » : tracer le polygone ; « gommettes » : poser les gommettes
+  let filtreZoneVrac = '';
+  let choixZoneVrac = '';
+  /** Administration (inventaire libre avec photo) : tracer le polygone et poser les gommettes du matériel habituel. */
+  function blocZoneVrac(c) {
+    if (!estVrac(c) || !c.photo) return null;
+    const z = c.zoneVrac || { poly: [], marques: [] };
+    const modifier = (f) => { c.zoneVrac = c.zoneVrac || { poly: [], marques: [] }; f(c.zoneVrac); marquer(c.id); rendre({ garderPosition: true }); };
+    const img = el('img', { alt: 'Photo de la zone', draggable: false });
+    const svg = svgZone(z.poly);
+    const scene = el('div', { classe: 'inv-photo-scene' }, img, svg);
+    const cadre = el('div', { classe: 'inv-photo inv-zone-editeur' }, scene);
+    const montrer = (d) => { if (d) img.src = d; else cadre.append(el('p', { classe: 'inv-photo-attente', texte: 'Photo pas encore disponible hors ligne.' })); };
+    if (Photos.enMemoire(c.photo)) montrer(Photos.enMemoire(c.photo)); else obtenirPhoto(c.photo).then(montrer);
+    const position = (e) => { const r = img.getBoundingClientRect(); return { x: coord01((e.clientX - r.left) / r.width), y: coord01((e.clientY - r.top) / r.height) }; };
+    /** Poignée déplaçable ; touchée sans être déplacée, elle déclenche `surTouche`. */
+    const poignee = (classe, p, titre, deplacer, surTouche, contenu = '') => {
+      const h = el('button', { type: 'button', classe, style: `left:${p.x * 100}%;top:${p.y * 100}%`, title: titre, 'aria-label': titre, texte: contenu });
+      h.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        h.setPointerCapture(e.pointerId);
+        let bouge = false;
+        const suivre = (ev) => {
+          const q = position(ev);
+          bouge = true;
+          h.style.left = `${q.x * 100}%`;
+          h.style.top = `${q.y * 100}%`;
+          deplacer(q);
+        };
+        const lacher = () => {
+          h.removeEventListener('pointermove', suivre);
+          h.removeEventListener('pointerup', lacher);
+          h.removeEventListener('pointercancel', lacher);
+          if (bouge) marquer(c.id); else surTouche();
+        };
+        h.addEventListener('pointermove', suivre);
+        h.addEventListener('pointerup', lacher);
+        h.addEventListener('pointercancel', lacher);
+      });
+      return h;
+    };
+    z.poly.forEach((p, i) => scene.append(poignee('inv-sommet', p, `Sommet ${i + 1} : glisser pour déplacer, toucher pour retirer`,
+      (q) => { p.x = q.x; p.y = q.y; svg.dessiner(z.poly); }, () => modifier((zz) => { zz.poly.splice(i, 1); }), '')));
+    z.marques.forEach((m, i) => scene.append(poignee('inv-marque gabarit', m, `${libelleCodeVrac(m.code)} : glisser pour déplacer`,
+      (q) => { m.x = q.x; m.y = q.y; }, () => { /* rien : le retrait se fait dans la liste */ }, String(i + 1))));
+    img.addEventListener('click', (e) => {
+      const q = position(e);
+      if (modeZoneVrac === 'zone') {
+        if (z.poly.length >= ZONE_SOMMETS_MAX) return;
+        modifier((zz) => { zz.poly.push(q); });
+      } else if (choixZoneVrac) {
+        const code = choixZoneVrac;
+        choixZoneVrac = '';
+        modifier((zz) => { zz.marques = zz.marques.filter((m) => m.code !== code).concat({ code, x: q.x, y: q.y }); });
+      }
+    });
+    const bouton = (texte, actif, surclick) => el('button', { type: 'button', classe: `cfg-bouton${actif ? ' inv-actif' : ''}`, 'aria-pressed': String(Boolean(actif)), texte, surclick });
+    const modes = el('div', { classe: 'inv-zone-modes' },
+      bouton('1. Tracer la zone', modeZoneVrac === 'zone', () => { modeZoneVrac = 'zone'; rendre({ garderPosition: true }); }),
+      bouton('2. Poser les gommettes', modeZoneVrac === 'gommettes', () => { modeZoneVrac = 'gommettes'; rendre({ garderPosition: true }); }));
+    const aide = [];
+    if (modeZoneVrac === 'zone') {
+      aide.push(el('p', { classe: 'consigne', texte: 'Touchez la photo pour poser les sommets du polygone qui couvre la zone à scanner (3 au minimum). Glissez un sommet pour le déplacer ; touchez-le sans le bouger pour le retirer.' }),
+        el('div', { classe: 'inv-zone-actions' },
+          el('button', { type: 'button', classe: 'cfg-mini', disabled: !z.poly.length, texte: 'Effacer la zone', surclick: () => modifier((zz) => { zz.poly = []; }) })));
+    } else {
+      const placees = new Set(z.marques.map((m) => m.code));
+      const options = [
+        ...appareilsConnus().filter((f) => !f.archive && f.statut !== 'Réformé').map((f) => ({ code: `a:${f.id}`, nom: libelleAppareil(f), groupe: 'Matériel' })),
+        ...Object.values(structure.contenants).filter((x) => !x.supprime && !x.modele && !x.emplacement && x.id !== c.id && x.categorie !== 'primaire' && !dansUnModele(x.id))
+          .map((x) => ({ code: `i:${x.id}`, nom: x.nom, groupe: 'Contenants' })),
+      ].filter((o) => !filtreZoneVrac || cle(o.nom).includes(filtreZoneVrac)).sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { numeric: true }));
+      const liste = el('select', { 'aria-label': 'Élément à placer sur la photo', size: '1', surchange: (e) => { choixZoneVrac = e.target.value; rendre({ garderPosition: true }); } },
+        el('option', { value: '', texte: options.length ? 'Choisir un élément à placer…' : 'Aucun élément ne correspond' }),
+        ...['Matériel', 'Contenants'].map((g) => el('optgroup', { label: g },
+          ...options.filter((o) => o.groupe === g).map((o) => el('option', { value: o.code, selected: o.code === choixZoneVrac, texte: `${placees.has(o.code) ? '✓ ' : ''}${o.nom}` })))));
+      aide.push(el('p', { classe: 'consigne', texte: choixZoneVrac ? `Touchez la photo à l'endroit où se trouve « ${libelleCodeVrac(choixZoneVrac)} ». (Un élément déjà placé est déplacé.)` : 'Choisissez un élément, puis touchez la photo : sa gommette apparaîtra à cet endroit quand il sera scanné. Glissez une gommette pour la déplacer.' }),
+        el('div', { classe: 'champ' }, el('input', { type: 'search', placeholder: 'Filtrer (type, modèle, n°, nom…)', 'aria-label': 'Filtrer les éléments', valeur: filtreZoneVrac,
+          surchange: (e) => { filtreZoneVrac = cle(e.target.value); rendre({ garderPosition: true }); } })),
+        el('div', { classe: 'champ' }, liste),
+        z.marques.length ? el('ul', { classe: 'inv-zone-liste' }, ...z.marques.map((m, i) => el('li', {},
+          el('span', { classe: 'inv-marque gabarit petit', texte: String(i + 1) }), el('span', { texte: libelleCodeVrac(m.code) }),
+          el('button', { type: 'button', classe: 'inv-vrac-retirer', 'aria-label': `Retirer la gommette de ${libelleCodeVrac(m.code)}`, texte: '✕',
+            surclick: () => modifier((zz) => { zz.marques = zz.marques.filter((x) => x.code !== m.code); }) })))) : null);
+    }
+    return el('section', { classe: 'inv-section inv-zone-vrac' },
+      el('h2', { texte: 'Zone à scanner' }),
+      el('p', { classe: 'consigne', texte: 'Le polygone indique à l\'agent ce qu\'il doit scanner ; chaque gommette apparaît, colorée selon l\'état de l\'élément, quand il est scanné.' }),
+      modes, ...aide, cadre);
+  }
+
   /**
    * Écran de scan à la volée : le lecteur reste ouvert, chaque code lu s'ajoute en haut de la liste.
    * Douchette Bluetooth (mode clavier) : le champ garde le focus (sans clavier à l'écran) ; Entrée, Tab ou la fin
@@ -6190,6 +6384,7 @@ const Inventaires = (() => {
     const compte = el('span', { classe: 'inv-vrac-total' });
     const resume = el('div', { classe: 'inv-vrac-resume' });
     const liste = el('ul', { classe: 'inv-vrac-liste inv-vrac-session' });
+    const plan = planVrac(c);
     const champ = el('input', { type: 'text', inputmode: 'none', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'enter',
       classe: 'inv-vrac-champ', 'aria-label': 'N° biomed, n° de série ou code d\'étiquette (douchette ou saisie)', placeholder: 'N° biomed…' });
     const boutonCamera = detecteurDispo ? el('button', { type: 'button', classe: 'inv-vrac-outil', 'aria-pressed': 'false', title: 'Caméra' }) : null;
@@ -6216,6 +6411,7 @@ const Inventaires = (() => {
         annonce(`Retiré : ${x.appareil ? libelleAppareil(x.appareil) : x.code}.`);
         majListe();
       })));
+      if (plan) plan.maj(tous, nouveau);
       if (boutonReprise) boutonReprise.hidden = tous.length > 0;
       ecran.classList.toggle('vide', !tous.length);
       terminerVide = false;
@@ -6417,7 +6613,7 @@ const Inventaires = (() => {
         champ,
         el('button', { type: 'submit', classe: 'inv-vrac-outil', 'aria-label': 'Ajouter ce numéro', texte: '+' })),
       lecture,
-      el('div', { classe: 'inv-vrac-corps' }, resume, liste,
+      el('div', { classe: 'inv-vrac-corps' }, plan ? plan.noeud : null, resume, liste,
         el('p', { classe: 'inv-vrac-vide', texte: 'Ce que vous scannez (appareils, contenants) s\'affichera ici, le dernier en haut.' })),
       liens.length ? el('div', { classe: 'inv-vrac-liens' }, ...liens) : null,
       el('div', { classe: 'camera-actions' }, fermerBouton, terminer));
@@ -7145,6 +7341,7 @@ const Inventaires = (() => {
         estVrac(c) ? el('p', { classe: 'note-parc', texte: 'Inventaire libre : en check-list, l\'agent scanne le matériel présent (pas de liste attendue). Réglage dans l\'onglet « Réglages ».' }) : null,
         c.clAmbulancier ? el('p', { classe: 'note-parc', texte: 'Vérifié par la check-list ambulancier du véhicule (réglage dans « Réglages »).' }) : null,
         blocPhoto(c, fils),
+        blocZoneVrac(c),
         ...[].concat(blocEnfants(c, fils)),
         c.emplacement ? null : blocArticles(c),
       ];
