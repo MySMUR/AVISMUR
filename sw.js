@@ -1,11 +1,11 @@
 // À incrémenter à chaque mise à jour, avec les ?v= de index.html.
-const CACHE = 'avismur-v357';
+const CACHE = 'avismur-v358';
 const FICHIERS = [
-  './', 'index.html', 'focus-garde.js?v=1', 'style.css?v=142', 'app.js?v=73', 'simulation.js?v=5', 'regulation.js?v=14', 'desarmement.js?v=8', 'config.js?v=6', 'checklists.js?v=14', 'ambulancier.js?v=31', 'actions.js?v=15', 'config-admin.js?v=7', 'utilisateurs.js?v=12', 'parc.js?v=10', 'compteur.js?v=5', 'traceurs.js?v=1', 'inventaires.js?v=101', 'infos.js?v=13', 'materiel.js?v=42', 'profil.js?v=6', 'annuaire.js?v=3', 'fluides.js?v=1', 'meteo.js?v=1', 'lib/qrcode.js?v=1', 'lib/barcode-polyfill.js?v=1', 'lib/jsQR.js?v=1', 'recadrage.js?v=4', 'detourage.js?v=3', 'camera.js?v=1', 'scannette.js?v=2', 'cible-nfc.js?v=2', 'lib/pannellum.js?v=1', 'lib/pannellum.css?v=1', 
+  './', 'index.html', 'focus-garde.js?v=1', 'style.css?v=143', 'app.js?v=73', 'simulation.js?v=5', 'regulation.js?v=14', 'desarmement.js?v=8', 'config.js?v=6', 'checklists.js?v=14', 'ambulancier.js?v=31', 'actions.js?v=15', 'config-admin.js?v=7', 'utilisateurs.js?v=12', 'parc.js?v=10', 'compteur.js?v=5', 'traceurs.js?v=1', 'inventaires.js?v=102', 'infos.js?v=13', 'materiel.js?v=42', 'profil.js?v=6', 'annuaire.js?v=3', 'fluides.js?v=1', 'meteo.js?v=1', 'lib/qrcode.js?v=1', 'lib/barcode-polyfill.js?v=1', 'lib/jsQR.js?v=1', 'recadrage.js?v=4', 'detourage.js?v=3', 'camera.js?v=1', 'scannette.js?v=2', 'cible-nfc.js?v=2', 'lib/pannellum.js?v=1', 'lib/pannellum.css?v=1', 
   'manifest.webmanifest',
   'img/logo-smur.png', 'img/logo-cha.png', 'img/icon-192.png', 'img/icon-512.png', 'img/icon-maskable-512.png',
   'img/vues/jumpy_gauche.svg', 'img/vues/jumpy_droite.svg', 'img/vues/jumpy_avant.svg', 'img/vues/jumpy_arriere.svg',
-  'img/vues/jaune_gauche.jpg', 'img/vues/jaune_droite.jpg', 'img/vues/jaune_avant.jpg', 'img/vues/jaune_arriere.jpg',
+  'img/vues/jaune_gauche.jpg', 'img/vues/jaune_droite.jpg', 'img/vues/jaune_avant.jpg', 'img/vues/jaune_arriere.jpg', 'img/scopes/tempus-pro.jpg',
 ];
 
 self.addEventListener('install', (e) => {

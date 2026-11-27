@@ -1884,6 +1884,8 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .inv-type.choisi { border-color: var(--bleu); background: var(--ciel); box-shadow: 0 0 0 3px rgb(29 79 159 / 0.2); }
 .inv-type-photo { display: grid; place-items: center; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 10px; background: var(--ciel); color: var(--gris); font-size: 0.85rem; }
 .inv-type-photo img { width: 100%; height: 100%; object-fit: cover; }
+.inv-type-photo-famille { background: #fff; }
+.inv-type-photo-famille img { object-fit: contain; }
 .inv-type small { color: var(--gris); }
 .inv-alerte-nom { margin: 0.4rem 0; padding: 0.5rem 0.7rem; border-radius: 10px; background: #fff4e0; color: #7a4b00; }
 .inv-alerte-nom .cfg-bouton { margin-left: 0.3rem; }

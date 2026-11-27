@@ -23,6 +23,8 @@ Pour chaque configuration, photographier l'ensemble Pro + LS monté :
 | Standard      | ☐ | ☐ | ☐ |
 | Hélico        | ✅ `img/scopes/tempus-pro-helico.jpg` | ☐ | ☐ |
 
+Vignette de la famille « Tempus Pro » (écran de choix du modèle, avant US / UK / standard / hélico) : `img/scopes/tempus-pro.jpg`.
+
 ### Tempus LS seul (housse du LS)
 
 Le LS des configurations **US** et **UK** est dans la même housse

@@ -3698,6 +3698,17 @@ const Inventaires = (() => {
   /** Photo d'un modèle : sa vignette (ex. scope dans sa housse, de face), sinon sa photo d'inventaire. */
   function photoModele(t) {
     const image = el('span', { classe: 'inv-type-photo', 'aria-hidden': 'true' });
+    return remplirPhoto(image, t);
+  }
+  /** Images propres à une famille de modèles (clé = nom de la famille), affichées avant le choix de la configuration. */
+  const IMAGES_FAMILLES = { 'tempus pro': 'img/scopes/tempus-pro.jpg' };
+  /** Vignette d'une famille (ex. « Tempus Pro ») : son image dédiée si elle existe, sinon la photo de sa première configuration. */
+  function photoFamille(g) {
+    const src = IMAGES_FAMILLES[cle(g.nom)];
+    if (!src) return photoModele(g.types[0]);
+    return el('span', { classe: 'inv-type-photo inv-type-photo-famille', 'aria-hidden': 'true' }, el('img', { src, alt: '' }));
+  }
+  function remplirPhoto(image, t) {
     const imageType = t.vignette || t.photo;
     if (imageType) {
       const mettre = (d) => { if (d) image.append(el('img', { src: d, alt: '' })); };
@@ -3743,7 +3754,7 @@ const Inventaires = (() => {
         if (g.types.length === 1) return boutonType(g.types[0], g.types[0].nom);
         return el('button', { type: 'button', classe: 'inv-type inv-type-famille', 'aria-label': `${g.nom} : choisir la configuration`,
           surclick: () => { familleChoisie = g.cle; typeChoisi = ''; rendre({ garderPosition: true }); } },
-          photoModele(g.types[0]), el('strong', { texte: g.nom }), el('small', { texte: `${g.types.length} configurations ›` }));
+          photoFamille(g), el('strong', { texte: g.nom }), el('small', { texte: `${g.types.length} configurations ›` }));
       })),
       el('p', { classe: 'aide-question', texte: aide }));
   }
