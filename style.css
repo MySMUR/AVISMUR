@@ -3799,3 +3799,6 @@ button.inv-marque-perso:hover { background: #FFF1E0; }
 .inv-hs .inv-marque { left: 0 !important; top: 0 !important; }
 .inv-hs .inv-zone-etiquette { left: 0 !important; top: 0 !important; pointer-events: none; width: max-content; }
 .inv-hs.inv-hs-zone { pointer-events: none; }
+/* Éditeur de zone : les poignées placées au bord de la photo ne sont plus coupées */
+.inv-photo.inv-zone-editeur { overflow: visible; }
+.inv-zone-editeur img { border-radius: var(--rayon); }
