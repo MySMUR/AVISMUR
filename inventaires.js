@@ -2338,7 +2338,22 @@ const Inventaires = (() => {
       cadre.querySelector('.inv-photo-attente').remove();
       const g = geometriePanorama(vc.immersif, image.naturalWidth, image.naturalHeight);
       const hotSpots = [];
+      const zonesLibres = [];
       vc.points.forEach((p) => {
+        // Sous-inventaire libre avec une zone sur cette vue : la zone remplace la gommette.
+        const enfantLibre = fils.find((f) => f.id === p.cible);
+        if (enfantLibre && zoneVracAffichee(enfantLibre, vc)) {
+          zonesLibres.push(enfantLibre);
+          const zl = enfantLibre.zoneVrac;
+          const centre = centreZone(zl.poly);
+          hotSpots.push({ ...versAngles(centre, g), cssClass: 'inv-hs inv-hs-zone', createTooltipFunc: (div) => div.append(etiquetteZoneVrac(enfantLibre, 0, 0)) });
+          if (!edition && verifDuJour(enfantLibre.id) && etat.verifs[enfantLibre.id]) {
+            elementsMarques(zl, itemsDeVerif(etat.verifs[enfantLibre.id])).paires.forEach(({ marque, m }) => {
+              hotSpots.push({ ...versAngles(m, g), cssClass: 'inv-hs', createTooltipFunc: (div) => div.append(marque) });
+            });
+          }
+          return;
+        }
         const pastille = creerPastille(c, vc, p, fils, 'left:0;top:0;');
         if (!pastille) return;
         if (edition) appuiLong(pastille, () => { placement = p.cible; rendre({ garderPosition: true }); });
@@ -2362,6 +2377,7 @@ const Inventaires = (() => {
           textureSizeError: 'Image trop grande pour cet appareil.', unknownError: 'Erreur d\'affichage.' },
       });
       visionneuse = { viewer, cle };
+      if (zonesLibres.length) superposerZones(cadre, viewer, g, zonesLibres);
       // Gestion : un toucher bref (sans faire pivoter) pose la gommette ou la flèche en cours de placement.
       if (edition) {
         let depart = null;
@@ -6204,14 +6220,17 @@ const Inventaires = (() => {
   function elementsMarques(z, tous, nouveau = '') {
     let sans = 0;
     const elements = [];
+    const paires = [];
     tous.forEach((x) => {
       const m = z.marques.find((y) => y.code === cleItem(x));
       if (!m) { sans += 1; return; }
       const col = couleurVrac(x);
-      elements.push(el('span', { classe: `inv-marque ${col}${x.id === nouveau ? ' nouveau' : ''}`, style: `left:${m.x * 100}%;top:${m.y * 100}%`,
-        title: `${nomVrac(x)} : ${LIBELLES_COULEUR_VRAC[col]}`, role: 'img', 'aria-label': `${nomVrac(x)} : ${LIBELLES_COULEUR_VRAC[col]}`, texte: GLYPHES_VRAC[col] }));
+      const marque = el('span', { classe: `inv-marque ${col}${x.id === nouveau ? ' nouveau' : ''}`, style: `left:${m.x * 100}%;top:${m.y * 100}%`,
+        title: `${nomVrac(x)} : ${LIBELLES_COULEUR_VRAC[col]}`, role: 'img', 'aria-label': `${nomVrac(x)} : ${LIBELLES_COULEUR_VRAC[col]}`, texte: GLYPHES_VRAC[col] });
+      elements.push(marque);
+      paires.push({ marque, m });
     });
-    return { elements, sans };
+    return { elements, sans, paires };
   }
   /** Calque SVG du polygone (coordonnées 0-100, étiré sur la photo). */
   function svgZone(poly) {
@@ -6289,6 +6308,92 @@ const Inventaires = (() => {
 
   /** La zone du sous-inventaire libre `x` remplace sa gommette sur cette vue de la photo du parent. */
   const zoneVracAffichee = (x, vc) => estVrac(x) && Boolean(x.zoneVrac) && x.zoneVrac.poly.length >= 3 && (x.zoneVrac.vue || '') === vc.cle;
+  const centreZone = (poly) => ({ x: poly.reduce((t, p) => t + p.x, 0) / poly.length, y: poly.reduce((t, p) => t + p.y, 0) / poly.length });
+  /** Nom de la zone et consigne, au centre du polygone. */
+  function etiquetteZoneVrac(x, cx, cy) {
+    const fait = Boolean(verifDuJour(x.id));
+    return el('span', { classe: 'inv-zone-etiquette', style: `left:${cx * 100}%;top:${cy * 100}%`, 'aria-hidden': 'true' },
+      el('strong', { texte: x.nom }), el('small', { texte: edition ? 'Toucher pour ouvrir' : (fait ? 'Relevé fait · toucher pour refaire' : 'Toucher pour scanner la zone') }));
+  }
+  /** Action d'une zone touchée : ouvrir le sous-inventaire (gestion) ou lancer le scan (check-list). */
+  function agirZoneVrac(x) { if (placement) return; if (edition) aller(x.id); else sessionVrac(x); }
+  const dansPolygone = (pt, poly) => {
+    let dedans = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      if ((poly[i].y > pt.y) !== (poly[j].y > pt.y) && pt.x < ((poly[j].x - poly[i].x) * (pt.y - poly[i].y)) / (poly[j].y - poly[i].y) + poly[i].x) dedans = !dedans;
+    }
+    return dedans;
+  };
+  /**
+   * Vue immersive : les zones sont dessinées sur un calque transparent, reprojeté à chaque mouvement de la vue
+   * (projection en perspective, bords découpés en petits segments pour rester justes). Un toucher bref dans une zone l'active.
+   */
+  function superposerZones(cadre, viewer, g, zones) {
+    const canvas = el('canvas', { classe: 'inv-zone-canvas', 'aria-hidden': 'true' });
+    cadre.append(canvas);
+    const rad = Math.PI / 180;
+    const vecteur = (yaw, pitch) => [Math.sin(yaw * rad) * Math.cos(pitch * rad), Math.sin(pitch * rad), Math.cos(yaw * rad) * Math.cos(pitch * rad)];
+    const produit = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let dernier = '';
+    const dessiner = () => {
+      if (!canvas.isConnected) return; // l'écran a changé : on s'arrête
+      requestAnimationFrame(dessiner);
+      const w = cadre.clientWidth;
+      const h = cadre.clientHeight;
+      if (!w || !h) return;
+      let yaw; let pitch; let hfov;
+      try { yaw = viewer.getYaw(); pitch = viewer.getPitch(); hfov = viewer.getHfov(); } catch (e) { return; }
+      const etatVue = `${w}|${h}|${yaw.toFixed(3)}|${pitch.toFixed(3)}|${hfov.toFixed(2)}`;
+      if (etatVue === dernier) return;
+      dernier = etatVue;
+      const dpr = window.devicePixelRatio || 1;
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      const avant = vecteur(yaw, pitch);
+      const droite = [Math.cos(yaw * rad), 0, -Math.sin(yaw * rad)];
+      const haut = [-Math.sin(pitch * rad) * Math.sin(yaw * rad), Math.cos(pitch * rad), -Math.sin(pitch * rad) * Math.cos(yaw * rad)];
+      const focale = (w / 2) / Math.tan((hfov * rad) / 2);
+      zones.forEach((x) => {
+        const poly = x.zoneVrac.poly;
+        const points = [];
+        for (let i = 0; i < poly.length; i++) {
+          const a = poly[i]; const b = poly[(i + 1) % poly.length];
+          for (let k = 0; k < 10; k++) {
+            const t = k / 10;
+            const ang = versAngles({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, g);
+            const v = vecteur(ang.yaw, ang.pitch);
+            const z = produit(v, avant);
+            if (z > 0.05) points.push([w / 2 + (focale * produit(v, droite)) / z, h / 2 - (focale * produit(v, haut)) / z]);
+          }
+        }
+        if (points.length < 3) return;
+        const fait = Boolean(verifDuJour(x.id));
+        ctx.beginPath();
+        points.forEach(([px, py], i) => { if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); });
+        ctx.closePath();
+        ctx.fillStyle = fait ? 'rgba(46,158,91,0.28)' : 'rgba(30,110,255,0.28)';
+        ctx.fill();
+        ctx.setLineDash([7, 4]);
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = fait ? '#2e9e5b' : '#1e6eff';
+        ctx.stroke();
+      });
+    };
+    requestAnimationFrame(dessiner);
+    // Toucher bref (sans faire pivoter la vue) dans une zone : l'active.
+    let depart = null;
+    cadre.addEventListener('pointerdown', (e) => { depart = { x: e.clientX, y: e.clientY }; });
+    cadre.addEventListener('pointerup', (e) => {
+      if (placement || !depart || Math.hypot(e.clientX - depart.x, e.clientY - depart.y) > 8) return;
+      if (e.target.closest('.inv-hs, .pnlm-controls-container')) return;
+      const [pitch, yaw] = viewer.mouseEventToCoords(e);
+      const pt = versPosition(pitch, yaw, g);
+      const touchee = zones.find((x) => dansPolygone(pt, x.zoneVrac.poly));
+      if (touchee) agirZoneVrac(touchee);
+    });
+  }
   /**
    * Zone cliquable posée sur la photo du contenant parent : en check-list, elle lance le scan de tout ce qu'elle couvre ;
    * les gommettes des éléments scannés aujourd'hui y apparaissent. En gestion, elle ouvre le sous-inventaire.
@@ -6299,7 +6404,7 @@ const Inventaires = (() => {
     const calque = el('div', { classe: `inv-zone-calque${fait ? ' fait' : ''}${placement ? ' passif' : ''}` });
     const svg = svgZone(z.poly);
     const forme = svg.querySelector('polygon');
-    const agir = () => { if (placement) return; if (edition) aller(x.id); else sessionVrac(x); };
+    const agir = () => agirZoneVrac(x);
     forme.setAttribute('class', 'inv-zone-poly cliquable');
     forme.setAttribute('role', 'button');
     forme.setAttribute('tabindex', '0');
@@ -6308,8 +6413,7 @@ const Inventaires = (() => {
     forme.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); agir(); } });
     const cx = z.poly.reduce((t, p) => t + p.x, 0) / z.poly.length;
     const cy = z.poly.reduce((t, p) => t + p.y, 0) / z.poly.length;
-    calque.append(svg, el('span', { classe: 'inv-zone-etiquette', style: `left:${cx * 100}%;top:${cy * 100}%`, 'aria-hidden': 'true' },
-      el('strong', { texte: x.nom }), el('small', { texte: edition ? 'Toucher pour ouvrir' : (fait ? 'Relevé fait · toucher pour refaire' : 'Toucher pour scanner la zone') })));
+    calque.append(svg, etiquetteZoneVrac(x, cx, cy));
     if (fait && etat.verifs[x.id]) calque.append(...elementsMarques(z, itemsDeVerif(etat.verifs[x.id])).elements);
     return calque;
   }
@@ -6321,6 +6425,7 @@ const Inventaires = (() => {
   function blocZoneVrac(c) {
     if (!estVrac(c)) return null;
     const src = sourceZoneVrac(c);
+    const panorama = Boolean(src && src.parent && (vuesDe(src.parent).find((v) => v.cle === src.cle) || {}).immersif);
     if (!src) {
       return el('section', { classe: 'inv-section inv-zone-vrac' }, el('h2', { texte: 'Zone à scanner' }),
         el('p', { classe: 'consigne', texte: c.parent ? 'Placez d\'abord la gommette de ce sous-inventaire sur la photo du contenant parent : vous pourrez ensuite y tracer la zone à scanner, qui remplacera la gommette.' : 'Ajoutez d\'abord une photo de la zone (bloc « Photo » ci-dessus) : vous pourrez ensuite y tracer le polygone à scanner.' }));
@@ -6408,6 +6513,7 @@ const Inventaires = (() => {
     return el('section', { classe: 'inv-section inv-zone-vrac' },
       el('h2', { texte: 'Zone à scanner' }),
       el('p', { classe: 'consigne', texte: `${src.parent ? `Photo du contenant « ${src.parent.nom} ». ` : ''}Une fois tracée, la zone remplace la gommette de ce sous-inventaire sur la photo : l'agent la touche pour scanner tout ce qu'elle couvre, et chaque gommette apparaît, colorée selon l'état de l'élément, quand il est scanné.` }),
+      panorama ? el('p', { classe: 'aide-question', texte: 'Vue immersive : la photo est affichée « déroulée » (à plat). Le tracé se retrouve tel quel dans la vue immersive.' }) : null,
       modes, ...aide, cadre);
   }
 

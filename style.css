@@ -3793,3 +3793,9 @@ button.inv-marque-perso:hover { background: #FFF1E0; }
 .inv-zone-calque .inv-zone-poly.cliquable:hover, .inv-zone-calque .inv-zone-poly.cliquable:focus-visible { fill: rgba(30, 110, 255, 0.4); outline: none; }
 .inv-zone-etiquette { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; max-width: 80%; text-align: center; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9); line-height: 1.15; }
 .inv-zone-etiquette small { font-size: 0.75rem; opacity: 0.95; }
+
+/* Zone d'un sous-inventaire libre dans une vue immersive : calque dessiné et étiquette en point d'accroche */
+.inv-zone-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.inv-hs .inv-marque { left: 0 !important; top: 0 !important; }
+.inv-hs .inv-zone-etiquette { left: 0 !important; top: 0 !important; pointer-events: none; width: max-content; }
+.inv-hs.inv-hs-zone { pointer-events: none; }
