@@ -538,7 +538,7 @@ const Inventaires = (() => {
   /** Appareils proposés pour un matériel attendu : ceux du type demandé (tous si aucun type). */
   const appareilsPour = (a) => appareilsConnus().filter((x) => !a.typeMateriel || cle(x.type) === cle(a.typeMateriel));
   /** « Scope Corpuls3 n° 2 » : type, modèle puis n° interne SMUR. */
-  const libelleAppareil = (x, num = x.numInterne) => [x.type || 'Appareil', x.modele, num && `n° ${num}`].filter(Boolean).join(' ');
+  const libelleAppareil = (x, num = x.numInterne) => [x.type || 'Appareil', x.modele, num && `n° ${num}`, x.pret && `(${x.pret})`].filter(Boolean).join(' ');
   /** Appareil de la base correspondant à la valeur relevée (n° interne SMUR, sinon n° de série). */
   function appareilDe(a, v) {
     const t = cle(String(v || ''));
@@ -547,14 +547,15 @@ const Inventaires = (() => {
     // N° interne propre à chaque modèle : deux appareils du même type peuvent porter le même n° (Osiris 3 n° 1, Monnal n° 1).
     const parNum = liste.filter((x) => x.numInterne && cle(x.numInterne) === t);
     return (parNum.length === 1 ? parNum[0] : null) || liste.find((x) => x.numSerie && cle(x.numSerie) === t)
-      || liste.find((x) => x.numBiomed && cle(x.numBiomed) === t) || null;
+      || liste.find((x) => x.numBiomed && cle(x.numBiomed) === t)
+      || liste.find((x) => x.pret && cle(x.pret).replace(/ /g, '') === t.replace(/ /g, '')) || null;
   }
   /** Valeur inscrite pour un appareil : son n° interne s'il est le seul de ce type à le porter, sinon son n° de série ou biomed. */
   function codeAppareil(a, x) {
     const liste = a ? appareilsPour(a) : appareilsConnus().filter((y) => cle(y.type) === cle(x.type));
     const n = x.numInterne;
     if (n && liste.filter((y) => y.numInterne && cle(y.numInterne) === cle(n)).length <= 1) return String(n);
-    return String(x.numSerie || x.numBiomed || n || '');
+    return String(x.numSerie || x.numBiomed || n || x.pret || '');
   }
   /** Évalue une valeur relevée : { ok, rempli }. */
   function evaluer(a, v) {
@@ -5887,7 +5888,7 @@ const Inventaires = (() => {
     return (Materiel.identifier && Materiel.identifier(t)) || appareilsConnus().find((x) => x.id === t) || null;
   }
   /** Valeur gardée pour un appareil reconnu : la plus lisible de celles qui l'identifient sans ambiguïté. */
-  const valeurAppareil = (x) => String(x.numBiomed || x.numSerie || x.id);
+  const valeurAppareil = (x) => String(x.numBiomed || x.numSerie || x.pret || x.id);
   
   const avecAppareil = (code) => ({ code, appareil: appareilParCode(code) });
   const cleItem = (x) => (x.appareil ? `a:${x.appareil.id}` : `c:${cleCode(x.code)}`);

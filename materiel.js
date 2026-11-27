@@ -3094,6 +3094,10 @@ const Materiel = (() => {
       const liste = fiches().sort((a, b) => Number(!enService(a)) - Number(!enService(b)));
       const lien = t.match(/#mat=([a-z0-9]{6,20})/);
       if (lien) return liste.find((f) => f.id === lien[1]) || null;
+      // Référence de prêt (QR code / puce « #pret=PRET03 », ou « PRÊT 03 » saisi) : le matériel actuellement prêté sous cette référence.
+      const lienPret = t.match(/#pret=([A-Za-z0-9]{3,12})/);
+      const refPret = lienPret ? refDuCode(lienPret[1]) : references().find((r) => normaliser(r).replace(/\s+/g, '') === normaliser(t).replace(/\s+/g, '')) || null;
+      if (lienPret || refPret) return (refPret && liste.find((f) => f.pret === refPret && !f.archive)) || null;
       const n = normaliser(t);
       return liste.find((f) => (f.numBiomed && normaliser(f.numBiomed) === n) || (f.numSerie && normaliser(f.numSerie) === n))
         || liste.find((f) => (f.numBiomed && n.includes(normaliser(`Biomed ${f.numBiomed}`))) || (f.numSerie && n.includes(normaliser(`S/N ${f.numSerie}`))))
@@ -3102,7 +3106,7 @@ const Materiel = (() => {
     /** Appareils en service (ni archivés ni réformés), pour le choix « dans la liste » d'un matériel attendu en inventaire. */
     appareils() {
       return fiches().filter(enService)
-        .map((f) => ({ id: f.id, type: f.type || '', modele: f.modele || '', numInterne: f.numInterne || '', numSerie: f.numSerie || '', numBiomed: f.numBiomed || '' }));
+        .map((f) => ({ id: f.id, type: f.type || '', modele: f.modele || '', numInterne: f.numInterne || '', numSerie: f.numSerie || '', numBiomed: f.numBiomed || '', pret: f.pret || '' }));
     },
     /** Types d'appareils connus (types par défaut + types utilisés dans la base). */
     types() {
