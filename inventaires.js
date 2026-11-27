@@ -3620,6 +3620,22 @@ const Inventaires = (() => {
     return [...groupes.values()];
   }
   /**
+   * Appareil scanné qui désigne ce contenant : le contrôle « Matériel attendu » du contenant reçoit son n° sans nouveau scan, s'il est de ce type et vide. Jamais d'écrasement d'une valeur saisie.
+   */
+  function preRemplirMateriel(c, appareil) {
+    if (!c || !appareil) return;
+    const b = brouillon(c);
+    let change = false;
+    aCocher(c).filter((a) => a.controle === 'materiel').forEach((a) => {
+      if (String(b.valeurs[a.id] || '').trim()) return;
+      if (a.typeMateriel && cle(appareil.type) !== cle(a.typeMateriel)) return;
+      if (a.attendu && cle(appareil.numInterne) !== cle(String(a.attendu))) return;
+      b.valeurs[a.id] = codeAppareil(a, appareil);
+      change = true;
+    });
+    if (change) sauverBrouillons();
+  }
+  /**
    * Contenant lié à un appareil du suivi du matériel (ex. Schiller vissé dans sa housse) : scanner l'étiquette
    * biomed ou la puce de l'appareil désigne alors le contenant. Lien fort : le contenant porte un contrôle
    * « Matériel attendu » dont le n° désigne cet appareil. À défaut, par le nom : n° interne SMUR dans le nom du
@@ -3711,6 +3727,7 @@ const Inventaires = (() => {
     // Appareil reconnu mais sans contenant lié : le contenant choisi ensuite lui est rattaché (mémorisé sur l'appareil).
     let appareilEnAttente = null;
     const choisir = (id) => {
+      const x = appareilEnAttente;
       if (appareilEnAttente) {
         const liens = lireJson(CLE_LIENS_APPAREILS, {});
         liens[appareilEnAttente.id] = id;
@@ -3720,6 +3737,7 @@ const Inventaires = (() => {
         appareilEnAttente = null;
       }
       confirmerIdentification(y, id, dans);
+      if (x) preRemplirMateriel(contenant(id), x);
     };
     const champ = idChamp();
     const resultats = el('ul', { classe: 'inv-liste inv-resultats-recherche' });
@@ -3758,7 +3776,7 @@ const Inventaires = (() => {
       if (!r) return null;
       if (!r.c && !mobiles.length) return () => messageVue(`${libelleAppareil(r.appareil)} reconnu, mais aucun contenant n'existe pour ce modèle : un administrateur doit d'abord créer l'exemplaire (Gestion des inventaires › inventaire type › Exemplaires, nom « ${r.appareil.pret || r.appareil.numInterne || 'n° de l\'appareil'} »).`, 'erreur');
       if (!r.c) return () => { appareilEnAttente = r.appareil; messageVue(`${libelleAppareil(r.appareil)} reconnu, mais aucun contenant ici ne lui est rattaché : choisissez le contenant dans la liste : il sera retenu pour cet appareil.`, 'erreur'); };
-      return () => choisir(r.c.id);
+      return () => { choisir(r.c.id); preRemplirMateriel(r.c, r.appareil); };
     };
     // Même type d'abord : exemplaires du même contenant d'inventaire type, puis noms proches.
     const memeType = (c) => (emp ? true : y ? (y.source && c.source === y.source) || cle(c.nom).replace(/\d+|n°/g, '').trim() === cle(y.nom).replace(/\d+|n°/g, '').trim() : Boolean(c.desaffecte));
@@ -3767,7 +3785,7 @@ const Inventaires = (() => {
       // N° biomed ou de série saisi (ou douchette) : contenant de l'appareil en tête de liste.
       const r = String(texte || '').trim().length >= 3 ? parAppareil(texte) : null;
       if (r && r.c) {
-        resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => choisir(r.c.id) },
+        resultats.append(el('li', {}, el('button', { type: 'button', classe: 'inv-resultat', surclick: () => { choisir(r.c.id); preRemplirMateriel(r.c, r.appareil); } },
           el('strong', { texte: r.c.nom }), el('small', { texte: `${libelleAppareil(r.appareil)} reconnu` }))));
       }
       const mots = cle(texte).split(' ').filter(Boolean);
