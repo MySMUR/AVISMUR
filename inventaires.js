@@ -23,7 +23,7 @@ const Inventaires = (() => {
   const ID = /^[a-z0-9]{6,16}$/;
   // Version attendue de Inventaires.gs (VERSION_INVENTAIRES) : en dessous, des champs récents
   // (catégorie, vues, inventaires types, désaffectation…) seraient perdus à l'enregistrement.
-  const VERSION_SERVEUR = 32;
+  const VERSION_SERVEUR = 33;
   let versionServeur = null;
   const PHOTO_MAX = 1500000; // caractères base64 acceptés par le serveur
 
@@ -122,6 +122,7 @@ const Inventaires = (() => {
   function ecrireJson(cle, valeur) {
     try { localStorage.setItem(cle, JSON.stringify(valeur)); return true; } catch (e) { return false; }
   }
+  const CLE_LIENS_APPAREILS = 'avismur_liens_appareils';
   const sauverStructure = () => ecrireJson(CLE_STRUCTURE, structure);
   const sauverEtat = () => ecrireJson(CLE_ETAT, etat);
   const sauverModifs = () => ecrireJson(CLE_MODIFS, modifs);
@@ -1154,6 +1155,12 @@ const Inventaires = (() => {
     synchro.serveurInconnu = false;
     versionServeur = Number(rep.version) || 0;
     if (typeof Desarmement !== 'undefined') Desarmement.majServeur(rep.armement, rep.desarmements);
+    // Liens appareil → contenant partagés (serveur v33) ; ce qui n'est pas encore envoyé de cet appareil prime.
+    if (rep.liensAppareils && typeof rep.liensAppareils === 'object') {
+      const liens = { ...rep.liensAppareils };
+      App.fileAttente().filter((e) => e.action === 'lierAppareilContenant').forEach((e) => { if (e.contenant) liens[e.appareil] = e.contenant; else delete liens[e.appareil]; });
+      ecrireJson(CLE_LIENS_APPAREILS, liens);
+    }
     supprimesServeur = (Array.isArray(rep.supprimes) ? rep.supprimes : []).filter((c) => c && ID.test(c.id));
     const contenants = {};
     rep.contenants.forEach((c) => {
@@ -3622,7 +3629,7 @@ const Inventaires = (() => {
   function contenantDeAppareil(appareil, candidats) {
     if (!appareil) return null;
     // Lien choisi à la main (ex. matériel de prêt sans n° interne) : le contenant désigné, s'il est proposé ici.
-    const manuel = candidats.find((c) => c.id === lireJson('avismur_liens_appareils', {})[appareil.id]);
+    const manuel = candidats.find((c) => c.id === lireJson(CLE_LIENS_APPAREILS, {})[appareil.id]);
     if (manuel) return manuel;
     const lies = candidats.filter((c) => c.articles.some((a) => a.controle === 'materiel' && a.attendu
       && (appareilDe(a, a.attendu) || {}).id === appareil.id));
@@ -3699,9 +3706,11 @@ const Inventaires = (() => {
     let appareilEnAttente = null;
     const choisir = (id) => {
       if (appareilEnAttente) {
-        const liens = lireJson('avismur_liens_appareils', {});
+        const liens = lireJson(CLE_LIENS_APPAREILS, {});
         liens[appareilEnAttente.id] = id;
-        ecrireJson('avismur_liens_appareils', liens);
+        ecrireJson(CLE_LIENS_APPAREILS, liens);
+        // Partagé avec tous les appareils : envoyé au serveur (mis en file hors réseau).
+        App.mettreEnFile({ action: 'lierAppareilContenant', appareil: appareilEnAttente.id, contenant: id });
         appareilEnAttente = null;
       }
       confirmerIdentification(y, id, dans);
