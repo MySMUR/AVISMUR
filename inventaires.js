@@ -2870,8 +2870,12 @@ const Inventaires = (() => {
     const ligne = el('div', { classe: 'inv-ligne' }, el('span', { classe: 'inv-pastille-controle', 'aria-hidden': 'true' }), etiquette);
     const etat_ = () => {
       const e = evaluer(a, val());
-      li.classList.toggle('controle-ok', e.ok);
-      li.classList.toggle('controle-anomalie', e.rempli && !e.ok);
+      // Oui/Non facultatif : Oui en vert, Non en gris (jamais rouge, l'absence n'est pas une anomalie).
+      const facOui = a.controle === 'oui' && estFacultatif(a);
+      li.classList.toggle('controle-ok', facOui ? val() === 'Oui' : e.ok);
+      li.classList.toggle('controle-anomalie', !facOui && e.rempli && !e.ok);
+      li.classList.toggle('controle-facultatif-oui', facOui && val() === 'Oui');
+      li.classList.toggle('controle-facultatif-non', facOui && val() === 'Non');
     };
     const poser = (v) => { b.valeurs[a.id] = v; etat_(); modifie(); };
     // Coche « reprendre le n° de la dernière check-list » : visible tant que le champ est vide.

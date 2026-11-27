@@ -1933,6 +1933,10 @@ body.connecte .feuille:has(#zone-inventaires:not([hidden]) .inv-tb) { max-width:
 .inv-oui-non, .inv-batterie4 { display: inline-flex; gap: 0.25rem; margin-left: auto; }
 .inv-oui-non [aria-pressed="true"], .inv-batterie4 [aria-pressed="true"] { background: var(--bleu, #1565c0); color: #fff; }
 .inv-controle.controle-anomalie .inv-oui-non [aria-pressed="true"] { background: #c62828; }
+/* Oui/Non facultatif : Oui en vert, Non en gris. */
+.inv-controle.controle-facultatif-oui .inv-oui-non [aria-pressed="true"] { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+.inv-controle.controle-facultatif-non .inv-pastille-controle { background: #8a8f98; border-color: #8a8f98; }
+.inv-controle.controle-facultatif-non .inv-oui-non [aria-pressed="true"] { background: #8a8f98; border-color: #8a8f98; color: #fff; }
 .inv-ajout-controle { position: relative; }
 .inv-ajout-controle > summary { list-style: none; cursor: pointer; }
 .inv-ajout-controle > summary::-webkit-details-marker { display: none; }
