@@ -7848,6 +7848,24 @@ const Inventaires = (() => {
       document.head.append(x);
     });
   }
+  /**
+   * Modèle Word institutionnel : gardé sur le serveur (il n'est pas dans l'appli publique), demandé à la première
+   * utilisation puis conservé sur l'appareil pour l'export hors ligne.
+   */
+  const CLE_MODELE_WORD = 'avismur_modele_word';
+  async function modeleWord() {
+    let b64 = '';
+    try {
+      const rep = await App.appeler('lireModeleWord');
+      if (rep && rep.ok && rep.modele) {
+        b64 = rep.modele;
+        try { localStorage.setItem(CLE_MODELE_WORD, b64); } catch (e) { /* stockage plein : on s'en passe */ }
+      }
+    } catch (e) { /* hors ligne : modèle gardé sur l'appareil */ }
+    if (!b64) { try { b64 = localStorage.getItem(CLE_MODELE_WORD) || ''; } catch (e) { b64 = ''; } }
+    if (!b64) throw new Error('modèle indisponible : ouvrez l\'export une fois avec du réseau (serveur à jour ?)');
+    return Uint8Array.from(atob(b64), (x) => x.charCodeAt(0));
+  }
   /** Libellé d'une ligne du listing (même rédaction que la liste papier). */
   function libelleListing(a) {
     if (a.separateur) return { texte: a.nom };
@@ -7863,10 +7881,8 @@ const Inventaires = (() => {
     if (bouton) { bouton.disabled = true; bouton.textContent = 'Génération du Word…'; }
     try {
       await Promise.all([chargerScript('lib/jszip.min.js?v=1'), chargerScript('lib/listing-word.js?v=1')]);
-      const reponse = await fetch('modeles/modele-documents-divers-portrait.dotx?v=1');
-      if (!reponse.ok) throw new Error('modèle introuvable');
       const octets = await ListingWord.generer({
-        JSZip: window.JSZip, modele: await reponse.arrayBuffer(),
+        JSZip: window.JSZip, modele: await modeleWord(),
         contenants: structure.contenants, racineId: c.id,
         enfantsDe: enfants,
         articlesDe: (x) => x.articles.filter((a) => !estReperePhoto(a)),
@@ -7878,7 +7894,7 @@ const Inventaires = (() => {
       document.body.append(lien); lien.click(); lien.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) {
-      avis = `Export Word impossible (${e.message}). Hors ligne ? Ouvrez une fois cette page avec du réseau pour mettre le modèle en cache.`;
+      avis = `Export Word impossible (${e.message}).`;
       rendre({ garderPosition: true });
     } finally {
       if (bouton) { bouton.disabled = false; bouton.textContent = libelle; }
