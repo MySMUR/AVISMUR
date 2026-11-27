@@ -2339,21 +2339,21 @@ const Inventaires = (() => {
       const g = geometriePanorama(vc.immersif, image.naturalWidth, image.naturalHeight);
       const hotSpots = [];
       const zonesLibres = [];
-      vc.points.forEach((p) => {
-        // Sous-inventaire libre avec une zone sur cette vue : la zone remplace la gommette.
-        const enfantLibre = fils.find((f) => f.id === p.cible);
-        if (enfantLibre && zoneVracAffichee(enfantLibre, vc)) {
-          zonesLibres.push(enfantLibre);
-          const zl = enfantLibre.zoneVrac;
-          const centre = centreZone(zl.poly);
-          hotSpots.push({ ...versAngles(centre, g), cssClass: 'inv-hs inv-hs-zone', createTooltipFunc: (div) => div.append(etiquetteZoneVrac(enfantLibre, 0, 0)) });
-          if (!edition && verifDuJour(enfantLibre.id) && etat.verifs[enfantLibre.id]) {
-            elementsMarques(zl, itemsDeVerif(etat.verifs[enfantLibre.id])).paires.forEach(({ marque, m }) => {
-              hotSpots.push({ ...versAngles(m, g), cssClass: 'inv-hs', createTooltipFunc: (div) => div.append(marque) });
-            });
-          }
-          return;
+      // Sous-inventaires libres ayant une zone sur cette vue (la zone remplace leur gommette).
+      fils.filter((f) => zoneVracAffichee(f, vc)).forEach((enfantLibre) => {
+        zonesLibres.push(enfantLibre);
+        const zl = enfantLibre.zoneVrac;
+        const centre = centreZone(zl.poly);
+        hotSpots.push({ ...versAngles(centre, g), cssClass: 'inv-hs inv-hs-zone', createTooltipFunc: (div) => div.append(etiquetteZoneVrac(enfantLibre, 0, 0)) });
+        if (!edition && verifDuJour(enfantLibre.id) && etat.verifs[enfantLibre.id]) {
+          elementsMarques(zl, itemsDeVerif(etat.verifs[enfantLibre.id])).paires.forEach(({ marque, m }) => {
+            hotSpots.push({ ...versAngles(m, g), cssClass: 'inv-hs', createTooltipFunc: (div) => div.append(marque) });
+          });
         }
+      });
+      vc.points.forEach((p) => {
+        const enfantLibre = fils.find((f) => f.id === p.cible);
+        if (enfantLibre && zoneVracAffichee(enfantLibre, vc)) return;
         const pastille = creerPastille(c, vc, p, fils, 'left:0;top:0;');
         if (!pastille) return;
         if (edition) appuiLong(pastille, () => { placement = p.cible; rendre({ garderPosition: true }); });
@@ -2517,9 +2517,10 @@ const Inventaires = (() => {
         const borne = (v) => Math.min(1, Math.max(0, v));
         poserA(c, vc, vues, { x: borne((e.clientX - r.left) / r.width), y: borne((e.clientY - r.top) / r.height) });
       });
+      fils.filter((f) => zoneVracAffichee(f, vc)).forEach((f) => scene.append(creerZoneVrac(f)));
       vc.points.forEach((p) => {
         const enfantLibre = fils.find((f) => f.id === p.cible);
-        if (enfantLibre && zoneVracAffichee(enfantLibre, vc)) { scene.append(creerZoneVrac(enfantLibre)); return; }
+        if (enfantLibre && zoneVracAffichee(enfantLibre, vc)) return; // la zone remplace la gommette
         const pastille = creerPastille(c, vc, p, fils, `left:${p.x * 100}%;top:${p.y * 100}%;`);
         if (!pastille) return;
         if (edition) glisserPastille(pastille, img, c, vc, p.cible);
@@ -6206,15 +6207,18 @@ const Inventaires = (() => {
    * Photo qui porte la zone d'un inventaire libre : celle du contenant parent où le sous-inventaire avait sa gommette
    * (la zone la remplace), à défaut la photo propre du contenant. `cle` : vue du parent ('' = principale).
    */
+  const vueZoneChoisie = new Map(); // inventaire libre → vue du parent choisie avant tout tracé
   function sourceZoneVrac(c) {
     const parent = c.parent ? contenant(c.parent) : null;
     if (parent) {
       const vues = vuesDe(parent).filter((v) => v.photo);
       const z = c.zoneVrac;
-      const v = (z && z.vue ? vues.find((x) => x.cle === z.vue) : null) || vues.find((x) => x.points.some((p) => p.cible === c.id));
-      if (v) return { photo: v.photo, cle: v.cle, parent };
+      const trace = Boolean(z && (z.poly.length || z.marques.length));
+      const voulue = trace ? (z.vue || '') : vueZoneChoisie.get(c.id);
+      const v = (voulue !== undefined ? vues.find((x) => x.cle === voulue) : null) || vues.find((x) => x.points.some((p) => p.cible === c.id)) || vues[0];
+      if (v) return { photo: v.photo, cle: v.cle, parent, immersif: v.immersif || 0 };
     }
-    return c.photo ? { photo: c.photo, cle: '', parent: null } : null;
+    return c.photo ? { photo: c.photo, cle: '', parent: null, immersif: 0 } : null;
   }
   /** Gommettes (éléments scannés qui ont une place sur la photo) : éléments DOM et nombre d'éléments sans place. */
   function elementsMarques(z, tous, nouveau = '') {
@@ -6418,6 +6422,25 @@ const Inventaires = (() => {
     return calque;
   }
 
+  /** Choix de la vue du contenant parent (photo à plat ou vue immersive) qui porte la zone. */
+  function selecteurVueZone(c, src) {
+    const vues = vuesDe(src.parent).filter((v) => v.photo);
+    const id = idChamp();
+    return el('div', { classe: 'champ' },
+      el('label', { for: id, texte: `Vue de « ${src.parent.nom} » où tracer la zone` }),
+      el('select', { id, surchange: (e) => {
+        const cle = e.target.value;
+        const z = c.zoneVrac;
+        if (z && (z.poly.length || z.marques.length) && (z.vue || '') !== cle) {
+          if (!window.confirm('Changer de vue efface le tracé et les gommettes déjà posés (leurs positions ne correspondent plus). Continuer ?')) { e.target.value = src.cle; return; }
+          c.zoneVrac = { poly: [], marques: [], vue: cle };
+          marquer(c.id);
+        }
+        vueZoneChoisie.set(c.id, cle);
+        rendre({ garderPosition: true });
+      } }, ...vues.map((v) => el('option', { value: v.cle, selected: v.cle === src.cle, texte: `${v.immersif ? '🌐 ' : ''}${v.nom}` }))));
+  }
+
   let modeZoneVrac = 'zone'; // « zone » : tracer le polygone ; « gommettes » : poser les gommettes
   let filtreZoneVrac = '';
   let choixZoneVrac = '';
@@ -6425,7 +6448,7 @@ const Inventaires = (() => {
   function blocZoneVrac(c) {
     if (!estVrac(c)) return null;
     const src = sourceZoneVrac(c);
-    const panorama = Boolean(src && src.parent && (vuesDe(src.parent).find((v) => v.cle === src.cle) || {}).immersif);
+    const panorama = Boolean(src && src.immersif);
     if (!src) {
       return el('section', { classe: 'inv-section inv-zone-vrac' }, el('h2', { texte: 'Zone à scanner' }),
         el('p', { classe: 'consigne', texte: c.parent ? 'Placez d\'abord la gommette de ce sous-inventaire sur la photo du contenant parent : vous pourrez ensuite y tracer la zone à scanner, qui remplacera la gommette.' : 'Ajoutez d\'abord une photo de la zone (bloc « Photo » ci-dessus) : vous pourrez ensuite y tracer le polygone à scanner.' }));
@@ -6513,6 +6536,7 @@ const Inventaires = (() => {
     return el('section', { classe: 'inv-section inv-zone-vrac' },
       el('h2', { texte: 'Zone à scanner' }),
       el('p', { classe: 'consigne', texte: `${src.parent ? `Photo du contenant « ${src.parent.nom} ». ` : ''}Une fois tracée, la zone remplace la gommette de ce sous-inventaire sur la photo : l'agent la touche pour scanner tout ce qu'elle couvre, et chaque gommette apparaît, colorée selon l'état de l'élément, quand il est scanné.` }),
+      src.parent ? selecteurVueZone(c, src) : null,
       panorama ? el('p', { classe: 'aide-question', texte: 'Vue immersive : la photo est affichée « déroulée » (à plat). Le tracé se retrouve tel quel dans la vue immersive.' }) : null,
       modes, ...aide, cadre);
   }
