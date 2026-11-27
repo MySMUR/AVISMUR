@@ -176,7 +176,10 @@ const Actions = (() => {
 
   const photosEnMemoire = {}; // photos déjà chargées : affichage immédiat la fois suivante
   async function afficherPhotoServeur(conteneur, idPhoto, alt = 'Photo du défaut') {
-    const poser = (src) => { conteneur.textContent = ''; conteneur.append(el('img', { classe: 'photo-apercu', alt, src })); };
+    const poser = (src) => {
+      conteneur.textContent = '';
+      conteneur.append(el('img', { classe: 'photo-apercu photo-agrandissable', alt, src, title: 'Toucher pour agrandir', surclick: () => agrandirPhoto(src, alt) }));
+    };
     if (/^data:|^blob:|^https?:/.test(idPhoto)) { poser(idPhoto); return; }
     if (photosEnMemoire[idPhoto]) { poser(photosEnMemoire[idPhoto]); return; }
     conteneur.textContent = 'Chargement de la photo…';
@@ -199,6 +202,28 @@ const Actions = (() => {
       groupe.append(radio, el('label', { for: i, texte: String(o) }));
     });
     return groupe;
+  }
+
+  /** Photo en plein écran : toucher la photo pour passer de « ajustée » à « ×2,5 » (défilement), ✕ / Échap / fond pour fermer. */
+  function agrandirPhoto(src, alt) {
+    const precedent = document.activeElement;
+    let zoome = false;
+    const img = el('img', { classe: 'visionneuse-img', src, alt, draggable: 'false' });
+    const cadre = el('div', { classe: 'visionneuse-cadre' }, img);
+    const fermerV = () => { document.removeEventListener('keydown', touche, true); voile.remove(); if (precedent && document.contains(precedent)) precedent.focus(); };
+    const touche = (e) => { if (e.key === 'Escape') { e.stopPropagation(); fermerV(); } };
+    img.addEventListener('click', (e) => {
+      e.stopPropagation();
+      zoome = !zoome;
+      cadre.classList.toggle('zoome', zoome);
+      if (zoome) { cadre.scrollLeft = (cadre.scrollWidth - cadre.clientWidth) / 2; cadre.scrollTop = (cadre.scrollHeight - cadre.clientHeight) / 2; }
+    });
+    const bouton = el('button', { type: 'button', classe: 'visionneuse-fermer', 'aria-label': 'Fermer la photo', texte: '✕', surclick: fermerV });
+    const voile = el('div', { classe: 'visionneuse', role: 'dialog', 'aria-modal': 'true', 'aria-label': alt, surclick: (e) => { if (e.target !== img) fermerV(); } },
+      cadre, bouton, el('p', { classe: 'visionneuse-aide', texte: 'Toucher la photo pour zoomer' }));
+    document.addEventListener('keydown', touche, true);
+    document.body.append(voile);
+    bouton.focus();
   }
 
   /** Pictogramme de ticket de caisse (SVG, pas d'emoji). */
