@@ -2267,7 +2267,11 @@ const Materiel = (() => {
     const corps = el('div', { classe: 'mat-form mat-codes' });
     const d = fenetre('Associer des codes', corps, { large: true });
 
-    function etape1(info = '') {
+    function etape1(info = '', lancerScan = false) {
+      const scanner = () => scannerCode((v) => {
+        const f = Materiel.identifier(v);
+        if (f) etape2(f.id); else etape1('Aucun appareil ne correspond à ce code. Choisissez-le dans la liste.');
+      }, true);
       const sortie = el('div', { classe: 'mat-codes-liste' });
       const recherche = el('input', { type: 'search', placeholder: 'N° interne, biomed, série, modèle…', 'aria-label': 'Rechercher un appareil' });
       const dessiner = () => {
@@ -2284,12 +2288,11 @@ const Materiel = (() => {
       corps.replaceChildren(
         el('p', { classe: 'aide-question', texte: 'Étape 1 sur 2 : choisissez l\'appareil dans la liste, ou scannez un code déjà connu de cet appareil (n° biomed, puce NFC…).' }),
         info ? el('p', { classe: 'message erreur', texte: info }) : null,
-        scanDisponible() ? el('button', { type: 'button', classe: 'principal', texte: 'Scanner l\'appareil', surclick: () => scannerCode((v) => {
-          const f = Materiel.identifier(v);
-          if (f) etape2(f.id); else etape1('Aucun appareil ne correspond à ce code. Choisissez-le dans la liste.');
-        }, true) }) : null,
+        scanDisponible() ? el('button', { type: 'button', classe: 'principal', texte: 'Scanner l\'appareil', surclick: scanner }) : null,
         recherche, sortie);
       dessiner();
+      // Scan ouvert d'emblée (ouverture de l'utilitaire, ou passage à l'appareil suivant) ; la liste reste dessous.
+      if (lancerScan && scanDisponible()) scanner();
     }
 
     function etape2(id, info = '', erreurMsg = false) {
@@ -2326,11 +2329,11 @@ const Materiel = (() => {
           el('button', { type: 'button', classe: 'lien', texte: 'Retirer', 'aria-label': `Retirer le code ${c}`, surclick: () => retirer(c) }))))
           : el('p', { classe: 'aide-question', texte: 'Aucun code supplémentaire.' }),
         el('div', { classe: 'mat-boutons' },
-          el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Autre appareil', surclick: () => etape1() }),
-          el('button', { type: 'button', classe: 'cfg-mini', texte: 'Terminer', surclick: () => d.close() })));
+          el('button', { type: 'button', classe: 'principal', texte: 'Valider · appareil suivant', surclick: () => etape1(`${nomAppareil(f)} : ${codes.length} code(s) associé(s). Appareil suivant :`, true) }),
+          el('button', { type: 'button', classe: 'cfg-mini', texte: 'Fermer', surclick: () => d.close() })));
       saisie.focus();
     }
-    etape1();
+    etape1('', true);
   }
 
   // ---------- Lecture d'un QR code / code-barres (caméra) ----------
