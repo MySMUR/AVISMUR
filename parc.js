@@ -51,6 +51,10 @@ const Parc = (() => {
     return j <= 0 ? 'aujourd\'hui' : (j === 1 ? 'hier' : `il y a ${j} jours`);
   };
   const normaliser = (t) => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  // Colonnes du Sheet dont l'en-tête historique contient une faute (VML : « CLE AUTORAOUTE ») :
+  // dans le tableau d'ensemble elles doivent rejoindre la ligne du même contrôle des autres véhicules.
+  const COLONNES_HISTORIQUES = { 'poste de conduite [cle autoraoute]': 'Poste de conduite [Clé autoroute]' };
+  const canonique = (cle) => COLONNES_HISTORIQUES[normaliser(cle)] || cle;
   const vehiculesActifs = () => VEHICULES.filter((v) => !v.inactif);
   const nomDe = (v) => v.nom || v.id;
   const typeDe = (v) => (v.type !== undefined ? v.type : (v.modele === 'F00' ? 'UMH' : v.modele));
@@ -203,7 +207,8 @@ const Parc = (() => {
     const entrees = [];
     vehicules.forEach((v) => {
       const statut = Ambulancier.infosVehicule(v.id).statut;
-      Object.keys((statut && statut.reponses) || {}).forEach((cle) => {
+      Object.keys((statut && statut.reponses) || {}).forEach((cleBrute) => {
+        const cle = canonique(cleBrute);
         const id = normaliser(cle);
         if (vus.has(id) || ignorees.has(id) || cle.startsWith('Position (')) return;
         vus.add(id);
@@ -355,7 +360,7 @@ const Parc = (() => {
       corps.append(ligne(l.libelle, infos.map((x) => {
         const reponses = x.info.statut && x.info.statut.reponses;
         if (!reponses) return el('td', { classe: `vide${classeColonne(x)}` });
-        const cle = Object.keys(reponses).find((k) => normaliser(k) === l.id);
+        const cle = Object.keys(reponses).find((k) => normaliser(canonique(k)) === l.id);
         const c = cellule(l.libelle, cle === undefined ? undefined : reponses[cle]);
         return el('td', { classe: `${c.classe}${classeColonne(x)}`, title: c.titre, texte: c.texte });
       })));
