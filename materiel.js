@@ -28,7 +28,7 @@ const Materiel = (() => {
   const ACTIONS = ['enregistrerMateriel', 'enregistrerModeles', 'ajouterIntervention', 'supprimerIntervention', 'supprimerMateriel', 'enregistrerPret', 'rendrePret', 'signalerMateriel', 'avancerSuiviBiomed', 'enregistrerEtiquettePret', 'realiserMaintenance', 'definirSituationMateriel', 'enregistrerStatutsMateriel'];
   const TYPES_DEFAUT = ['Scope', 'PSE', 'Défibrillateur', 'Scope/défibrillateur', 'Respirateur', 'Aspirateur de mucosités', 'Attelle', 'Appareil glycémie'];
   const STATUTS_DEFAUT = ['En service', 'En panne', 'En réparation', 'En maintenance', 'Prêté', 'Réformé'];
-  const COULEURS_STATUT = { 'En service': '#1b7f4c', 'En panne': '#c0392b', 'En réparation': '#d9822b', 'En maintenance': '#b7791f', 'Prêté': '#6b46c1', 'Réformé': '#6b7280' };
+  const COULEURS_STATUT = { 'En service': '#1b7f4c', 'En panne': '#c0392b', 'En réparation': '#d9822b', 'En maintenance': '#2457b3', 'Prêté': '#6b46c1', 'Réformé': '#6b7280' };
   const LIEUX_DEFAUT = ['Hôpital', 'Maison mère'];
   const A_RECUPERER_DEFAUT = ['Au biomédical', 'Oublié dans un service'];
   const INTERVENTIONS_DEFAUT = ['Révision', 'Intervention', 'Réparation', 'Panne signalée', 'Casse', 'Problème', 'Contrôle', 'Mise à jour logicielle', 'Envoi en maintenance', 'Note', 'Réforme', 'Remise en service', 'Autre'];
@@ -172,7 +172,9 @@ const Materiel = (() => {
   const lieux = () => (donnees && donnees.situation && donnees.situation.lieux) || LIEUX_DEFAUT;
   const aRecuperer = () => (donnees && donnees.situation && donnees.situation.aRecuperer) || A_RECUPERER_DEFAUT;
   /** Pastille de statut en clair, colorée selon la liste administrable. */
-  const pastilleStatut = (nom) => el('span', { classe: `mat-pastille statut-${normaliser(nom || 'En service').replace(/\W+/g, '-')}`, texte: nom || 'En service', style: `background:${couleurStatut(nom || 'En service')}22;color:${couleurStatut(nom || 'En service')}` });
+  /** Fond = couleur du statut très pâle ; texte = la même couleur assombrie (contraste ≥ 4,5:1 quelle que soit la teinte choisie). */
+  const styleStatut = (nom) => `background:${couleurStatut(nom)}22;color:color-mix(in srgb,${couleurStatut(nom)} 62%,#000)`;
+  const pastilleStatut = (nom) => el('span', { classe: `mat-pastille statut-${normaliser(nom || 'En service').replace(/\W+/g, '-')}`, texte: nom || 'En service', style: styleStatut(nom || 'En service') });
   /** Présence, prêt à un tiers et matériel à récupérer, en pastilles. */
   function pastillesSituation(f) {
     const p = (texte, classe) => el('span', { classe: `mat-pastille ${classe}`, texte });
@@ -1583,7 +1585,7 @@ const Materiel = (() => {
       el('p', { classe: 'aide-question', texte: `Statut actuel : ${f.statut || 'En service'}. Le changement est consigné dans la main courante.` }),
       el('div', { classe: 'mat-boutons', role: 'group', 'aria-label': 'Nouveau statut' }, choix.map((n) => {
         const b = el('button', { type: 'button', classe: `cfg-bouton mat-pastille statut-${normaliser(n).replace(/\W+/g, '-')}`, texte: n,
-          disabled: n === (f.statut || 'En service'), style: `background:${couleurStatut(n)}22;color:${couleurStatut(n)}`,
+          disabled: n === (f.statut || 'En service'), style: styleStatut(n),
           surclick: () => { d.close(); enfiler('definirSituationMateriel', { materiel: f.id, statut: n, date: aujourdhui(), idSaisie: idFiche() }); } });
         return b;
       })),

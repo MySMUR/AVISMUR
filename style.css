@@ -3838,3 +3838,70 @@ button.inv-marque-perso:hover { background: #FFF1E0; }
 .cfg-icones .cfg-icone-libre { width: 4.5rem; height: 2.6rem; text-align: center; }
 .cfg-vignette-ligne { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
 .cfg-vignette-apercu img { display: block; width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: 10px; border: 1px solid var(--trait); }
+
+/* ---------- Accessibilité : daltonisme ----------
+   Règle : la couleur n'est jamais seule à porter une information. Chaque état a aussi un signe (✓ ! ✕),
+   une forme ou un style de bordure. Les textes sur fond coloré respectent le contraste AA (4,5:1). */
+:root { --rhone-fonce: #17695F; }
+
+/* 1. Pastilles d'état (véhicules, check-lists, historique) : signe dans la pastille */
+.pastille-etat { display: inline-grid; place-items: center; width: 1.05rem; height: 1.05rem; font-size: 0.7rem; font-weight: 800; line-height: 1; color: #fff; }
+.pastille-etat.fait::after, .vehicule.fait .pastille-etat::after { content: '✓'; }
+.pastille-etat.anomalie::after, .vehicule.anomalie .pastille-etat::after { content: '!'; }
+.vehicule.indispo .pastille-etat::after { content: '✕'; }
+.vehicule.fait .pastille-etat, .parc-verifs .pastille-etat.fait { background: var(--rhone-fonce); }
+/* Ligne « inventaire IADE » d'une carte véhicule : son état est indépendant de celui de la carte */
+.vehicule.carte .carte-iade .pastille-etat::after { content: ''; }
+.vehicule.carte .carte-iade.fait .pastille-etat::after { content: '✓'; }
+.vehicule.carte .carte-iade.anomalie .pastille-etat::after { content: '!'; }
+.vehicule.carte .carte-iade.en-partie .pastille-etat::after { content: '…'; color: var(--encre); }
+.vehicule.carte .carte-iade.fait .pastille-etat { background: var(--rhone-fonce); }
+.inv-amb-etat.fait .pastille-etat::after { content: '✓'; }
+.inv-amb-etat.anomalie .pastille-etat::after { content: '!'; }
+.inv-amb-etat.indispo .pastille-etat::after { content: '✕'; }
+.inv-amb-etat.fait .pastille-etat { background: var(--rhone-fonce); }
+
+/* 2. Cases véhicules : bordure pointillée = à faire, trait épais à gauche = anomalie, hachures = indisponible */
+.vehicule.a-faire { border-style: dashed; }
+.vehicule.anomalie, .puces-vehicules label.vehicule.anomalie { border-left-width: 6px; }
+.vehicule.indispo { background-image: repeating-linear-gradient(135deg, rgb(180 35 24 / 0.12) 0 8px, transparent 8px 16px); }
+.puces-vehicules input:checked + label.vehicule.indispo { background-image: none; }
+
+/* 3. Tableau de bord des inventaires : style de bordure propre à chaque état */
+.inv-tb-tuile.afaire, .inv-tb-tuile.encours { border-style: dotted; border-width: 2px; }
+.inv-tb-tuile.anomalie { border-width: 3px; }
+
+/* 4. Contrôles d'inventaire : ✓ / ✕ dans la pastille (vert et rouge se confondent en daltonisme) */
+.inv-controle .inv-pastille-controle { display: inline-grid; place-items: center; width: 1.3rem; height: 1.3rem; font-size: 0.8rem; font-weight: 800; line-height: 1; color: #fff; }
+.inv-controle.controle-ok .inv-pastille-controle::after, .inv-controle.controle-facultatif-oui .inv-pastille-controle::after { content: '✓'; }
+.inv-controle.controle-anomalie .inv-pastille-controle::after { content: '✕'; }
+.inv-controle.controle-facultatif-non .inv-pastille-controle::after { content: '–'; }
+.inv-controle.controle-anomalie .inv-valeur { border-width: 3px; }
+
+/* 5. Annuaire : résultat de l'envoi d'une notification (vert/rouge) doublé d'un signe */
+.ann-icone.ann-notif { position: relative; }
+.ann-icone.ann-notif.ann-ok::after, .ann-icone.ann-notif.ann-ko::after {
+  position: absolute; right: -0.2rem; bottom: -0.2rem; display: grid; place-items: center; width: 1.2rem; height: 1.2rem;
+  font-size: 0.8rem; font-weight: 800; color: var(--encre); background: #fff; border: 2px solid currentColor; border-radius: 50%;
+}
+.ann-icone.ann-notif.ann-ok::after { content: '✓'; }
+.ann-icone.ann-notif.ann-ko::after { content: '✕'; }
+.ann-icone.ann-wa { background: #17804a; }
+
+/* 6. Suivi du matériel : un signe devant chaque statut (service/panne ont la même luminosité) */
+.mat-pastille[class*="statut-en-service"]::before { content: '✓ '; }
+.mat-pastille[class*="statut-en-panne"]::before { content: '✕ '; }
+.mat-pastille[class*="statut-en-reparation"]::before { content: '↻ '; }
+.mat-pastille[class*="statut-en-maintenance"]::before { content: '◆ '; }
+.mat-pastille[class*="statut-prete"]::before { content: '↔ '; }
+.mat-pastille[class*="statut-reforme"]::before { content: '– '; }
+
+/* 7. Tableau du parc : valeur hors seuil = fond rose + signe */
+.parc-tableau td.mauvais::before { content: '⚠ '; }
+
+/* 8. Contrastes insuffisants (< 4,5:1) corrigés */
+.puces input:checked + label, .reg-dispo.actif.oui, .reg-dispo.actif.arme { background: var(--rhone-fonce); border-color: var(--rhone-fonce); }
+.reg-inter input:checked + .reg-inter-piste, .reg-inter-arme input:checked + .reg-inter-piste { background: var(--rhone-fonce); }
+.parc-badge.ok { color: #12655D; }
+.puces .pastille.dz { color: var(--encre); }
+.inv-scelles-ident.fait .inv-scelles-ok { background: var(--rhone-fonce); }
