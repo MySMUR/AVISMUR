@@ -40,6 +40,84 @@ const SEUILS_ANOMALIE = {
   plein: 5, // sur 8 : à ce niveau ou en dessous, pompe rouge sur la case du véhicule (plein à faire)
 };
 
+// ---------- Affichage des réponses : jauges et rubriques (fiche check-list et tableau du parc) ----------
+/** Niveau « jaugeable » d'une réponse : obus/bouteille (n/10) ou carburant (n/8) ; null sinon. */
+function niveauJauge(libelle, valeur) {
+  let n = null; let max = null;
+  if (typeof valeur === 'number' && /obus|bouteille/i.test(libelle)) { n = valeur; max = 10; }
+  else if (typeof valeur === 'string' && /^\d+\/8$/.test(valeur.trim())) { n = parseInt(valeur, 10); max = 8; }
+  if (n === null || Number.isNaN(n)) return null;
+  const seuilBas = max === 10 ? SEUILS_ANOMALIE.obus : SEUILS_ANOMALIE.carburant;
+  const seuilMoyen = max === 10 ? 6 : SEUILS_ANOMALIE.plein;
+  return {
+    n, max, niveau: n <= seuilBas ? 'bas' : (n <= seuilMoyen ? 'moyen' : 'haut'),
+    titre: max === 10 ? `${n}/10 · ${n * 20} bars` : `Carburant ${n}/8`,
+  };
+}
+
+/** Jauge horizontale (barre + valeur) ; `compacte` pour une cellule de tableau. */
+function elementJauge(j, compacte = false) {
+  const barre = document.createElement('span');
+  barre.className = 'jauge-barre';
+  const rempli = document.createElement('span');
+  rempli.className = 'jauge-rempli';
+  rempli.style.width = `${Math.max(0, Math.min(1, j.n / j.max)) * 100}%`;
+  barre.append(rempli);
+  const valeur = document.createElement('span');
+  valeur.className = 'jauge-valeur';
+  valeur.textContent = `${j.n}/${j.max}`;
+  const racine = document.createElement('span');
+  racine.className = `jauge jauge-${j.niveau}${compacte ? ' jauge-compacte' : ''}`;
+  racine.setAttribute('role', 'meter');
+  racine.setAttribute('aria-valuemin', '0');
+  racine.setAttribute('aria-valuemax', String(j.max));
+  racine.setAttribute('aria-valuenow', String(j.n));
+  racine.setAttribute('aria-valuetext', j.titre);
+  racine.title = j.titre;
+  racine.append(barre, valeur);
+  return racine;
+}
+
+/**
+ * Réponses d'une check-list classées par rubrique : « Poste de conduite [Triangle] » → rubrique
+ * « Poste de conduite », ligne « Triangle ». Sans crochets (kilométrage, carburant, obus…) : « Général », en tête.
+ */
+function rendreReponses(reponses) {
+  const groupes = new Map([['Général', []]]);
+  Object.entries(reponses || {}).forEach(([cle, valeur]) => {
+    if (valeur === '' || valeur === null || valeur === undefined || cle.startsWith('Position (')) return;
+    const m = /^(.*?)\s*\[(.*)\]\s*$/.exec(cle);
+    const rubrique = m && m[1] ? m[1] : 'Général';
+    if (!groupes.has(rubrique)) groupes.set(rubrique, []);
+    groupes.get(rubrique).push({ libelle: m && m[1] ? m[2] : cle, valeur });
+  });
+  const racine = document.createElement('div');
+  racine.className = 'reponses-rubriques';
+  groupes.forEach((lignes, rubrique) => {
+    if (!lignes.length) return;
+    const section = document.createElement('section');
+    section.className = 'reponses-rubrique';
+    const titre = document.createElement('h4');
+    titre.textContent = rubrique;
+    const liste = document.createElement('dl');
+    liste.className = 'reponses';
+    lignes.forEach(({ libelle, valeur }) => {
+      const ligne = document.createElement('div');
+      ligne.className = `reponse${valeur === 'Manquant' ? ' manquant' : ''}`;
+      const dt = document.createElement('dt');
+      dt.textContent = libelle;
+      const dd = document.createElement('dd');
+      const j = niveauJauge(libelle, valeur);
+      if (j) dd.append(elementJauge(j)); else dd.textContent = String(valeur);
+      ligne.append(dt, dd);
+      liste.append(ligne);
+    });
+    section.append(titre, liste);
+    racine.append(section);
+  });
+  return racine;
+}
+
 // Valeurs aberrantes : on avertit l'utilisateur, qui confirme s'il est sûr de lui (jamais de blocage définitif).
 const PLAUSIBLE = {
   kmMax: 500000, // au-delà : compteur mal lu ou faute de frappe

@@ -237,10 +237,11 @@ const Parc = (() => {
         const suspect = kmSuspect(valeur);
         return { texte: Number(valeur).toLocaleString('fr-FR'), classe: suspect ? 'attention' : '', titre: suspect ? `⚠ ${suspect}` : km(valeur) };
       }
-      return { texte: `${valeur}/10`, classe: valeur <= SEUILS_ANOMALIE.obus ? 'mauvais' : '', titre: `${valeur * 20} bars` };
+      const j = niveauJauge(libelle, valeur) || { n: valeur, max: 10, niveau: valeur <= SEUILS_ANOMALIE.obus ? 'bas' : 'haut', titre: `${valeur}/10 · ${valeur * 20} bars` };
+      return { texte: `${valeur}/10`, classe: valeur <= SEUILS_ANOMALIE.obus ? 'mauvais' : '', titre: j.titre, jauge: j };
     }
     const t = String(valeur);
-    if (/^\d+\/8$/.test(t)) return { texte: t, classe: parseInt(t, 10) <= SEUILS_ANOMALIE.carburant ? 'mauvais' : '', titre: `Carburant ${t}` };
+    if (/^\d+\/8$/.test(t)) { const j = niveauJauge(libelle, t); return { texte: t, classe: parseInt(t, 10) <= SEUILS_ANOMALIE.carburant ? 'mauvais' : '', titre: j.titre, jauge: j }; }
     if (/non concern/i.test(t)) return { texte: '—', classe: 'na', titre: t };
     if (/ad-?blue/i.test(libelle)) return { texte: 'À compléter', classe: 'attention', titre: t };
     return { texte: t.length > 24 ? `${t.slice(0, 22)}…` : t, classe: /remarque/i.test(libelle) ? 'attention' : '', titre: t };
@@ -362,7 +363,7 @@ const Parc = (() => {
         if (!reponses) return el('td', { classe: `vide${classeColonne(x)}` });
         const cle = Object.keys(reponses).find((k) => normaliser(canonique(k)) === l.id);
         const c = cellule(l.libelle, cle === undefined ? undefined : reponses[cle]);
-        return el('td', { classe: `${c.classe}${classeColonne(x)}`, title: c.titre, texte: c.texte });
+        return el('td', { classe: `${c.classe}${classeColonne(x)}`, title: c.titre, texte: c.jauge ? null : c.texte }, c.jauge ? elementJauge(c.jauge, true) : null);
       })));
     });
     if (!lignes.length) {
@@ -595,12 +596,6 @@ const Parc = (() => {
     liste.forEach((cl, i) => {
       const r = cl.reponses || {};
       const anomalies = cl.anomalies || [];
-      const details = el('div', { classe: 'reponses' });
-      Object.entries(r).forEach(([cle, valeur]) => {
-        if (valeur === '' || valeur === null || cle.startsWith('Position (')) return;
-        details.append(el('div', { classe: `reponse${valeur === 'Manquant' ? ' manquant' : ''}` }, el('dt', { texte: cle }),
-          el('dd', { texte: typeof valeur === 'number' && /obus|bouteille/i.test(cle) ? `${valeur}/10` : String(valeur) })));
-      });
       ul.append(el('li', {}, el('details', { open: ouvrirPremiere && i === 0 },
         el('summary', {},
           el('span', { classe: `pastille-etat ${anomalies.length ? 'anomalie' : 'fait'}`, 'aria-hidden': 'true' }),
@@ -608,7 +603,7 @@ const Parc = (() => {
           el('span', { classe: 'parc-resume', texte: [r.Kilométrage ? km(r.Kilométrage) : '', r.Carburant ? `carburant ${r.Carburant}` : ''].filter(Boolean).join(' · ') }),
           el('span', { classe: anomalies.length ? 'parc-badge attention' : 'parc-badge ok', texte: anomalies.length ? `${anomalies.length} anomalie(s)` : 'sans anomalie' })),
         anomalies.length ? el('div', { classe: 'note-parc anomalie' }, el('ul', {}, ...anomalies.map((a) => el('li', { texte: a })))) : null,
-        el('dl', { classe: 'reponses' }, ...details.children))));
+        rendreReponses(r))));
     });
     return ul;
   }

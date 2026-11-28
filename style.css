@@ -1075,7 +1075,7 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
 .parc-verifs summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.8rem; padding: 0.6rem 0.8rem; cursor: pointer; }
 .parc-verifs details[open] summary { border-bottom: 1px solid #E1E8F2; }
 .parc-verifs details > :not(summary) { margin-left: 0.8rem; margin-right: 0.8rem; }
-.parc-verifs .reponses { columns: 2 18rem; column-gap: 2rem; margin-bottom: 0.8rem; }
+.parc-verifs .reponses-rubriques { columns: 2 18rem; column-gap: 2rem; margin-bottom: 0.8rem; }
 .parc-verifs .reponse { break-inside: avoid; }
 .parc-verifs .pastille-etat.fait { background: var(--rhone); }
 .parc-verifs .pastille-etat.anomalie { background: var(--orange); }
@@ -3810,3 +3810,21 @@ button.inv-marque-perso:hover { background: #FFF1E0; }
 .mat-codes-ul { list-style: none; margin: 0; padding: 0; }
 .mat-codes-ul li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.35rem 0; border-bottom: 1px solid rgba(0, 0, 0, 0.1); }
 .mat-codes-ul code { overflow-wrap: anywhere; }
+
+/* Check-list : rubriques et jauges de niveau (obus, carburant) */
+.reponses-rubrique { break-inside: avoid; margin-bottom: 0.7rem; }
+.reponses-rubrique h4 {
+  margin: 0.2rem 0 0; padding: 0.3rem 0.5rem; border-radius: 6px; background: var(--ciel);
+  color: var(--bleu); font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.reponses-rubrique .reponses { margin: 0; }
+.jauge { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 8rem; --jauge: var(--rhone); }
+.jauge-moyen { --jauge: var(--orange); }
+.jauge-bas { --jauge: var(--erreur); }
+.jauge-barre { flex: 1; height: 0.55rem; min-width: 4rem; border-radius: 999px; background: #DCE4EF; overflow: hidden; }
+.jauge-rempli { display: block; height: 100%; border-radius: 999px; background: var(--jauge); }
+.jauge-valeur { min-width: 2.6rem; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--encre); }
+.jauge-bas .jauge-valeur { color: var(--erreur); }
+.jauge-compacte { min-width: 0; width: 100%; gap: 0.35rem; }
+.jauge-compacte .jauge-barre { min-width: 1.6rem; }
+.jauge-compacte .jauge-valeur { min-width: 0; font-size: 0.78rem; }

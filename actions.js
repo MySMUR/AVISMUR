@@ -130,13 +130,7 @@ const Actions = (() => {
       fenetre(`${v.nom || v.id} · dernière check-list`, el('p', { texte: 'Aucune check-list enregistrée pour ce véhicule.' }), boutonRetour(v, info, etatV));
       return;
     }
-    const liste = el('dl', { classe: 'reponses' });
-    Object.entries(cl.reponses || {}).forEach(([cle, valeur]) => {
-      if (valeur === '' || valeur === null || cle.startsWith('Position (')) return;
-      const manquant = valeur === 'Manquant';
-      liste.append(el('div', { classe: `reponse${manquant ? ' manquant' : ''}` }, el('dt', { texte: cle }),
-        el('dd', { texte: typeof valeur === 'number' && /obus|bouteille/i.test(cle) ? `${valeur}/10` : String(valeur) })));
-    });
+    const liste = rendreReponses(cl.reponses);
     const anomalies = cl.anomalies && cl.anomalies.length
       ? el('div', { classe: 'note-parc anomalie' }, el('p', { texte: 'Anomalies :' }), el('ul', {}, ...cl.anomalies.map((a) => el('li', { texte: a }))))
       : el('p', { classe: 'note-parc fait', texte: 'Aucune anomalie.' });
