@@ -53,7 +53,7 @@ const Parc = (() => {
   const normaliser = (t) => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
   // Colonnes du Sheet dont l'en-tête historique contient une faute (VML : « CLE AUTORAOUTE ») :
   // dans le tableau d'ensemble elles doivent rejoindre la ligne du même contrôle des autres véhicules.
-  const COLONNES_HISTORIQUES = { 'poste de conduite [cle autoraoute]': 'Poste de conduite [Clé autoroute]' };
+  const COLONNES_HISTORIQUES = { 'poste de conduite [cle autoraoute]': 'Poste de conduite [Clé autoroute]', 'bouteille oxygene': 'Obus 5 Litres n°1' };
   const canonique = (cle) => COLONNES_HISTORIQUES[normaliser(cle)] || cle;
   const vehiculesActifs = () => VEHICULES.filter((v) => !v.inactif);
   const nomDe = (v) => v.nom || v.id;

@@ -259,7 +259,7 @@ let MODELES = {
   COUVEUSE: {
     titre: 'Couveuse',
     questions: [
-      { type: 'niveau', libelle: 'Bouteille oxygène' },
+      { type: 'niveau', libelle: 'Obus 5 Litres n°1' }, // = ancienne « Bouteille oxygène » (même article)
       { type: 'niveau', libelle: 'Bouteille air' },
       { type: 'texte', libelle: 'Remarques' },
     ],
@@ -297,6 +297,16 @@ function appliquerConfig(config) {
   const source = valide ? config : CONFIG_DEFAUT;
   VEHICULES = JSON.parse(JSON.stringify(source.vehicules));
   MODELES = JSON.parse(JSON.stringify(source.modeles));
+  renommerQuestions(MODELES);
+}
+
+/** Questions renommées depuis l'enregistrement de la configuration : la configuration du serveur est mise à niveau à la lecture. */
+const RENOMMAGES_QUESTIONS = { COUVEUSE: { 'Bouteille oxygène': 'Obus 5 Litres n°1' } };
+function renommerQuestions(modeles) {
+  Object.keys(RENOMMAGES_QUESTIONS).forEach((m) => {
+    if (!modeles[m] || !Array.isArray(modeles[m].questions)) return;
+    modeles[m].questions.forEach((q) => { if (RENOMMAGES_QUESTIONS[m][q.libelle]) q.libelle = RENOMMAGES_QUESTIONS[m][q.libelle]; });
+  });
 }
 
 try {
