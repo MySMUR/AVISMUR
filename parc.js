@@ -154,15 +154,18 @@ const Parc = (() => {
     rendreCentre();
   }
 
+  /** Hauteur réellement visible (clavier, barre d'adresse mobile ou fenêtre redimensionnée comprises). */
+  const hauteurVisible = () => Math.round((window.visualViewport && window.visualViewport.height) || document.documentElement.clientHeight || window.innerHeight);
+
   /** Donne au bloc marqué data-hauteur toute la hauteur visible, sans faire défiler la page. */
   function ajusterHauteur() {
     if (!racine || racine.hidden) return;
     const basMenu = 0; // plus de barre de menu en bas : le menu est dans le bandeau
-    colonne.style.maxHeight = `${Math.max(300, window.innerHeight - basMenu - 24)}px`;
+    colonne.style.maxHeight = `${Math.max(300, hauteurVisible() - basMenu - 24)}px`;
     const cible = centre.querySelector('[data-hauteur]');
     if (!cible) return;
     const haut = cible.getBoundingClientRect().top + window.scrollY;
-    cible.style.height = `${Math.max(360, window.innerHeight - basMenu - haut - 16)}px`;
+    cible.style.height = `${Math.max(240, hauteurVisible() - basMenu - haut - 16)}px`;
   }
 
   // ---------- Colonne de gauche ----------
@@ -841,6 +844,7 @@ const Parc = (() => {
     else if (panneau) rendrePanneau();
     else rendreFiche();
     ajusterHauteur();
+    requestAnimationFrame(ajusterHauteur); // une fois la mise en page posée (en-tête, photos, polices)
   }
 
   function rendre() {
@@ -871,6 +875,9 @@ const Parc = (() => {
     window.addEventListener('avismur-armement', rendre);
     window.addEventListener('avismur-disponibilite', rendre);
     window.addEventListener('resize', () => { ajusterHauteur(); ajusterColonnes(); });
+    window.addEventListener('load', ajusterHauteur);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', ajusterHauteur);
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => ajusterHauteur()).observe(document.documentElement);
   }
 
   return { initialiser, afficher, masquer };
