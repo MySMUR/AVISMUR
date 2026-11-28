@@ -316,6 +316,26 @@ const Profil = (() => {
       App.ouvrirVue ? el('button', { type: 'button', classe: 'lien', texte: 'Voir l\'annuaire du personnel', surclick: () => App.ouvrirVue('annuaire') }) : null);
   }
 
+  /** Affichage : palette adaptée aux daltoniens (bleu / orange / magenta foncé au lieu de vert / orange / rouge). Réglage propre à l'appareil. */
+  function blocAffichage() {
+    const CLE_PALETTE = 'avismur_palette';
+    let actif = false;
+    try { actif = localStorage.getItem(CLE_PALETTE) === 'dalto'; } catch (e) { /* stockage indisponible */ }
+    const id = nouvelId();
+    return el('section', { classe: 'pro-carte', 'aria-labelledby': 'pro-titre-affichage' },
+      el('h2', { id: 'pro-titre-affichage', texte: 'Affichage' }),
+      el('label', { classe: 'case-rester', for: id },
+        el('input', {
+          id, type: 'checkbox', checked: actif,
+          surchange: (e) => {
+            try { if (e.target.checked) localStorage.setItem(CLE_PALETTE, 'dalto'); else localStorage.removeItem(CLE_PALETTE); } catch (err) { /* stockage plein */ }
+            if (e.target.checked) document.documentElement.dataset.palette = 'dalto'; else delete document.documentElement.dataset.palette;
+          },
+        }),
+        el('span', {}, 'Palette adaptée aux daltoniens',
+          el('small', { texte: 'Remplace le vert et le rouge par du bleu et du magenta foncé (l\'orange reste). Réglage propre à cet appareil.' }))));
+  }
+
   function blocNotifications() {
     const textes = {
       actif: ['Activées sur cet appareil', 'pro-vert'],
@@ -502,7 +522,7 @@ const Profil = (() => {
       else zone.append(el('button', { type: 'button', classe: 'cfg-bouton', texte: 'Réessayer', surclick: charger }));
       return;
     }
-    zone.append(blocIdentite(), blocCoordonnees(), blocPartage(), blocNotifications(), blocMotDePasse());
+    zone.append(blocIdentite(), blocCoordonnees(), blocPartage(), blocNotifications(), blocAffichage(), blocMotDePasse());
   }
 
   return {

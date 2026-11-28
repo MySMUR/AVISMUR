@@ -3905,3 +3905,30 @@ button.inv-marque-perso:hover { background: #FFF1E0; }
 .parc-badge.ok { color: #12655D; }
 .puces .pastille.dz { color: var(--encre); }
 .inv-scelles-ident.fait .inv-scelles-ok { background: var(--rhone-fonce); }
+
+/* ---------- Palette adaptée aux daltoniens (Mon profil > Affichage) ----------
+   Vert → bleu, rouge → magenta foncé (clair/foncé bien séparés de l'orange), pour les trois formes de daltonisme courantes. */
+html[data-palette="dalto"] { --rhone: #0F6BB0; --rhone-fonce: #0B5A94; --erreur: #8E1B5A; }
+html[data-palette="dalto"] .vehicule.fait, html[data-palette="dalto"] .vehicule.cl-tuile.fait,
+html[data-palette="dalto"] .parc-etat.fait, html[data-palette="dalto"] .inv-tb-statut.fait { background: #DCEBF8; }
+html[data-palette="dalto"] .vehicule.indispo, html[data-palette="dalto"] .parc-etat.indispo,
+html[data-palette="dalto"] .inv-tb-statut.anomalie, html[data-palette="dalto"] .parc-tableau td.mauvais,
+html[data-palette="dalto"] .inv-qte.insuffisant, html[data-palette="dalto"] .inv-a-retrouver { background-color: #F6E0EC; }
+html[data-palette="dalto"] .inv-tb-tuile.fait { --tb-fond: #DCEBF8; --tb-bord: #8DB8DE; }
+html[data-palette="dalto"] .inv-tb-tuile.anomalie { --tb-fond: #F6E0EC; --tb-bord: #C98AAE; }
+html[data-palette="dalto"] .parc-badge.ok, html[data-palette="dalto"] .inv-carte.fait .inv-carte-etat, html[data-palette="dalto"] .inv-tb-rubrique li.vert { color: #0B5A94; background-color: transparent; }
+html[data-palette="dalto"] .parc-badge.ok { background-color: #DCEBF8; }
+html[data-palette="dalto"] .inv-picto.vert { color: #0B5A94; }
+html[data-palette="dalto"] .inv-controle.controle-ok .inv-pastille-controle,
+html[data-palette="dalto"] .inv-controle.controle-facultatif-oui .inv-oui-non [aria-pressed="true"] { background: #0B5A94; border-color: #0B5A94; }
+html[data-palette="dalto"] .inv-controle.controle-anomalie .inv-pastille-controle,
+html[data-palette="dalto"] .inv-controle.controle-anomalie .inv-oui-non [aria-pressed="true"] { background: #8E1B5A; border-color: #8E1B5A; }
+html[data-palette="dalto"] .inv-controle.controle-anomalie .inv-valeur { border-color: #8E1B5A; color: #8E1B5A; }
+html[data-palette="dalto"] .inv-reprendre { color: #0B5A94; }
+html[data-palette="dalto"] .ann-icone.ann-notif.ann-ok, html[data-palette="dalto"] .ann-icone.ann-wa { background: #0B5A94; }
+html[data-palette="dalto"] .ann-icone.ann-notif.ann-ko { background: #8E1B5A; }
+html[data-palette="dalto"] .inv-scelles-ident.fait .inv-scelles-ok { background: #0B5A94; }
+html[data-palette="dalto"] .dsm-avertissement { border-color: #8E1B5A; background: #F6E0EC; color: #5E1139; }
+/* Statuts du matériel (couleurs posées en ligne : !important) */
+html[data-palette="dalto"] .mat-pastille[class*="statut-en-service"] { background: #DCEBF8 !important; color: #0B3F6B !important; }
+html[data-palette="dalto"] .mat-pastille[class*="statut-en-panne"] { background: #F6E0EC !important; color: #5E1139 !important; }
