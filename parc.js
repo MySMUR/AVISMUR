@@ -58,6 +58,13 @@ const Parc = (() => {
   const vehiculesActifs = () => VEHICULES.filter((v) => !v.inactif);
   const nomDe = (v) => v.nom || v.id;
   const typeDe = (v) => (v.type !== undefined ? v.type : (v.modele === 'F00' ? 'UMH' : v.modele));
+  /** Texte affiché sous le nom : VML / UMH, sinon le titre du modèle (jamais son identifiant technique, ex. CHARIOTMNAGE), vide s'il répète le nom. */
+  const libelleType = (v) => {
+    const t = typeDe(v);
+    if (v.type !== undefined || ['VML', 'UMH', 'F00', 'AUTRE'].includes(t)) return t;
+    const titre = (typeof MODELES !== 'undefined' && MODELES[v.modele] && MODELES[v.modele].titre) || '';
+    return normaliser(titre) === normaliser(nomDe(v)) ? '' : titre;
+  };
   const texte = (t, classe = 'aide-question') => el('p', { classe, texte: t });
 
   // ---------- Historique court (pavés), gardé sur l'appareil pour le hors ligne ----------
@@ -257,7 +264,7 @@ const Parc = (() => {
     return el('th', { scope: 'col' }, el('button', {
       type: 'button', classe: `parc-th-bouton ${etatV.classe}`, surclick: () => selectionner(v.id),
       title: `${nomDe(v)} : ${etatV.texte}. Afficher la fiche.`,
-    }, el('strong', { texte: nomDe(v) }), el('small', { texte: typeDe(v) || ' ' }),
+    }, el('strong', { texte: nomDe(v) }), el('small', { texte: libelleType(v) || ' ' }),
     el('span', { classe: 'parc-th-position' }, ...position)));
   }
 
@@ -404,7 +411,7 @@ const Parc = (() => {
     const resumeEtat = [etatV.texte, etatV.classe !== 'indispo' && etatV.position && etatV.position.position ? `position du jour : ${etatV.position.position}` : ''].filter(Boolean).join(' · ');
     return el('div', { classe: 'parc-entete' },
       el('div', { classe: 'parc-entete-titre' },
-        el('h2', { classe: 'parc-titre' }, nomDe(v), el('small', { texte: sousTitre || typeDe(v) })),
+        el('h2', { classe: 'parc-titre' }, nomDe(v), el('small', { texte: sousTitre || libelleType(v) })),
         el('span', { classe: `parc-etat ${etatV.classe}`, texte: resumeEtat })),
       el('div', { classe: 'parc-boutons' },
         panneau ? el('button', { type: 'button', classe: 'cfg-bouton', texte: `← Fiche ${nomDe(v)}`, surclick: retourFiche }) : null,

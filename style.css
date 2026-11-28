@@ -1034,7 +1034,7 @@ body.connecte.parc-ouvert .feuille { max-width: 108rem; }
   font: inherit; color: var(--encre); cursor: pointer; border: 2px solid; border-radius: 10px;
 }
 .parc-th-bouton strong { font-size: 1rem; }
-.parc-th-bouton small { font-size: 0.7rem; color: var(--gris); }
+.parc-th-bouton small { font-size: 0.7rem; color: var(--gris); white-space: normal; overflow-wrap: anywhere; line-height: 1.15; }
 .parc-th-position { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 0.2rem; min-height: 1.1rem; font-size: 0.72rem; font-weight: 700; }
 .parc-th-bouton.a-faire { background: #EEF1F5; border-color: #B9C3D1; }
 .parc-th-bouton.fait { background: #DDF3EF; border-color: var(--rhone); }
