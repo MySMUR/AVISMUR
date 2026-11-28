@@ -62,6 +62,60 @@ const ConfigAdmin = (() => {
     rendre();
   }
 
+  // ---------- Icône et vignette d'un véhicule ----------
+  const ICONES_VEHICULE = ['🚑', '🚐', '🚗', '🚙', '🛻', '🚁', '🚨', '👶', '🧹', '🧽', '🧴', '🧺', '🛒', '🧰', '⛑️', '💊', '🩺', '🫁', '🔋', '❄️'];
+
+  /** Icône : une grille de pictogrammes à toucher ; « Autre » garde la saisie libre. */
+  function choixIcone(v) {
+    const courante = v.icone || '';
+    const choisir = (ic) => { if (ic) v.icone = ic; else delete v.icone; rendre(); };
+    return el('div', { classe: 'cfg-champ-large' }, el('span', { texte: 'Icône' }),
+      el('div', { classe: 'cfg-icones', role: 'group', 'aria-label': 'Choix de l\'icône' },
+        ...ICONES_VEHICULE.map((ic) => el('button', { type: 'button', classe: `cfg-icone-choix${ic === (courante || '🚑') ? ' choisie' : ''}`,
+          'aria-pressed': String(ic === (courante || '🚑')), 'aria-label': `Icône ${ic}`, texte: ic, surclick: () => choisir(ic === '🚑' ? '' : ic) })),
+        el('input', { classe: 'cfg-icone cfg-icone-libre', valeur: ICONES_VEHICULE.includes(courante) ? '' : courante, placeholder: 'Autre',
+          'aria-label': 'Autre icône (saisie libre)', maxlength: '4',
+          surchange: (e) => choisir(e.target.value.trim()) })));
+  }
+
+  /** Vignette du véhicule (affichée sur sa case) : photo cadrée en carré, envoyée au serveur, l'identifiant est gardé dans la configuration. */
+  function blocVignetteVehicule(v) {
+    const prendre = id(); const choisir = id();
+    const apercu = el('span', { classe: 'cfg-vignette-apercu', 'aria-hidden': 'true' });
+    const montrer = (d) => { if (d) apercu.append(el('img', { src: d, alt: '' })); };
+    const message = el('small', { classe: 'aide-question', role: 'status' });
+    if (v.vignette && typeof Inventaires !== 'undefined') {
+      if (Inventaires.enMemoire(v.vignette)) montrer(Inventaires.enMemoire(v.vignette)); else Inventaires.obtenirPhoto(v.vignette).then(montrer);
+    }
+    const recevoir = async (e) => {
+      const fichier = e.target.files[0];
+      e.target.value = '';
+      if (!fichier) return;
+      try {
+        const donnees = await Recadrage.photo(fichier, { cote: 480, max: 1500000, carre: true, titre: 'Cadrer la vignette' });
+        if (!donnees) return;
+        message.textContent = 'Envoi de la photo…';
+        const rep = await appelerServeur('envoyerPhotoInventaire', { photo: donnees });
+        if (!rep || !rep.ok) throw new Error((rep && rep.erreur) || 'photo refusée');
+        await Inventaires.ecrirePhoto(rep.id, donnees);
+        v.vignette = rep.id;
+        rendre();
+      } catch (err) {
+        message.textContent = `Photo non enregistrée (${err.message || 'réseau'}) : réessayez en ligne.`;
+      }
+    };
+    return el('div', { classe: 'cfg-champ-large cfg-vignette' }, el('span', { texte: 'Vignette' }),
+      el('div', { classe: 'cfg-vignette-ligne' }, v.vignette ? apercu : null,
+        el('div', { classe: 'champ-photo' },
+          el('label', { for: prendre, classe: 'bouton-photo', texte: v.vignette ? '📷 Reprendre' : '📷 Prendre la photo' }),
+          el('input', { type: 'file', id: prendre, accept: 'image/*', capture: 'environment', classe: 'invisible', surchange: recevoir }),
+          el('label', { for: choisir, classe: 'bouton-photo', texte: 'Choisir une image' }),
+          el('input', { type: 'file', id: choisir, accept: 'image/*', classe: 'invisible', surchange: recevoir }),
+          v.vignette ? el('button', { type: 'button', classe: 'lien danger', texte: 'Retirer', surclick: () => { delete v.vignette; rendre(); } }) : null)),
+      message,
+      el('small', { classe: 'aide-question', texte: 'Image carrée affichée sur la case du véhicule (utile pour un véhicule sans inventaire, comme le chariot ménage). Elle prime sur la photo des inventaires.' }));
+  }
+
   // ---------- Véhicules ----------
   // Une ligne par véhicule (indicatif, modèle, ordre) ; le détail se déplie au besoin.
   const vehiculesOuverts = new Set();
@@ -90,8 +144,8 @@ const ConfigAdmin = (() => {
           el('label', {}, el('span', { texte: 'Check-list' }), modele),
           el('label', {}, el('span', { texte: 'Nom affiché (facultatif)' }), el('input', { valeur: v.nom || '', placeholder: 'ex. Couveuse',
             surinput: (e) => { if (e.target.value) v.nom = e.target.value; else delete v.nom; } })),
-          el('label', {}, el('span', { texte: 'Icône' }), el('input', { classe: 'cfg-icone', valeur: v.icone || '', placeholder: '🚑',
-            surinput: (e) => { if (e.target.value) v.icone = e.target.value; else delete v.icone; } }))),
+          choixIcone(v),
+          blocVignetteVehicule(v)),
         el('div', { classe: 'cfg-veh-cases' },
           el('label', { classe: 'cfg-actif', for: idActif, title: 'Décocher pour ne plus afficher ce véhicule (sa configuration est gardée)' },
             el('input', { type: 'checkbox', id: idActif, checked: !v.inactif,

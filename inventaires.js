@@ -8733,7 +8733,7 @@ const Inventaires = (() => {
 
   /** Pour la check-list ambulancier : photo d'un véhicule (vignette de son contenant primaire) gardée sur l'appareil. */
   const photoVehicule = (id) => { const p = primaireDuVehicule(id); return p ? p.vignette || '' : ''; };
-  return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate, scanRapide, ouvrirScanne, obtenirPhoto, enMemoire: (id) => Photos.enMemoire(id), photoVehicule,
+  return { initialiser, afficher, masquer, synchroniser, surEnvoi, analyserDate, scanRapide, ouvrirScanne, obtenirPhoto, enMemoire: (id) => Photos.enMemoire(id), ecrirePhoto: (id, donnees) => Photos.ecrire(id, donnees), photoVehicule,
     stocks: () => stocks(), vehiculesArmables: () => vehiculesArmables(), peremptionsVehicule: (id) => peremptionsVehicule(id),
     // Étiquettes QR personnalisables hors inventaires (références de prêt…).
     etiquette: {

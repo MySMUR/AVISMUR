@@ -439,10 +439,12 @@ const Ambulancier = (() => {
   /** Inventaire IADE du véhicule : { photo, faits, total, manquants, date, agent } (compteurs du jour seulement) ou null. */
   function inventaireVehicule(id) {
     const r = lireStockage(CLE_INV_VEHICULES)[id] || null;
-    const photoLocale = typeof Inventaires !== 'undefined' && Inventaires.photoVehicule ? Inventaires.photoVehicule(id) : '';
+    // Vignette choisie dans la configuration du véhicule (ex. chariot ménage, sans inventaire) : elle prime.
+    const configuree = (typeof VEHICULES !== 'undefined' && (VEHICULES.find((x) => x.id === id) || {}).vignette) || '';
+    const photoLocale = configuree || (typeof Inventaires !== 'undefined' && Inventaires.photoVehicule ? Inventaires.photoVehicule(id) : '');
     if (!r) return photoLocale ? { photo: photoLocale, total: 0 } : null;
     const duJour = r.jour === aujourdhui();
-    return { ...r, photo: r.photo || photoLocale, faits: duJour ? r.faits : 0, manquants: duJour ? r.manquants : 0, date: duJour ? r.date : '', agent: duJour ? r.agent : '' };
+    return { ...r, photo: configuree || r.photo || photoLocale, faits: duJour ? r.faits : 0, manquants: duJour ? r.manquants : 0, date: duJour ? r.date : '', agent: duJour ? r.agent : '' };
   }
   /** Photo du véhicule (vignette de son contenant primaire dans les inventaires), posée dans `bloc` une fois chargée. */
   function poserPhotoVehicule(bloc, id) {

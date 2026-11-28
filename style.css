@@ -3828,3 +3828,13 @@ button.inv-marque-perso:hover { background: #FFF1E0; }
 .jauge-compacte { min-width: 0; width: 100%; gap: 0.35rem; }
 .jauge-compacte .jauge-barre { min-width: 1.6rem; }
 .jauge-compacte .jauge-valeur { min-width: 0; font-size: 0.78rem; }
+
+/* Configuration d'un véhicule : choix d'icône et vignette */
+.cfg-champ-large { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 0.3rem; }
+.cfg-icones { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.cfg-icone-choix { width: 2.6rem; height: 2.6rem; font-size: 1.35rem; line-height: 1; border: 2px solid var(--trait); border-radius: 10px; background: #fff; cursor: pointer; }
+.cfg-icone-choix.choisie { border-color: var(--bleu); background: var(--ciel); box-shadow: 0 0 0 2px var(--bleu) inset; }
+.cfg-icone-choix:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
+.cfg-icones .cfg-icone-libre { width: 4.5rem; height: 2.6rem; text-align: center; }
+.cfg-vignette-ligne { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
+.cfg-vignette-apercu img { display: block; width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: 10px; border: 1px solid var(--trait); }
