@@ -119,7 +119,7 @@ const ConfigAdmin = (() => {
   // ---------- Véhicules ----------
   // Une ligne par véhicule (indicatif, modèle, ordre) ; le détail se déplie au besoin.
   const vehiculesOuverts = new Set();
-  const ACTIONS_VEHICULE = [['sansGarage', 'Garage', 'passage au garage'], ['sansPlein', 'Plein', 'plein de carburant'], ['sansExterieur', 'Extérieur', 'vérification extérieure'], ['sansNettoyage', 'Nettoyage', 'nettoyage']];
+  const ACTIONS_VEHICULE = [['sansGarage', 'Garage', 'passage au garage'], ['sansPlein', 'Plein', 'plein de carburant'], ['sansExterieur', 'Extérieur', 'vérification extérieure'], ['sansNettoyage', 'Nettoyage', 'nettoyage'], ['sansKm', 'Km', 'kilométrage']];
   function rendreVehicules() {
     const table = el('div', { classe: 'cfg-vehicules' });
     brouillon.vehicules.forEach((v, i) => {

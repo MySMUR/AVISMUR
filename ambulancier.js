@@ -158,7 +158,8 @@ const Ambulancier = (() => {
 
   /** La question concerne-t-elle ce véhicule ? */
   const concerne = (q) => (!q.seulementPour || q.seulementPour.includes(etat.vehicule))
-    && (!q.exclusPour || !q.exclusPour.includes(etat.vehicule));
+    && (!q.exclusPour || !q.exclusPour.includes(etat.vehicule))
+    && !(q.type === 'kilometrage' && sansKilometrage(vehicule()));
   const visible = (q) => q.type !== 'cache' && concerne(q)
     && !(q.basculeF00 && positionDuJour(etat.vehicule))
     && (!q.si || etat.reponses[q.si.question] === q.si.valeur);
@@ -611,7 +612,7 @@ const Ambulancier = (() => {
     }
 
     // Kilométrage (dernier relevé connu : check-list ou plein)
-    if (info.releve && info.releve.km) {
+    if (info.releve && info.releve.km && !sansKilometrage(v)) {
       bouton.append(el('span', { classe: 'carte-ligne carte-km', title: `Relevé du ${new Date(info.releve.date).toLocaleDateString('fr-FR')}` },
         el('span', { classe: 'carte-picto', 'aria-hidden': 'true', texte: '⏱' }), el('span', { texte: km(info.releve.km) })));
     }

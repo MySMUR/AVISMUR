@@ -12,7 +12,8 @@
  *
  * Véhicules : `sansGarage`, `sansPlein`, `sansExterieur`, `sansNettoyage` (true) retirent le passage
  * au garage, le plein, la vérification extérieure et le nettoyage (case et menu d'actions).
- * `picto: 'nourrisson'` : pictogramme dessiné (couveuse) ; `icone` : emoji libre.
+ * `sansKm` (true) : pas de kilométrage (couveuse, chariot ménage…) : ni question, ni relevé, ni tuile.
+ * `picto: 'nourrisson'` : pictogramme dessiné (couveuse) ; `icone` : emoji libre ; `vignette` : photo de la case.
  *
  * Types de questions :
  *   niveau      : obus / bouteille, curseur de 0 à 10 (10 = plein, 200 bars)
@@ -150,8 +151,13 @@ let VEHICULES = [
   { id: 'F25', modele: 'UMH' },
   { id: 'F26', modele: 'UMH' },
   { id: 'F00', modele: 'F00', libelle: 'F00 · ambulance HELICO' },
-  { id: 'COUVEUSE', modele: 'COUVEUSE', nom: 'Couveuse', type: '', picto: 'nourrisson', sansGarage: true, sansPlein: true, sansExterieur: true, sansNettoyage: true },
+  { id: 'COUVEUSE', modele: 'COUVEUSE', nom: 'Couveuse', type: '', picto: 'nourrisson', sansGarage: true, sansPlein: true, sansExterieur: true, sansNettoyage: true, sansKm: true },
 ];
+
+/** Véhicule sans compteur : `sansKm`, ou couveuse / chariot ménage reconnus d'après leur pictogramme ou leur nom. */
+function sansKilometrage(v) {
+  return Boolean(v && (v.sansKm || v.picto === 'nourrisson' || /chariot|m[ée]nage|couveuse/i.test(`${v.nom || ''} ${v.id || ''}`)));
+}
 
 const ADBLUE = {
   type: 'choix',
