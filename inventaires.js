@@ -829,8 +829,8 @@ const Inventaires = (() => {
   function famillePrimaire(p) {
     const v = vehiculeDuPrimaire(p);
     const modele = String((v && (listeVehicules().find((x) => x.id === v.id) || v).modele) || '').toUpperCase();
-    // Hélicoptère : l'appareil lui-même (contenant nommé « hélico… ») et l'UMH en DZ d'après le dernier état du parc connu.
-    if (!v && /h[ée]lico|h135|ec ?135/i.test(p.nom || '')) return 'HELICO';
+    // Hélicoptère : l'appareil lui-même (contenant nommé « hélico… » ou « HELISMUR… ») et l'UMH en DZ d'après le dernier état du parc connu.
+    if (!v && /h[ée]li(co|smur|s )|h135|ec ?135/i.test(p.nom || '')) return 'HELICO';
     if (v && (modele === 'F00' || /HELI|F00/i.test(v.id))) return 'HELICO';
     if (v && typeof Ambulancier !== 'undefined' && Ambulancier.positionConnue && Ambulancier.estDZ(Ambulancier.positionConnue(v.id))) return 'HELICO';
     if (modele === 'VML') return 'VML';
