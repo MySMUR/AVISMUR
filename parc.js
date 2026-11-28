@@ -216,7 +216,7 @@ const Parc = (() => {
         if (vus.has(id) || ignorees.has(id) || cle.startsWith('Position (')) return;
         vus.add(id);
         const m = /^(.*?)\s*\[(.*)\]$/.exec(cle);
-        entrees.push({ id, section: m ? (m[1] || 'Équipement') : '', libelle: m ? m[2] : cle });
+        entrees.push({ id, section: m ? (m[1] || 'Équipement') : (rubriqueSansCrochets(cle) === RUBRIQUE_FLUIDES ? RUBRIQUE_FLUIDES : ''), libelle: m ? m[2] : cle });
       });
     });
     const placees = new Set();

@@ -42,6 +42,10 @@ const SEUILS_ANOMALIE = {
 };
 
 // ---------- Affichage des réponses : jauges et rubriques (fiche check-list et tableau du parc) ----------
+/** Rubrique des réponses sans crochets : obus et bouteilles = « Fluides médicaux », le reste = « Général ». */
+const RUBRIQUE_FLUIDES = 'Fluides médicaux';
+const rubriqueSansCrochets = (libelle) => (/obus|bouteille/i.test(libelle) ? RUBRIQUE_FLUIDES : 'Général');
+
 /** Niveau « jaugeable » d'une réponse : obus/bouteille (n/10) ou carburant (n/8) ; null sinon. */
 function niveauJauge(libelle, valeur) {
   let n = null; let max = null;
@@ -88,7 +92,7 @@ function rendreReponses(reponses) {
   Object.entries(reponses || {}).forEach(([cle, valeur]) => {
     if (valeur === '' || valeur === null || valeur === undefined || cle.startsWith('Position (')) return;
     const m = /^(.*?)\s*\[(.*)\]\s*$/.exec(cle);
-    const rubrique = m && m[1] ? m[1] : 'Général';
+    const rubrique = m && m[1] ? m[1] : rubriqueSansCrochets(cle);
     if (!groupes.has(rubrique)) groupes.set(rubrique, []);
     groupes.get(rubrique).push({ libelle: m && m[1] ? m[2] : cle, valeur });
   });
